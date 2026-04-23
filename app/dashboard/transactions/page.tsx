@@ -2,6 +2,7 @@ import { WebTransactionImport } from "@/components/web-transaction-import";
 import { WebTransactionsFilters } from "@/components/web-transactions-filters";
 import { buildWebTransactionMetrics, getWebTransactions } from "@/lib/db/queries";
 import { requireAllowedUser } from "@/lib/auth";
+import { formatAmount, formatDateTimeDisplay, getAmountColorClass } from "@/lib/display-format";
 
 type SearchParamValue = string | string[] | undefined;
 
@@ -9,21 +10,6 @@ type TransactionsPageProps = {
   searchParams?: Promise<Record<string, SearchParamValue>>;
 };
 type SourceSystem = "backoffice" | "payment_gateway";
-
-function formatDecimalWithDot(value: number) {
-  const formatted = value.toLocaleString("en-US", {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3
-  });
-  return formatted.replace(/,/g, "");
-}
-
-function formatCurrency3(value: number) {
-  return value.toLocaleString("en-US", {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3
-  });
-}
 
 function normalizeSingleParam(param: SearchParamValue): string | null {
   if (!param) return null;
@@ -100,16 +86,22 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
           </article>
           <article className="card">
             <p className="text-xs uppercase text-slate-500">Gross Amount</p>
-            <p className="mt-1 text-2xl font-semibold">Rp {formatCurrency3(metrics.gross_amount)}</p>
+            <p className={`mt-1 text-2xl font-semibold ${getAmountColorClass(metrics.gross_amount)}`}>
+              Rp {formatAmount(metrics.gross_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+            </p>
           </article>
           <article className="card">
             <p className="text-xs uppercase text-slate-500">Net (Amount - Fee)</p>
-            <p className="mt-1 text-2xl font-semibold">Rp {formatCurrency3(metrics.net_amount)}</p>
+            <p className={`mt-1 text-2xl font-semibold ${getAmountColorClass(metrics.net_amount)}`}>
+              Rp {formatAmount(metrics.net_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+            </p>
           </article>
           {sourceSystem === "payment_gateway" ? (
             <article className="card">
               <p className="text-xs uppercase text-slate-500">Fee Amount (Abs)</p>
-              <p className="mt-1 text-2xl font-semibold">Rp {formatCurrency3(Math.abs(metrics.fee_amount))}</p>
+              <p className="mt-1 text-2xl font-semibold">
+                Rp {formatAmount(Math.abs(metrics.fee_amount), { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+              </p>
             </article>
           ) : null}
           {sourceSystem === "backoffice" ? (
@@ -117,12 +109,16 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
               <article className="card">
                 <p className="text-xs uppercase text-slate-500">Payin Count / Amount</p>
                 <p className="mt-1 text-2xl font-semibold">{metrics.payin_count.toLocaleString("id-ID")}</p>
-                <p className="mt-1 text-sm text-slate-600">Rp {formatCurrency3(metrics.payin_amount)}</p>
+                <p className={`mt-1 text-sm ${getAmountColorClass(metrics.payin_amount)}`}>
+                  Rp {formatAmount(metrics.payin_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                </p>
               </article>
               <article className="card">
                 <p className="text-xs uppercase text-slate-500">Payout Count / Amount</p>
                 <p className="mt-1 text-2xl font-semibold">{metrics.payout_count.toLocaleString("id-ID")}</p>
-                <p className="mt-1 text-sm text-slate-600">Rp {formatCurrency3(metrics.payout_amount)}</p>
+                <p className={`mt-1 text-sm ${getAmountColorClass(metrics.payout_amount)}`}>
+                  Rp {formatAmount(metrics.payout_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                </p>
               </article>
             </>
           ) : null}
@@ -159,19 +155,22 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id} className="border-b">
-                  <td className="px-3 py-2">{new Date(row.create_time).toLocaleString("id-ID")}</td>
+                  <td className="px-3 py-2">{formatDateTimeDisplay(row.create_time)}</td>
                   <td className="px-3 py-2 font-mono text-xs">{row.external_txn_no}</td>
                   <td className="px-3 py-2">{row.canonical_status}</td>
                   <td className="px-3 py-2">{row.canonical_type}</td>
-                  <td className="px-3 py-2">{row.currency_code} {formatCurrency3(row.amount)}</td>
-                  <td className="px-3 py-2">
-                    {row.merchant_fee === null ? "-" : formatDecimalWithDot(row.merchant_fee)}
+                  <td className={`px-3 py-2 ${getAmountColorClass(row.amount)}`}>
+                    {row.currency_code} {formatAmount(row.amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                   </td>
-                  <td className="px-3 py-2">
-                    {row.currency_code} {formatCurrency3(row.amount - Math.abs(row.merchant_fee ?? 0))}
+                  <td className={`px-3 py-2 ${row.merchant_fee === null ? "" : getAmountColorClass(row.merchant_fee)}`}>
+                    {row.merchant_fee === null ? "-" : formatAmount(row.merchant_fee, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                  </td>
+                  <td className={`px-3 py-2 ${getAmountColorClass(row.amount - Math.abs(row.merchant_fee ?? 0))}`}>
+                    {row.currency_code}{" "}
+                    {formatAmount(row.amount - Math.abs(row.merchant_fee ?? 0), { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                   </td>
                   <td className="px-3 py-2">{row.merchant_name ?? "-"}</td>
-                  <td className="px-3 py-2">{new Date(row.last_update_time).toLocaleString("id-ID")}</td>
+                  <td className="px-3 py-2">{formatDateTimeDisplay(row.last_update_time)}</td>
                 </tr>
               ))}
               {!rows.length ? (

@@ -8,6 +8,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
 import { Modal } from "@/components/ui/modal";
+import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
 
 type Props = {
   initialTypes: BigBookLedgerType[];
@@ -31,6 +32,8 @@ type ApiErrorShape = {
   formErrors?: unknown;
   fieldErrors?: Record<string, unknown>;
 };
+
+type CreateEntryMode = "create" | "create_another";
 
 const amountFormatter = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 0,
@@ -95,6 +98,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
   const [entrySubmitting, setEntrySubmitting] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [pendingEntryConfirm, setPendingEntryConfirm] = useState(false);
+  const [createEntryMode, setCreateEntryMode] = useState<CreateEntryMode>("create");
   const [createAttachmentFiles, setCreateAttachmentFiles] = useState<File[]>([]);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
@@ -118,6 +122,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
   const [attachmentViewingId, setAttachmentViewingId] = useState<string | null>(null);
   const [pendingDeleteAttachmentId, setPendingDeleteAttachmentId] = useState<string | null>(null);
   const [attachmentDeleting, setAttachmentDeleting] = useState(false);
+  const [viewingRemark, setViewingRemark] = useState<{ entryId: string; text: string } | null>(null);
 
   const activeTypes = useMemo(() => initialTypes.filter((item) => item.is_active), [initialTypes]);
   const currencies: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR", "USDT", "TRX"];
@@ -230,11 +235,18 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
         }
       }
 
+      const keepModalOpen = createEntryMode === "create_another";
       setMessage("Ledger entry created.");
       setPendingEntryConfirm(false);
-      setCreateModalOpen(false);
+      setCreateModalOpen(keepModalOpen);
       setCreateAttachmentFiles([]);
-      setEntryForm((prev) => ({ ...prev, explanation: "", amount: "", remark: "", currency_code: "IDR" }));
+      setEntryForm((prev) => ({
+        ...prev,
+        explanation: "",
+        amount: "",
+        remark: "",
+        ...(keepModalOpen ? {} : { currency_code: "IDR" })
+      }));
       triggerRefresh();
     } catch {
       setError("Failed to create ledger entry due to a network error.");
@@ -465,47 +477,39 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
           {initialActorMetrics.map((metric) => (
             <article key={metric.actor_id} className="rounded-md border border-slate-200 p-4">
               <p className="font-semibold">
-                Actor {metric.actor_code} - {metric.actor_display_name}
+                Actor {metric.actor_display_name}
               </p>
               <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
                 <div className="rounded-md bg-slate-50 p-2">
                   <p className="text-xs uppercase text-slate-500">IDR</p>
                   <p
-                    className={`font-medium ${
-                      metric.totals.IDR < 0 ? "text-rose-600" : metric.totals.IDR > 0 ? "text-blue-600" : "text-slate-700"
-                    }`}
+                    className={`font-medium ${getAmountColorClass(metric.totals.IDR)}`}
                   >
-                    {metric.totals.IDR.toLocaleString("en-US", { maximumFractionDigits: 4 })}
+                    {formatAmount(metric.totals.IDR, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
                   </p>
                 </div>
                 <div className="rounded-md bg-slate-50 p-2">
                   <p className="text-xs uppercase text-slate-500">MYR</p>
                   <p
-                    className={`font-medium ${
-                      metric.totals.MYR < 0 ? "text-rose-600" : metric.totals.MYR > 0 ? "text-blue-600" : "text-slate-700"
-                    }`}
+                    className={`font-medium ${getAmountColorClass(metric.totals.MYR)}`}
                   >
-                    {metric.totals.MYR.toLocaleString("en-US", { maximumFractionDigits: 4 })}
+                    {formatAmount(metric.totals.MYR, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
                   </p>
                 </div>
                 <div className="rounded-md bg-slate-50 p-2">
                   <p className="text-xs uppercase text-slate-500">USDT</p>
                   <p
-                    className={`font-medium ${
-                      metric.totals.USDT < 0 ? "text-rose-600" : metric.totals.USDT > 0 ? "text-blue-600" : "text-slate-700"
-                    }`}
+                    className={`font-medium ${getAmountColorClass(metric.totals.USDT)}`}
                   >
-                    {metric.totals.USDT.toLocaleString("en-US", { maximumFractionDigits: 4 })}
+                    {formatAmount(metric.totals.USDT, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
                   </p>
                 </div>
                 <div className="rounded-md bg-slate-50 p-2">
                   <p className="text-xs uppercase text-slate-500">TRX</p>
                   <p
-                    className={`font-medium ${
-                      metric.totals.TRX < 0 ? "text-rose-600" : metric.totals.TRX > 0 ? "text-blue-600" : "text-slate-700"
-                    }`}
+                    className={`font-medium ${getAmountColorClass(metric.totals.TRX)}`}
                   >
-                    {metric.totals.TRX.toLocaleString("en-US", { maximumFractionDigits: 4 })}
+                    {formatAmount(metric.totals.TRX, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
                   </p>
                 </div>
               </div>
@@ -580,17 +584,17 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
               <option value="">All actors</option>
               {initialActors.map((actor) => (
                 <option key={actor.id} value={actor.id}>
-                  {actor.actor_code} - {actor.display_name}
+                  {actor.display_name}
                 </option>
               ))}
             </select>
           </label>
           <label className="text-sm text-slate-700">
-            <span className="mb-1 block">Direction</span>
+            <span className="mb-1 block">Cash Flow</span>
             <select className="field w-full" value={directionFilter} onChange={(event) => setDirectionFilter(event.target.value)}>
               <option value="">All directions</option>
-              <option value="spending">Spending</option>
-              <option value="profit">Profit</option>
+              <option value="spending">Out</option>
+              <option value="profit">In</option>
             </select>
           </label>
         </div>
@@ -599,7 +603,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
             <thead className="border-b bg-slate-50 text-left">
               <tr>
                 <th className="px-3 py-2">Date</th>
-                <th className="px-3 py-2">Direction</th>
+                <th className="px-3 py-2">Cash Flow</th>
                 <th className="px-3 py-2">Type</th>
                 <th className="px-3 py-2">Explanation</th>
                 <th className="px-3 py-2">Amount</th>
@@ -612,7 +616,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
             <tbody>
               {visibleEntries.map((row) => (
                 <tr key={row.id} className="border-b align-top">
-                  <td className="px-3 py-2">{row.entry_date}</td>
+                  <td className="px-3 py-2">{formatDateDisplay(row.entry_date)}</td>
                   <td className="px-3 py-2">
                     <span
                       className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${
@@ -621,21 +625,36 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
                           : "bg-amber-100 text-amber-700"
                       }`}
                     >
-                      {row.entry_direction === "profit" ? "Profit" : "Spending"}
+                      {row.entry_direction === "profit" ? "In" : "Out"}
                     </span>
                   </td>
                   <td className="px-3 py-2">{row.type_name}</td>
                   <td className="px-3 py-2">{row.explanation}</td>
                   <td className="px-3 py-2">
-                    <span className={row.entry_direction === "spending" ? "text-rose-600" : "text-blue-600"}>
+                    <span className={getAmountColorClass(row.entry_direction === "spending" ? -row.amount : row.amount)}>
                       {row.currency_code}{" "}
-                      {row.amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                      {formatAmount(row.amount, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
                     </span>
                   </td>
                   <td className="px-3 py-2">
-                    {row.actor_code} - {row.actor_display_name}
+                    {row.actor_display_name}
                   </td>
-                  <td className="px-3 py-2">{row.remark ?? "-"}</td>
+                  <td className="px-3 py-2">
+                    {row.remark ? (
+                      <div className="flex max-w-[260px] items-start gap-2">
+                        <span className="truncate">{row.remark}</span>
+                        <button
+                          className="shrink-0 text-xs text-blue-700 underline"
+                          type="button"
+                          onClick={() => setViewingRemark({ entryId: row.id, text: row.remark ?? "" })}
+                        >
+                          View
+                        </button>
+                      </div>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
                   <td className="px-3 py-2">
                     {row.attachments.length ? (
                       <div className="space-y-1">
@@ -745,9 +764,22 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
             <button
               className="btn"
               disabled={entrySubmitting || !entryForm.explanation.trim() || !entryForm.amount}
-              onClick={() => setPendingEntryConfirm(true)}
+              onClick={() => {
+                setCreateEntryMode("create");
+                setPendingEntryConfirm(true);
+              }}
             >
-              {entrySubmitting ? "Saving..." : "Continue"}
+              {entrySubmitting ? "Saving..." : "Save"}
+            </button>
+            <button
+              className="btn-secondary"
+              disabled={entrySubmitting || !entryForm.explanation.trim() || !entryForm.amount}
+              onClick={() => {
+                setCreateEntryMode("create_another");
+                setPendingEntryConfirm(true);
+              }}
+            >
+              {entrySubmitting ? "Saving..." : "Save + Create Another"}
             </button>
           </>
         }
@@ -777,7 +809,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
             </select>
           </label>
             <label className="text-sm">
-              Direction *
+              Cash Flow *
               <select
                 className="field mt-1"
                 value={entryForm.entry_direction}
@@ -788,8 +820,8 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
                   }))
                 }
               >
-                <option value="spending">Spending</option>
-                <option value="profit">Profit</option>
+                <option value="spending">Out</option>
+                <option value="profit">In</option>
               </select>
             </label>
           <label className="text-sm">
@@ -801,7 +833,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
             >
               {initialActors.map((actor) => (
                 <option key={actor.id} value={actor.id}>
-                  {actor.actor_code} - {actor.display_name}
+                  {actor.display_name}
                 </option>
               ))}
             </select>
@@ -891,11 +923,26 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
             ? `This will create a new record and upload ${createAttachmentFiles.length} attachment(s).`
             : "This will create a new operational/profit record in the Big Book."
         }
-        confirmLabel="Create Entry"
+        confirmLabel={createEntryMode === "create_another" ? "Create & Add Another" : "Create Entry"}
         confirming={entrySubmitting}
         closeOnBackdrop={false}
         onConfirm={createEntry}
       />
+
+      <Modal
+        open={Boolean(viewingRemark)}
+        onOpenChange={(open) => {
+          if (!open) setViewingRemark(null);
+        }}
+        title="Full Remark"
+        footer={
+          <button className="btn-secondary" onClick={() => setViewingRemark(null)}>
+            Close
+          </button>
+        }
+      >
+        <p className="whitespace-pre-wrap break-words text-sm text-slate-700">{viewingRemark?.text ?? ""}</p>
+      </Modal>
 
       <Modal
         open={editModalOpen}
@@ -945,7 +992,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
             </select>
           </label>
             <label className="text-sm">
-              Direction *
+              Cash Flow *
               <select
                 className="field mt-1"
                 value={editForm.entry_direction}
@@ -956,8 +1003,8 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
                   }))
                 }
               >
-                <option value="spending">Spending</option>
-                <option value="profit">Profit</option>
+                <option value="spending">Out</option>
+                <option value="profit">In</option>
               </select>
             </label>
           <label className="text-sm">
@@ -969,7 +1016,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
             >
               {initialActors.map((actor) => (
                 <option key={actor.id} value={actor.id}>
-                  {actor.actor_code} - {actor.display_name}
+                  {actor.display_name}
                 </option>
               ))}
             </select>
@@ -1079,7 +1126,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
         {manageAttachmentsEntry ? (
           <div className="space-y-3">
             <p className="text-xs text-slate-600">
-              {manageAttachmentsEntry.entry_date} · {manageAttachmentsEntry.type_name} · {manageAttachmentsEntry.explanation}
+              {formatDateDisplay(manageAttachmentsEntry.entry_date)} · {manageAttachmentsEntry.type_name} · {manageAttachmentsEntry.explanation}
             </p>
             <input
               className="field"

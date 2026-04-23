@@ -186,6 +186,35 @@ export async function getBigBookLedgerTypes(options?: {
   }));
 }
 
+export async function getBigBookLedgerTypeByCode(
+  code: string,
+  options?: { includeInactive?: boolean }
+): Promise<BigBookLedgerType | null> {
+  const normalized = code.trim();
+  if (!normalized) return null;
+
+  const supabase = await createClient();
+  let query = supabase
+    .from("business_ledger_types")
+    .select("id, code, name, is_active, sort_order, created_at, updated_at")
+    .eq("code", normalized)
+    .limit(1)
+    .maybeSingle();
+
+  if (!options?.includeInactive) {
+    query = query.eq("is_active", true);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  if (!data) return null;
+
+  return {
+    ...data,
+    sort_order: Number(data.sort_order)
+  };
+}
+
 export async function getBigBookActors(): Promise<BigBookActor[]> {
   const supabase = await createClient();
   const { data, error } = await supabase

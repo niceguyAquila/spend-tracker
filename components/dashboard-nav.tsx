@@ -19,9 +19,12 @@ type Props = {
 export function DashboardNav({ isAdmin, activeBrandId, brandOptions }: Props) {
   const pathname = usePathname();
   const isBigBookRoute = pathname.startsWith("/dashboard/big-book");
+  const isMasterDashboardRoute = pathname.startsWith("/dashboard/master-dashboard");
+  const shouldHideTopBrandSwitcher = isMasterDashboardRoute || isBigBookRoute;
   const navLinks = isAdmin
     ? [
         ...links,
+        { href: "/dashboard/master-dashboard", label: "Master Dashboard" },
         { href: "/dashboard/big-book", label: "Big Book" },
         { href: "/dashboard/admin/users", label: "Admin Users" },
         { href: "/dashboard/admin/brands", label: "Admin Brands" }
@@ -32,6 +35,7 @@ export function DashboardNav({ isAdmin, activeBrandId, brandOptions }: Props) {
     if (href === "/dashboard/spending") return pathname.startsWith("/dashboard/spending");
     if (href === "/dashboard/transactions") return pathname.startsWith("/dashboard/transactions");
     if (href === "/dashboard/settings/categories") return pathname.startsWith("/dashboard/settings/categories");
+    if (href === "/dashboard/master-dashboard") return pathname.startsWith("/dashboard/master-dashboard");
     if (href === "/dashboard/big-book") return pathname.startsWith("/dashboard/big-book");
     if (href === "/dashboard/admin/users") return pathname.startsWith("/dashboard/admin/users");
     if (href === "/dashboard/admin/brands") return pathname.startsWith("/dashboard/admin/brands");
@@ -59,9 +63,11 @@ export function DashboardNav({ isAdmin, activeBrandId, brandOptions }: Props) {
           </Link>
         ))}
       </div>
-      <div className="w-full lg:ml-auto lg:w-auto">
-        <BrandSwitcher activeBrandId={activeBrandId} options={brandOptions} compact disabled={isBigBookRoute} />
-      </div>
+      {!shouldHideTopBrandSwitcher ? (
+        <div className="w-full lg:ml-auto lg:w-auto">
+          <BrandSwitcher activeBrandId={activeBrandId} options={brandOptions} compact disabled={isBigBookRoute} />
+        </div>
+      ) : null}
     </nav>
   );
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { handleUnauthorizedResponse } from "@/lib/client/auth-fetch";
 import type { BigBookCurrencyCode } from "@/lib/validation/big-book";
+import { formatAmount, formatDateTimeDisplay } from "@/lib/display-format";
 
 const CURRENCIES: BigBookCurrencyCode[] = ["IDR", "MYR", "USDT", "TRX"];
 
@@ -18,7 +19,7 @@ type ExchangeQuoteResult = {
 
 function formatCurrencyValue(currencyCode: BigBookCurrencyCode, value: number, maxFractionDigits = 4) {
   const prefix = currencyCode === "IDR" ? "Rp" : currencyCode === "MYR" ? "RM" : currencyCode === "USDT" ? "USDT" : "TRX";
-  return `${prefix} ${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: maxFractionDigits })}`;
+  return `${prefix} ${formatAmount(value, { minimumFractionDigits: 2, maximumFractionDigits: maxFractionDigits })}`;
 }
 
 export function BigBookExchangeHelperPanel() {
@@ -134,11 +135,11 @@ export function BigBookExchangeHelperPanel() {
             <span className="font-semibold">{formatCurrencyValue(result.quote_currency, result.converted_amount)}</span>
           </p>
           <p className="mt-1 text-xs text-slate-600">
-            Rate: 1 {result.base_currency} = {result.rate.toLocaleString("en-US", { maximumFractionDigits: 6 })}{" "}
+            Rate: 1 {result.base_currency} = {formatAmount(result.rate, { minimumFractionDigits: 0, maximumFractionDigits: 6 })}{" "}
             {result.quote_currency}
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            Source: Coinbase public exchange rates · Fetched at {new Date(result.fetched_at).toLocaleString("en-US")}
+            Source: Coinbase public exchange rates · Fetched at {formatDateTimeDisplay(result.fetched_at)}
           </p>
         </article>
       ) : null}

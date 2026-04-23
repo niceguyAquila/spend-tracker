@@ -2,6 +2,7 @@ import { getWebTransactionComparison } from "@/lib/db/queries";
 import { requireAllowedUser } from "@/lib/auth";
 import type { WebTransactionComparisonOutcome } from "@/lib/types";
 import { WebTransactionsComparisonFilters } from "@/components/web-transactions-comparison-filters";
+import { formatAmount, getAmountColorClass } from "@/lib/display-format";
 
 type SearchParamValue = string | string[] | undefined;
 
@@ -21,13 +22,6 @@ function normalizeSingleParam(param: SearchParamValue): string | null {
   if (Array.isArray(param)) return param[0]?.trim() || null;
   const normalized = param.trim();
   return normalized.length ? normalized : null;
-}
-
-function formatCurrency3(value: number) {
-  return value.toLocaleString("en-US", {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3
-  });
 }
 
 function getComparisonOutcomeLabel(outcome: WebTransactionComparisonOutcome) {
@@ -85,14 +79,16 @@ export default async function TransactionsComparisonPage({ searchParams }: Compa
         <article className="card">
           <p className="text-xs uppercase text-slate-500">Backoffice Total Transactions / Amount</p>
           <p className="mt-1 text-2xl font-semibold">{comparison.metrics.backoffice.total_count.toLocaleString("id-ID")}</p>
-          <p className="mt-1 text-sm text-slate-600">Rp {formatCurrency3(comparison.metrics.backoffice.total_amount)}</p>
+          <p className={`mt-1 text-sm ${getAmountColorClass(comparison.metrics.backoffice.total_amount)}`}>
+            Rp {formatAmount(comparison.metrics.backoffice.total_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+          </p>
           <p className="mt-3 text-xs text-slate-500">
             Payin: {comparison.metrics.backoffice.payin_count.toLocaleString("id-ID")} / Rp{" "}
-            {formatCurrency3(comparison.metrics.backoffice.payin_amount)}
+            {formatAmount(comparison.metrics.backoffice.payin_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
           </p>
           <p className="text-xs text-slate-500">
             Payout: {comparison.metrics.backoffice.payout_count.toLocaleString("id-ID")} / Rp{" "}
-            {formatCurrency3(comparison.metrics.backoffice.payout_amount)}
+            {formatAmount(comparison.metrics.backoffice.payout_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
           </p>
         </article>
 
@@ -101,14 +97,20 @@ export default async function TransactionsComparisonPage({ searchParams }: Compa
           <p className="mt-1 text-2xl font-semibold">
             {comparison.metrics.payment_gateway.total_count.toLocaleString("id-ID")}
           </p>
-          <p className="mt-1 text-sm text-slate-600">Rp {formatCurrency3(comparison.metrics.payment_gateway.total_amount)}</p>
+          <p className={`mt-1 text-sm ${getAmountColorClass(comparison.metrics.payment_gateway.total_amount)}`}>
+            Rp{" "}
+            {formatAmount(comparison.metrics.payment_gateway.total_amount, {
+              minimumFractionDigits: 3,
+              maximumFractionDigits: 3
+            })}
+          </p>
           <p className="mt-3 text-xs text-slate-500">
             Payin: {comparison.metrics.payment_gateway.payin_count.toLocaleString("id-ID")} / Rp{" "}
-            {formatCurrency3(comparison.metrics.payment_gateway.payin_amount)}
+            {formatAmount(comparison.metrics.payment_gateway.payin_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
           </p>
           <p className="text-xs text-slate-500">
             Payout: {comparison.metrics.payment_gateway.payout_count.toLocaleString("id-ID")} / Rp{" "}
-            {formatCurrency3(comparison.metrics.payment_gateway.payout_amount)}
+            {formatAmount(comparison.metrics.payment_gateway.payout_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
           </p>
         </article>
       </section>
@@ -153,8 +155,14 @@ export default async function TransactionsComparisonPage({ searchParams }: Compa
                 <td className="px-3 py-2">{row.canonical_type}</td>
                 <td className="px-3 py-2">{row.backoffice?.canonical_status ?? "-"}</td>
                 <td className="px-3 py-2">{row.payment_gateway?.canonical_status ?? "-"}</td>
-                <td className="px-3 py-2">{row.backoffice ? formatCurrency3(row.backoffice.amount) : "-"}</td>
-                <td className="px-3 py-2">{row.payment_gateway ? formatCurrency3(row.payment_gateway.amount) : "-"}</td>
+                <td className={`px-3 py-2 ${row.backoffice ? getAmountColorClass(row.backoffice.amount) : ""}`}>
+                  {row.backoffice ? formatAmount(row.backoffice.amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : "-"}
+                </td>
+                <td className={`px-3 py-2 ${row.payment_gateway ? getAmountColorClass(row.payment_gateway.amount) : ""}`}>
+                  {row.payment_gateway
+                    ? formatAmount(row.payment_gateway.amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })
+                    : "-"}
+                </td>
                 <td className="px-3 py-2">
                   <span
                     className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${getComparisonOutcomeClassName(

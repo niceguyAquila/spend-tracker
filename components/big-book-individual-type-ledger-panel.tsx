@@ -8,6 +8,7 @@ import {
   filterIndividualTypeEntries,
   shouldShowTypeSelector
 } from "@/lib/big-book-individual-type-ledger";
+import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
 
 type Props = {
   types: BigBookLedgerType[];
@@ -16,7 +17,7 @@ type Props = {
 
 function formatSignedAmount(value: number, currencyCode: "IDR" | "MYR" | "USDT") {
   const prefix = currencyCode === "IDR" ? "Rp" : currencyCode === "MYR" ? "RM" : "$";
-  const abs = Math.abs(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  const abs = formatAmount(Math.abs(value), { minimumFractionDigits: 2, maximumFractionDigits: 4 });
   if (value < 0) return `-${prefix} ${abs}`;
   return `${prefix} ${abs}`;
 }
@@ -113,11 +114,11 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
             </select>
           </label>
           <label className="text-sm text-slate-700">
-            <span className="mb-1 block">Direction</span>
+            <span className="mb-1 block">Cash Flow</span>
             <select className="field w-full" value={directionFilter} onChange={(event) => setDirectionFilter(event.target.value)}>
               <option value="">All directions</option>
-              <option value="spending">Spending</option>
-              <option value="profit">Profit</option>
+              <option value="spending">Out</option>
+              <option value="profit">In</option>
             </select>
           </label>
         </div>
@@ -127,7 +128,7 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
             <thead className="border-b bg-slate-50 text-left">
               <tr>
                 <th className="px-3 py-2">Date</th>
-                <th className="px-3 py-2">Direction</th>
+                <th className="px-3 py-2">Cash Flow</th>
                 <th className="px-3 py-2">Type</th>
                 <th className="px-3 py-2">Explanation</th>
                 <th className="px-3 py-2">Amount</th>
@@ -137,15 +138,15 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
             <tbody>
               {visibleEntries.map((entry) => (
                 <tr key={entry.id} className="border-b">
-                  <td className="px-3 py-2">{entry.entry_date}</td>
-                  <td className="px-3 py-2">{entry.entry_direction === "profit" ? "Profit" : "Spending"}</td>
+                  <td className="px-3 py-2">{formatDateDisplay(entry.entry_date)}</td>
+                  <td className="px-3 py-2">{entry.entry_direction === "profit" ? "In" : "Out"}</td>
                   <td className="px-3 py-2">{entry.type_name}</td>
                   <td className="px-3 py-2">{entry.explanation}</td>
-                  <td className={`px-3 py-2 ${entry.entry_direction === "spending" ? "text-rose-600" : "text-blue-600"}`}>
-                    {entry.currency_code} {entry.amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                  <td className={`px-3 py-2 ${getAmountColorClass(entry.entry_direction === "spending" ? -entry.amount : entry.amount)}`}>
+                    {entry.currency_code} {formatAmount(entry.amount, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
                   </td>
                   <td className="px-3 py-2">
-                    {entry.actor_code} - {entry.actor_display_name}
+                    {entry.actor_display_name}
                   </td>
                 </tr>
               ))}
@@ -163,7 +164,7 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
 
       <section className="card">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-base font-semibold">Monthly Currency Summary</h3>
+          <h3 className="text-base font-semibold">Monthly Type Summary</h3>
           <label className="text-sm text-slate-700">
             <span className="mr-2">Year</span>
             <select
@@ -192,26 +193,26 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
             <tbody>
               <tr className="border-b bg-slate-50 font-semibold">
                 <td className="px-3 py-2">Total ({selectedYear})</td>
-                <td className={`px-3 py-2 ${grandTotals.IDR < 0 ? "text-rose-600" : "text-slate-900"}`}>
+                <td className={`px-3 py-2 ${getAmountColorClass(grandTotals.IDR)}`}>
                   {formatSignedAmount(grandTotals.IDR, "IDR")}
                 </td>
-                <td className={`px-3 py-2 ${grandTotals.MYR < 0 ? "text-rose-600" : "text-slate-900"}`}>
+                <td className={`px-3 py-2 ${getAmountColorClass(grandTotals.MYR)}`}>
                   {formatSignedAmount(grandTotals.MYR, "MYR")}
                 </td>
-                <td className={`px-3 py-2 ${grandTotals.USDT < 0 ? "text-rose-600" : "text-slate-900"}`}>
+                <td className={`px-3 py-2 ${getAmountColorClass(grandTotals.USDT)}`}>
                   {formatSignedAmount(grandTotals.USDT, "USDT")}
                 </td>
               </tr>
               {monthlyRows.map((row) => (
                 <tr key={row.month_label} className="border-b">
                   <td className="px-3 py-2 font-medium">{row.month_label}</td>
-                  <td className={`px-3 py-2 ${row.totals.IDR < 0 ? "text-rose-600" : "text-slate-700"}`}>
+                  <td className={`px-3 py-2 ${getAmountColorClass(row.totals.IDR)}`}>
                     {formatSignedAmount(row.totals.IDR, "IDR")}
                   </td>
-                  <td className={`px-3 py-2 ${row.totals.MYR < 0 ? "text-rose-600" : "text-slate-700"}`}>
+                  <td className={`px-3 py-2 ${getAmountColorClass(row.totals.MYR)}`}>
                     {formatSignedAmount(row.totals.MYR, "MYR")}
                   </td>
-                  <td className={`px-3 py-2 ${row.totals.USDT < 0 ? "text-rose-600" : "text-slate-700"}`}>
+                  <td className={`px-3 py-2 ${getAmountColorClass(row.totals.USDT)}`}>
                     {formatSignedAmount(row.totals.USDT, "USDT")}
                   </td>
                 </tr>

@@ -6,6 +6,7 @@ import type { ExpenseCategory, ExpenseSubcategory, ExpenseWithNames } from "@/li
 import { handleUnauthorizedResponse } from "@/lib/client/auth-fetch";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
+import { formatAmount, formatDateDisplay } from "@/lib/display-format";
 
 type Props = {
   rows: ExpenseWithNames[];
@@ -434,7 +435,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
                         }
                       />
                     ) : (
-                      row.expense_date
+                      formatDateDisplay(row.expense_date)
                     )}
                   </td>
                   <td className="px-3 py-2">
@@ -497,7 +498,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
                         />
                       </div>
                     ) : (
-                      `Rp ${row.amount.toLocaleString("id-ID")}`
+                      `Rp ${formatAmount(row.amount, { locale: "id-ID", minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
                     )}
                   </td>
                   <td className="px-3 py-2">
@@ -615,9 +616,9 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
         description={
           pendingDelete ? (
             <ul className="list-inside list-disc space-y-1 text-slate-700">
-              <li>Date: {pendingDelete.expense_date}</li>
+              <li>Date: {formatDateDisplay(pendingDelete.expense_date)}</li>
               <li>
-                Amount: Rp {pendingDelete.amount.toLocaleString("id-ID")}
+                Amount: Rp {formatAmount(pendingDelete.amount, { locale: "id-ID", minimumFractionDigits: 0, maximumFractionDigits: 0 })}
               </li>
               <li>
                 {pendingDelete.category_name} — {pendingDelete.subcategory_name}
