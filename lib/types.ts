@@ -142,3 +142,83 @@ export type WebTransactionComparisonResult = {
   rows: WebTransactionComparisonRow[];
   metrics: WebTransactionComparisonMetrics;
 };
+
+export type BigBookLedgerType = {
+  id: string;
+  code: string;
+  name: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BigBookActor = {
+  id: string;
+  actor_code: "A" | "B";
+  display_name: string;
+  user_id: string | null;
+};
+
+export type BigBookAttachment = {
+  id: string;
+  ledger_entry_id: string;
+  storage_path: string;
+  file_name: string;
+  mime_type: string;
+  file_size: number;
+  uploaded_by: string | null;
+  created_at: string;
+};
+
+export type BigBookEntry = {
+  id: string;
+  brand_id: string;
+  entry_date: string;
+  entry_direction: "spending" | "profit";
+  entry_type_id: string;
+  explanation: string;
+  amount: number;
+  currency_code: "IDR" | "MYR" | "USDT" | "TRX";
+  remark: string | null;
+  responsible_actor_id: string;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  type_name: string;
+  type_code: string;
+  actor_code: "A" | "B";
+  actor_display_name: string;
+  creator_display_name: string;
+  updater_display_name: string;
+  attachments: BigBookAttachment[];
+};
+
+export type BigBookAllowedUserOption = {
+  id: string;
+  display_name: string;
+  email: string;
+};
+
+export type BigBookActorCurrencyMetrics = {
+  actor_id: string;
+  actor_code: "A" | "B";
+  actor_display_name: string;
+  totals: {
+    IDR: number;
+    MYR: number;
+    USDT: number;
+    TRX: number;
+  };
+};
+
+export type BigBookMonthlyCurrencyRow = {
+  month_index: number;
+  month_label: string;
+  totals: {
+    IDR: number;
+    MYR: number;
+    USDT: number;
+  };
+};

@@ -1,5 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import {
+  BigBookActor,
+  BigBookAllowedUserOption,
+  BigBookActorCurrencyMetrics,
+  BigBookAttachment,
+  BigBookEntry,
+  BigBookLedgerType,
+  BigBookMonthlyCurrencyRow,
   DashboardReportRow,
   ExpenseCategory,
   ExpenseSubcategory,
@@ -154,6 +161,271 @@ export async function getExpenseMonthKeys(brandId: string): Promise<string[]> {
   }
 
   return [...monthKeySet];
+}
+
+export async function getBigBookLedgerTypes(options?: {
+  includeInactive?: boolean;
+}): Promise<BigBookLedgerType[]> {
+  const supabase = await createClient();
+  let query = supabase
+    .from("business_ledger_types")
+    .select("id, code, name, is_active, sort_order, created_at, updated_at")
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+
+  if (!options?.includeInactive) {
+    query = query.eq("is_active", true);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    ...row,
+    sort_order: Number(row.sort_order)
+  }));
+}
+
+export async function getBigBookActors(): Promise<BigBookActor[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("big_book_actors")
+    .select("id, actor_code, display_name, user_id")
+    .order("actor_code", { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []) as BigBookActor[];
+}
+
+export async function getBigBookAllowedUsers(): Promise<BigBookAllowedUserOption[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("allowed_users")
+    .select("id, email, display_name")
+    .eq("is_active", true)
+    .order("display_name", { ascending: true });
+
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    email: row.email,
+    display_name: row.display_name?.trim() || row.email
+  }));
+}
+
+export async function getBigBookEntries(brandId: string, filters?: {
+  typeId?: string;
+  currencyCode?: string;
+  direction?: "spending" | "profit";
+  dateFrom?: string;
+  dateTo?: string;
+  query?: string;
+  limit?: number;
+}): Promise<BigBookEntry[]> {
+  const supabase = await createClient();
+  let query = supabase
+    .from("business_ledger_entries")
+    .select(
+      `
+      id, brand_id, entry_date, entry_direction, entry_type_id, explanation, amount, currency_code, remark, responsible_actor_id, created_by, updated_by, created_at, updated_at,
+      business_ledger_types(id, code, name),
+      big_book_actors(id, actor_code, display_name),
+      business_ledger_attachments(id, ledger_entry_id, storage_path, file_name, mime_type, file_size, uploaded_by, created_at)
+    `
+    )
+    .eq("brand_id", brandId)
+    .order("entry_date", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (filters?.typeId) query = query.eq("entry_type_id", filters.typeId);
+  if (filters?.currencyCode) query = query.eq("currency_code", filters.currencyCode);
+  if (filters?.direction) query = query.eq("entry_direction", filters.direction);
+  if (filters?.dateFrom) query = query.gte("entry_date", filters.dateFrom);
+  if (filters?.dateTo) query = query.lte("entry_date", filters.dateTo);
+  if (filters?.query) query = query.ilike("explanation", `%${filters.query}%`);
+  query = query.limit(filters?.limit ?? 500);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const actorIds = new Set<string>();
+  for (const row of data ?? []) {
+    if (row.created_by) actorIds.add(row.created_by);
+    if (row.updated_by) actorIds.add(row.updated_by);
+  }
+
+  const actorMap = new Map<string, string>();
+  if (actorIds.size > 0) {
+    const { data: actorRows, error: actorError } = await supabase
+      .from("allowed_users")
+      .select("auth_user_id, display_name, email")
+      .in("auth_user_id", [...actorIds]);
+    if (actorError) throw actorError;
+    for (const actor of actorRows ?? []) {
+      if (!actor.auth_user_id) continue;
+      actorMap.set(actor.auth_user_id, actor.display_name?.trim() || actor.email || actor.auth_user_id);
+    }
+  }
+
+  return (data ?? []).map((row) => {
+    const type = Array.isArray(row.business_ledger_types)
+      ? row.business_ledger_types[0]
+      : row.business_ledger_types;
+    const actor = Array.isArray(row.big_book_actors)
+      ? row.big_book_actors[0]
+      : row.big_book_actors;
+    const attachments = (Array.isArray(row.business_ledger_attachments)
+      ? row.business_ledger_attachments
+      : row.business_ledger_attachments
+        ? [row.business_ledger_attachments]
+        : []) as BigBookAttachment[];
+
+    return {
+      id: row.id,
+      brand_id: row.brand_id,
+      entry_date: row.entry_date,
+      entry_direction: row.entry_direction as "spending" | "profit",
+      entry_type_id: row.entry_type_id,
+      explanation: row.explanation,
+      amount: Number(row.amount),
+      currency_code: row.currency_code,
+      remark: row.remark,
+      responsible_actor_id: row.responsible_actor_id,
+      created_by: row.created_by,
+      updated_by: row.updated_by,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      type_name: type?.name ?? "-",
+      type_code: type?.code ?? "-",
+      actor_code: (actor?.actor_code ?? "A") as "A" | "B",
+      actor_display_name: actor?.display_name ?? "-",
+      creator_display_name: row.created_by ? (actorMap.get(row.created_by) ?? row.created_by) : "-",
+      updater_display_name: row.updated_by ? (actorMap.get(row.updated_by) ?? row.updated_by) : "-",
+      attachments: attachments.map((attachment) => ({
+        ...attachment,
+        file_size: Number(attachment.file_size)
+      }))
+    };
+  });
+}
+
+export async function getBigBookActorCurrencyMetrics(
+  brandId: string
+): Promise<BigBookActorCurrencyMetrics[]> {
+  const supabase = await createClient();
+  const pageSize = 1000;
+  let offset = 0;
+  const rows: Array<{
+    responsible_actor_id: string;
+    entry_direction: "spending" | "profit";
+    currency_code: "IDR" | "MYR" | "USDT" | "TRX";
+    amount: number;
+    big_book_actors: { actor_code: "A" | "B"; display_name: string } | { actor_code: "A" | "B"; display_name: string }[] | null;
+  }> = [];
+
+  while (true) {
+    const { data, error } = await supabase
+      .from("business_ledger_entries")
+      .select(
+        `
+        responsible_actor_id, entry_direction, currency_code, amount,
+        big_book_actors(actor_code, display_name)
+      `
+      )
+      .eq("brand_id", brandId)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + pageSize - 1);
+
+    if (error) throw error;
+    const batch = (data ?? []) as typeof rows;
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  const byActor = new Map<string, BigBookActorCurrencyMetrics>();
+  for (const row of rows) {
+    const actor = Array.isArray(row.big_book_actors) ? row.big_book_actors[0] : row.big_book_actors;
+    const actorId = row.responsible_actor_id;
+    const existing =
+      byActor.get(actorId) ??
+      ({
+        actor_id: actorId,
+        actor_code: (actor?.actor_code ?? "A") as "A" | "B",
+        actor_display_name: actor?.display_name ?? "Unknown Actor",
+        totals: { IDR: 0, MYR: 0, USDT: 0, TRX: 0 }
+      } as BigBookActorCurrencyMetrics);
+    const signedAmount = row.entry_direction === "spending" ? -Math.abs(Number(row.amount)) : Math.abs(Number(row.amount));
+    existing.totals[row.currency_code] += signedAmount;
+    byActor.set(actorId, existing);
+  }
+
+  return [...byActor.values()].sort((a, b) => a.actor_code.localeCompare(b.actor_code));
+}
+
+const BIG_BOOK_MONTH_LABELS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+
+export function buildBigBookTypeMonthlyCurrencySummary(
+  rows: Array<{
+    entry_date: string;
+    entry_direction: "spending" | "profit";
+    currency_code: "IDR" | "MYR" | "USDT" | "TRX";
+    amount: number;
+  }>
+): BigBookMonthlyCurrencyRow[] {
+  const summary = BIG_BOOK_MONTH_LABELS.map((monthLabel, index) => ({
+    month_index: index + 1,
+    month_label: monthLabel,
+    totals: {
+      IDR: 0,
+      MYR: 0,
+      USDT: 0
+    }
+  }));
+
+  for (const row of rows) {
+    const date = new Date(`${row.entry_date}T00:00:00Z`);
+    if (Number.isNaN(date.getTime())) continue;
+    const monthIndex = date.getUTCMonth();
+    if (monthIndex < 0 || monthIndex > 11) continue;
+    if (row.currency_code === "TRX") continue;
+    const signedAmount = row.entry_direction === "spending" ? -Math.abs(Number(row.amount)) : Math.abs(Number(row.amount));
+    summary[monthIndex].totals[row.currency_code] += signedAmount;
+  }
+
+  return summary;
+}
+
+export async function getBigBookTypeMonthlyCurrencySummary(
+  brandId: string,
+  typeId: string,
+  year: number
+): Promise<BigBookMonthlyCurrencyRow[]> {
+  const supabase = await createClient();
+  const startDate = `${year}-01-01`;
+  const endDate = `${year}-12-31`;
+  const { data, error } = await supabase
+    .from("business_ledger_entries")
+    .select("entry_date, entry_direction, currency_code, amount")
+    .eq("brand_id", brandId)
+    .eq("entry_type_id", typeId)
+    .gte("entry_date", startDate)
+    .lte("entry_date", endDate);
+
+  if (error) throw error;
+
+  return buildBigBookTypeMonthlyCurrencySummary(
+    ((data ?? []) as Array<{
+      entry_date: string;
+      entry_direction: "spending" | "profit";
+      currency_code: "IDR" | "MYR" | "USDT" | "TRX";
+      amount: number;
+    }>).map((row) => ({
+      ...row,
+      amount: Number(row.amount)
+    }))
+  );
 }
 
 export async function getMonthlySummary(brandId: string) {
