@@ -52,12 +52,12 @@ export function DashboardReportTable({
 
   return (
     <section className="card">
-      <div className="mb-3">
+      <div className="mb-4">
         <h2 className="text-lg font-semibold">Dashboard Report</h2>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
+        <table className="min-w-[980px] text-sm">
           <thead className="border-b bg-slate-50 text-left">
             <tr>
               <th className="px-3 py-2">Category</th>

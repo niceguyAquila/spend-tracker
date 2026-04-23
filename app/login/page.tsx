@@ -40,8 +40,8 @@ function LoginForm() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-xl items-center justify-center px-6">
-      <section className="card w-full">
+    <main className="mx-auto flex min-h-screen w-full max-w-content-default items-center justify-center px-4 lg:px-8">
+      <section className="card w-full max-w-content-narrow">
         <h1 className="mb-1 text-2xl font-semibold">Internal Access</h1>
         <p className="mb-4 text-sm text-slate-600">
           Sign in with your invited company account to access the spend tracker.
@@ -86,7 +86,7 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <main className="mx-auto flex min-h-screen max-w-xl items-center justify-center px-6">
+        <main className="mx-auto flex min-h-screen w-full max-w-content-default items-center justify-center px-4 lg:px-8">
           <p className="text-sm text-slate-600">Loading…</p>
         </main>
       }

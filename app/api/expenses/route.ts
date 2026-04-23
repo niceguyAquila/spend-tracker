@@ -23,12 +23,14 @@ export async function POST(request: Request) {
 
   const supabase = await createClient();
   const actorId = authCheck.user.id;
+  const activeBrandId = authCheck.activeBrandId;
   const payload = parsed.data;
 
   const { data, error } = await supabase
     .from("expenses")
     .insert({
       expense_date: payload.expense_date,
+      brand_id: activeBrandId,
       category_id: payload.category_id,
       subcategory_id: payload.subcategory_id,
       amount: payload.amount,
@@ -72,11 +74,13 @@ export async function PATCH(request: Request) {
 
   const supabase = await createClient();
   const actorId = authCheck.user.id;
+  const activeBrandId = authCheck.activeBrandId;
   const payload = parsed.data;
   const { error } = await supabase
     .from("expenses")
     .update({
       expense_date: payload.expense_date,
+      brand_id: activeBrandId,
       category_id: payload.category_id,
       subcategory_id: payload.subcategory_id,
       amount: payload.amount,
@@ -84,7 +88,8 @@ export async function PATCH(request: Request) {
       reference: payload.reference || null,
       updated_by: actorId
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("brand_id", activeBrandId);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
@@ -111,7 +116,11 @@ export async function DELETE(request: Request) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.from("expenses").delete().eq("id", id);
+  const { error } = await supabase
+    .from("expenses")
+    .delete()
+    .eq("id", id)
+    .eq("brand_id", authCheck.activeBrandId);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }

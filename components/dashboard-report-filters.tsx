@@ -84,10 +84,10 @@ function SearchableDropdown({ label, options, selected, onChange }: PickerProps)
       </summary>
       <div className="absolute z-10 mt-2 w-full min-w-64 rounded-md border bg-white p-2 shadow-lg">
         <div className="mb-2 flex items-center gap-2 text-xs">
-          <button className="btn-secondary !px-2 !py-1" type="button" onClick={selectAll}>
+          <button className="btn-secondary btn-sm" type="button" onClick={selectAll}>
             All
           </button>
-          <button className="btn-secondary !px-2 !py-1" type="button" onClick={clearAll}>
+          <button className="btn-secondary btn-sm" type="button" onClick={clearAll}>
             Clear
           </button>
         </div>
@@ -173,7 +173,7 @@ function SearchableSingleMonthPicker({ label, placeholder, options, value, onCha
       </summary>
       <div className="absolute z-10 mt-2 w-full min-w-64 rounded-md border bg-white p-2 shadow-lg">
         <div className="mb-2 flex items-center gap-2 text-xs">
-          <button className="btn-secondary !px-2 !py-1" type="button" onClick={clearSelection}>
+          <button className="btn-secondary btn-sm" type="button" onClick={clearSelection}>
             Clear
           </button>
         </div>
@@ -246,7 +246,7 @@ export function DashboardReportFilters({
 
   return (
     <section className="card">
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-4">
         <SearchableDropdown
           label="Category"
           options={categories}
