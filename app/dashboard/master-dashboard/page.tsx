@@ -263,15 +263,15 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
                 </tr>
               </thead>
               <tbody>
-                {sourceRowsByCurrency.map((row) => (
+                {sourceRowsByCurrency.map((row, index) => (
                   <Fragment key={row.currency}>
                     <tr className="border-b">
                       <td className="px-3 py-2">{row.currency}</td>
                       <td className="px-3 py-2">Web Spending</td>
-                      <td className="px-3 py-2">
+                      <td className={`px-3 py-2 ${getAmountColorClass(row.webSpending.inflow)}`}>
                         {row.currency} {formatAmount(row.webSpending.inflow)}
                       </td>
-                      <td className="px-3 py-2">
+                      <td className={`px-3 py-2 ${getAmountColorClass(-row.webSpending.outflow)}`}>
                         {row.currency} {formatAmount(row.webSpending.outflow)}
                       </td>
                       <td className={`px-3 py-2 ${getAmountColorClass(row.webSpending.net)}`}>
@@ -281,10 +281,10 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
                     <tr className="border-b">
                       <td className="px-3 py-2">{row.currency}</td>
                       <td className="px-3 py-2">Big Book</td>
-                      <td className="px-3 py-2">
+                      <td className={`px-3 py-2 ${getAmountColorClass(row.bigBook.inflow)}`}>
                         {row.currency} {formatAmount(row.bigBook.inflow)}
                       </td>
-                      <td className="px-3 py-2">
+                      <td className={`px-3 py-2 ${getAmountColorClass(-row.bigBook.outflow)}`}>
                         {row.currency} {formatAmount(row.bigBook.outflow)}
                       </td>
                       <td className={`px-3 py-2 ${getAmountColorClass(row.bigBook.net)}`}>
@@ -294,16 +294,23 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
                     <tr className="border-b bg-slate-50">
                       <td className="px-3 py-2">{row.currency}</td>
                       <td className="px-3 py-2 font-semibold">Combined</td>
-                      <td className="px-3 py-2 font-semibold">
+                      <td className={`px-3 py-2 font-semibold ${getAmountColorClass(row.combined.inflow)}`}>
                         {row.currency} {formatAmount(row.combined.inflow)}
                       </td>
-                      <td className="px-3 py-2 font-semibold">
+                      <td className={`px-3 py-2 font-semibold ${getAmountColorClass(-row.combined.outflow)}`}>
                         {row.currency} {formatAmount(row.combined.outflow)}
                       </td>
                       <td className={`px-3 py-2 font-semibold ${getAmountColorClass(row.combined.net)}`}>
                         {row.currency} {formatAmount(row.combined.net)}
                       </td>
                     </tr>
+                    {index < sourceRowsByCurrency.length - 1 ? (
+                      <tr aria-hidden="true">
+                        <td className="p-0" colSpan={5}>
+                          <div className="h-4" />
+                        </td>
+                      </tr>
+                    ) : null}
                   </Fragment>
                 ))}
               </tbody>
