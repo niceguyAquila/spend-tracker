@@ -4,6 +4,9 @@ import {
   ExpenseCategory,
   ExpenseSubcategory,
   ExpenseWithNames,
+  WebTransactionComparisonMetrics,
+  WebTransactionComparisonResult,
+  WebTransactionComparisonRow,
   WebTransaction,
   WebTransactionMetrics
 } from "@/lib/types";
@@ -240,10 +243,21 @@ type WebTransactionFilters = {
   sourceSystem?: "backoffice" | "payment_gateway";
   status?: string;
   canonicalType?: string;
+  transactionNo?: string;
   merchantName?: string;
   dateFrom?: string;
   dateTo?: string;
   limit?: number;
+};
+
+type WebTransactionComparisonFilters = {
+  status?: string;
+  canonicalType?: string;
+  transactionNo?: string;
+  outcome?: "matched" | "mismatched" | "missing_in_backoffice" | "missing_in_gateway";
+  dateFrom?: string;
+  dateTo?: string;
+  limitPerSource?: number;
 };
 
 export async function getWebTransactions(
@@ -267,6 +281,9 @@ export async function getWebTransactions(
   }
   if (filters.canonicalType) {
     query = query.eq("canonical_type", filters.canonicalType);
+  }
+  if (filters.transactionNo) {
+    query = query.ilike("external_txn_no", `%${filters.transactionNo}%`);
   }
   if (filters.merchantName) {
     query = query.eq("merchant_name", filters.merchantName);
@@ -302,6 +319,13 @@ export function buildWebTransactionMetrics(rows: WebTransaction[]): WebTransacti
       acc.gross_amount += row.amount;
       acc.fee_amount += row.merchant_fee ?? 0;
       acc.net_amount += row.amount - Math.abs(row.merchant_fee ?? 0);
+      if (row.canonical_type === "Payin") {
+        acc.payin_count += 1;
+        acc.payin_amount += row.amount;
+      } else if (row.canonical_type === "Payout") {
+        acc.payout_count += 1;
+        acc.payout_amount += row.amount;
+      }
       return acc;
     },
     {
@@ -309,7 +333,185 @@ export function buildWebTransactionMetrics(rows: WebTransaction[]): WebTransacti
       successful_count: 0,
       gross_amount: 0,
       fee_amount: 0,
-      net_amount: 0
+      net_amount: 0,
+      payin_count: 0,
+      payin_amount: 0,
+      payout_count: 0,
+      payout_amount: 0
     }
   );
+}
+
+function buildComparisonKey(row: Pick<WebTransaction, "external_txn_no" | "canonical_type">): string {
+  return `${row.external_txn_no}::${row.canonical_type.toLowerCase()}`;
+}
+
+function buildSourceMetrics(rows: WebTransaction[]) {
+  return rows.reduce<WebTransactionComparisonMetrics["backoffice"]>(
+    (acc, row) => {
+      acc.total_count += 1;
+      acc.total_amount += row.amount;
+      if (row.canonical_type === "Payin") {
+        acc.payin_count += 1;
+        acc.payin_amount += row.amount;
+      } else if (row.canonical_type === "Payout") {
+        acc.payout_count += 1;
+        acc.payout_amount += row.amount;
+      }
+      return acc;
+    },
+    {
+      total_count: 0,
+      total_amount: 0,
+      payin_count: 0,
+      payin_amount: 0,
+      payout_count: 0,
+      payout_amount: 0
+    }
+  );
+}
+
+function buildComparisonRows(
+  backofficeRows: WebTransaction[],
+  paymentGatewayRows: WebTransaction[]
+): WebTransactionComparisonRow[] {
+  const backofficeByKey = new Map<string, WebTransaction>();
+  for (const row of backofficeRows) {
+    backofficeByKey.set(buildComparisonKey(row), row);
+  }
+
+  const paymentGatewayByKey = new Map<string, WebTransaction>();
+  for (const row of paymentGatewayRows) {
+    paymentGatewayByKey.set(buildComparisonKey(row), row);
+  }
+
+  const keys = new Set<string>([...backofficeByKey.keys(), ...paymentGatewayByKey.keys()]);
+  const comparisonRows: WebTransactionComparisonRow[] = [];
+
+  for (const key of keys) {
+    const backoffice = backofficeByKey.get(key) ?? null;
+    const paymentGateway = paymentGatewayByKey.get(key) ?? null;
+    let outcome: WebTransactionComparisonRow["outcome"];
+    let statusMatches = false;
+    let typeMatches = false;
+    let amountMatches = false;
+
+    if (backoffice && paymentGateway) {
+      statusMatches = backoffice.canonical_status === paymentGateway.canonical_status;
+      typeMatches = backoffice.canonical_type === paymentGateway.canonical_type;
+      amountMatches = backoffice.amount === paymentGateway.amount;
+      outcome = statusMatches && typeMatches && amountMatches ? "matched" : "mismatched";
+    } else if (backoffice) {
+      outcome = "missing_in_gateway";
+    } else {
+      outcome = "missing_in_backoffice";
+    }
+
+    comparisonRows.push({
+      comparison_key: key,
+      transaction_no: backoffice?.external_txn_no ?? paymentGateway?.external_txn_no ?? "-",
+      canonical_type: backoffice?.canonical_type ?? paymentGateway?.canonical_type ?? "-",
+      outcome,
+      status_matches: statusMatches,
+      type_matches: typeMatches,
+      amount_matches: amountMatches,
+      backoffice: backoffice
+        ? {
+            id: backoffice.id,
+            create_time: backoffice.create_time,
+            canonical_status: backoffice.canonical_status,
+            canonical_type: backoffice.canonical_type,
+            amount: backoffice.amount
+          }
+        : null,
+      payment_gateway: paymentGateway
+        ? {
+            id: paymentGateway.id,
+            create_time: paymentGateway.create_time,
+            canonical_status: paymentGateway.canonical_status,
+            canonical_type: paymentGateway.canonical_type,
+            amount: paymentGateway.amount
+          }
+        : null
+    });
+  }
+
+  return comparisonRows.sort((a, b) => {
+    const aTime = Math.max(
+      a.backoffice ? Date.parse(a.backoffice.create_time) : Number.NEGATIVE_INFINITY,
+      a.payment_gateway ? Date.parse(a.payment_gateway.create_time) : Number.NEGATIVE_INFINITY
+    );
+    const bTime = Math.max(
+      b.backoffice ? Date.parse(b.backoffice.create_time) : Number.NEGATIVE_INFINITY,
+      b.payment_gateway ? Date.parse(b.payment_gateway.create_time) : Number.NEGATIVE_INFINITY
+    );
+    return bTime - aTime;
+  });
+}
+
+export function buildWebTransactionComparison(
+  backofficeRows: WebTransaction[],
+  paymentGatewayRows: WebTransaction[]
+): WebTransactionComparisonResult {
+  const rows = buildComparisonRows(backofficeRows, paymentGatewayRows);
+  const metrics: WebTransactionComparisonMetrics = {
+    backoffice: buildSourceMetrics(backofficeRows),
+    payment_gateway: buildSourceMetrics(paymentGatewayRows),
+    matched_count: 0,
+    mismatched_count: 0,
+    missing_in_backoffice_count: 0,
+    missing_in_gateway_count: 0
+  };
+
+  for (const row of rows) {
+    if (row.outcome === "matched") {
+      metrics.matched_count += 1;
+    } else if (row.outcome === "mismatched") {
+      metrics.mismatched_count += 1;
+    } else if (row.outcome === "missing_in_backoffice") {
+      metrics.missing_in_backoffice_count += 1;
+    } else if (row.outcome === "missing_in_gateway") {
+      metrics.missing_in_gateway_count += 1;
+    }
+  }
+
+  return {
+    rows,
+    metrics
+  };
+}
+
+export async function getWebTransactionComparison(
+  brandId: string,
+  filters: WebTransactionComparisonFilters = {}
+): Promise<WebTransactionComparisonResult> {
+  const sharedFilters = {
+    status: filters.status,
+    canonicalType: filters.canonicalType,
+    transactionNo: filters.transactionNo,
+    dateFrom: filters.dateFrom,
+    dateTo: filters.dateTo,
+    limit: filters.limitPerSource ?? 2_000
+  };
+
+  const [backofficeRows, paymentGatewayRows] = await Promise.all([
+    getWebTransactions(brandId, {
+      sourceSystem: "backoffice",
+      ...sharedFilters
+    }),
+    getWebTransactions(brandId, {
+      sourceSystem: "payment_gateway",
+      ...sharedFilters
+    })
+  ]);
+
+  const result = buildWebTransactionComparison(backofficeRows, paymentGatewayRows);
+  if (!filters.outcome) {
+    return result;
+  }
+
+  return {
+    rows: result.rows.filter((row) => row.outcome === filters.outcome),
+    metrics: result.metrics
+  };
 }

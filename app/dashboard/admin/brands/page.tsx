@@ -9,7 +9,7 @@ export default async function AdminBrandsPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <section className="card">
         <h1 className="text-xl font-semibold">Admin Brand Management</h1>
         <p className="text-sm text-slate-600">Only admins can create and manage brands.</p>

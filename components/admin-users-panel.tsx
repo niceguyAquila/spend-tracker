@@ -196,13 +196,13 @@ export function AdminUsersPanel() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <section className="card">
-        <h2 className="mb-2 text-lg font-semibold">Provision Allowed User</h2>
-        <p className="mb-3 text-sm text-slate-600">
+        <h2 className="mb-3 text-lg font-semibold">Provision Allowed User</h2>
+        <p className="mb-4 text-sm text-slate-600">
           Admin can create password users directly or send a magic-link invite. Public sign-up should remain disabled.
         </p>
-        <form className="grid grid-cols-1 gap-2 md:grid-cols-2" onSubmit={requestInvite}>
+        <form className="grid grid-cols-1 gap-3 lg:grid-cols-2" onSubmit={requestInvite}>
           <input
             className="field"
             type="email"
@@ -240,7 +240,7 @@ export function AdminUsersPanel() {
             onChange={(event) => setPassword(event.target.value)}
             required={authMethod === "password"}
           />
-          <div className="md:col-span-2">
+          <div className="lg:col-span-2">
             <p className="mb-1 text-xs font-medium text-slate-700">Brand access</p>
             <div className="flex flex-wrap gap-2">
               {brands.map((brand) => (
@@ -262,12 +262,12 @@ export function AdminUsersPanel() {
       </section>
 
       <section className="card">
-        <h2 className="mb-2 text-lg font-semibold">Allowed Users</h2>
+        <h2 className="mb-3 text-lg font-semibold">Allowed Users</h2>
         {loading ? (
           <p className="text-sm text-slate-600">Loading users...</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
+            <table className="min-w-[980px] text-sm">
               <thead className="bg-slate-50 text-left">
                 <tr>
                   <th className="px-3 py-2">Email</th>
@@ -374,7 +374,7 @@ export function AdminUsersPanel() {
                   <label key={brand.id} className="flex items-center justify-between gap-2">
                     <span className="text-xs">{brand.name}</span>
                     <select
-                      className="field w-[140px]"
+                      className="field w-40"
                       value={editBrandRoles[brand.id] ?? "none"}
                       disabled={editSubmitting}
                       onChange={(event) =>

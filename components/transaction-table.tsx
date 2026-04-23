@@ -303,7 +303,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
           onChange={(event) => setQuery(event.target.value)}
         />
       </div>
-      <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-5">
+      <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-5">
         <label className="text-sm text-slate-700">
           <span className="mb-1 block">Month</span>
           <select className="field" value={activeMonth} onChange={(event) => updateMonth(event.target.value)}>
@@ -357,7 +357,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
         </label>
       </div>
       <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
+        <table className="min-w-[1040px] text-sm">
           <thead className="border-b bg-slate-50 text-left">
             <tr>
               <th className="px-3 py-2">
@@ -508,7 +508,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
                     ) : (
                       <div className="relative" ref={openActionMenuId === row.id ? actionMenuRef : null}>
                         <button
-                          className="btn-secondary px-2"
+                          className="btn-secondary btn-sm"
                           aria-label="Open actions menu"
                           aria-expanded={openActionMenuId === row.id}
                           aria-haspopup="menu"

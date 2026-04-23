@@ -154,7 +154,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     ].join("|");
 
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         <DashboardReportFilters
           key={filterKey}
           categories={categories.map((item) => ({ value: item.id, label: item.name }))}

@@ -76,10 +76,10 @@ export function AdminBrandsPanel() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <section className="card">
-        <h2 className="mb-2 text-lg font-semibold">Create Brand</h2>
-        <form className="grid grid-cols-1 gap-2 md:grid-cols-3" onSubmit={createBrand}>
+        <h2 className="mb-3 text-lg font-semibold">Create Brand</h2>
+        <form className="grid grid-cols-1 gap-3 lg:grid-cols-3" onSubmit={createBrand}>
           <input
             className="field"
             placeholder="Code (e.g. BRAND_A)"
@@ -101,38 +101,40 @@ export function AdminBrandsPanel() {
       </section>
 
       <section className="card">
-        <h2 className="mb-2 text-lg font-semibold">Brands</h2>
+        <h2 className="mb-3 text-lg font-semibold">Brands</h2>
         {loading ? (
           <p className="text-sm text-slate-600">Loading brands...</p>
         ) : (
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-left">
-              <tr>
-                <th className="px-3 py-2">Code</th>
-                <th className="px-3 py-2">Name</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {brands.map((brand) => (
-                <tr key={brand.id} className="border-b">
-                  <td className="px-3 py-2">{brand.code}</td>
-                  <td className="px-3 py-2">{brand.name}</td>
-                  <td className="px-3 py-2">{brand.is_active ? "Active" : "Inactive"}</td>
-                  <td className="px-3 py-2">
-                    <button
-                      className="btn-secondary"
-                      onClick={() => void setBrandActive(brand, !brand.is_active)}
-                      type="button"
-                    >
-                      {brand.is_active ? "Deactivate" : "Activate"}
-                    </button>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="min-w-[760px] text-sm">
+              <thead className="bg-slate-50 text-left">
+                <tr>
+                  <th className="px-3 py-2">Code</th>
+                  <th className="px-3 py-2">Name</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {brands.map((brand) => (
+                  <tr key={brand.id} className="border-b">
+                    <td className="px-3 py-2">{brand.code}</td>
+                    <td className="px-3 py-2">{brand.name}</td>
+                    <td className="px-3 py-2">{brand.is_active ? "Active" : "Inactive"}</td>
+                    <td className="px-3 py-2">
+                      <button
+                        className="btn-secondary"
+                        onClick={() => void setBrandActive(brand, !brand.is_active)}
+                        type="button"
+                      >
+                        {brand.is_active ? "Deactivate" : "Activate"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
       {message ? <p className="text-sm text-slate-700">{message}</p> : null}

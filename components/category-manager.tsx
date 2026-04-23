@@ -222,14 +222,14 @@ export function CategoryManager({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <section className="card">
-        <h2 className="mb-2 text-lg font-semibold">Main Category Manager</h2>
-        <p className="mb-3 text-sm text-slate-600">
+        <h2 className="mb-3 text-lg font-semibold">Main Category Manager</h2>
+        <p className="mb-4 text-sm text-slate-600">
           Categories are now brand-specific. You can create, rename, enable, or disable categories for the active brand.
         </p>
 
-        <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+        <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-3">
           <input
             className="field"
             placeholder="Category code (e.g. OFFICE_COST)"
@@ -293,7 +293,7 @@ export function CategoryManager({
       </section>
 
       <section className="card">
-        <h2 className="mb-2 text-lg font-semibold">Sub-category Manager</h2>
+        <h2 className="mb-3 text-lg font-semibold">Sub-category Manager</h2>
         <div className="mb-3">
           <label className="text-sm">
             Category
@@ -311,7 +311,7 @@ export function CategoryManager({
           </label>
         </div>
 
-        <div className="mb-3 flex flex-wrap gap-2">
+        <div className="mb-4 flex flex-wrap gap-3">
           <input
             className="field max-w-sm"
             placeholder="New sub-category name"
@@ -373,7 +373,7 @@ export function CategoryManager({
       </section>
 
       <section className="card">
-        <h2 className="mb-2 text-lg font-semibold">Guardrails</h2>
+        <h2 className="mb-3 text-lg font-semibold">Guardrails</h2>
         <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">
           <li>Use disable instead of deleting sub-categories tied to historical transactions.</li>
           <li>Rename keeps historical rows intact while improving naming consistency.</li>

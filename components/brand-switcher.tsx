@@ -9,10 +9,12 @@ type BrandOption = {
 
 export function BrandSwitcher({
   activeBrandId,
-  options
+  options,
+  compact = false
 }: {
   activeBrandId: string;
   options: BrandOption[];
+  compact?: boolean;
 }) {
   const router = useRouter();
 
@@ -31,12 +33,13 @@ export function BrandSwitcher({
   }
 
   return (
-    <label className="mb-2 block text-left text-xs text-slate-600">
-      Active brand
+    <label className={compact ? "block text-xs text-slate-600 lg:text-right" : "mb-2 block text-left text-xs text-slate-600"}>
+      <span className={compact ? "sr-only" : ""}>Active brand</span>
       <select
-        className="field mt-1 min-w-[180px]"
+        className={compact ? "field min-w-[220px]" : "field mt-1 min-w-[220px]"}
         value={activeBrandId}
         onChange={(event) => void onBrandChange(event.target.value)}
+        aria-label="Active brand"
       >
         {options.map((item) => (
           <option key={item.id} value={item.id}>

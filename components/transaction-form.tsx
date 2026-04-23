@@ -180,7 +180,7 @@ export function TransactionForm({
   return (
     <section className="card">
       <h2 className="mb-3 text-lg font-semibold">Quick Add Transaction</h2>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
         <label className="text-sm">
           Date *
           <input
@@ -264,7 +264,7 @@ export function TransactionForm({
         </label>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-5 flex flex-wrap gap-2">
         <button className="btn" disabled={saving} onClick={() => handleSave(false)}>
           {saving ? "Saving..." : submitLabel}
         </button>
@@ -273,7 +273,7 @@ export function TransactionForm({
         </button>
       </div>
 
-      <div className="mt-4 rounded-md border border-slate-200 p-3">
+      <div className="mt-5 rounded-md border border-slate-200 p-4">
         <p className="text-sm font-medium">Create sub-category inline</p>
         <p className="mt-1 text-xs text-slate-600">
           Choose the target category for this new sub-category.

@@ -33,7 +33,7 @@ export function DashboardCharts({
   categorySplit: CategorySplitRow[];
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+    <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
       <section className="card h-80">
         <h2 className="mb-4 text-lg font-semibold">Monthly Spend Trend</h2>
         <ResponsiveContainer width="100%" height="85%">

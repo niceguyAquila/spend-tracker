@@ -9,7 +9,7 @@ export default async function AdminUsersPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <section className="card">
         <h1 className="text-xl font-semibold">Admin User Management</h1>
         <p className="text-sm text-slate-600">

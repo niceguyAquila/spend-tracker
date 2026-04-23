@@ -73,36 +73,18 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
     const sourceLabel = sourceSystem === "backoffice" ? "Backoffice" : "Payment Gateway";
 
     return (
-      <div className="space-y-4">
-        <section className="card">
-          <h2 className="text-lg font-semibold">Web Transaction Source</h2>
-          <div className="mt-2 flex gap-2">
-            <a
-              href="/dashboard/transactions?source=backoffice"
-              className={`btn-secondary ${
-                sourceSystem === "backoffice"
-                  ? "!border-blue-600 !bg-blue-600 !text-white hover:!bg-blue-600"
-                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              Backoffice
-            </a>
-            <a
-              href="/dashboard/transactions?source=payment_gateway"
-              className={`btn-secondary ${
-                sourceSystem === "payment_gateway"
-                  ? "!border-blue-600 !bg-blue-600 !text-white hover:!bg-blue-600"
-                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              Payment Gateway
-            </a>
-          </div>
-        </section>
-
+      <div className="space-y-6">
         <WebTransactionImport canImport={hasFinanceAccess} sourceSystem={sourceSystem} sourceLabel={sourceLabel} />
 
-        <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <section
+          className={`grid grid-cols-1 gap-4 lg:grid-cols-2 ${
+            sourceSystem === "backoffice"
+              ? "2xl:grid-cols-7"
+              : sourceSystem === "payment_gateway"
+                ? "2xl:grid-cols-6"
+                : "2xl:grid-cols-5"
+          }`}
+        >
           <article className="card">
             <p className="text-xs uppercase text-slate-500">Total Transactions</p>
             <p className="mt-1 text-2xl font-semibold">{metrics.total_count.toLocaleString("id-ID")}</p>
@@ -123,9 +105,29 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
             <p className="text-xs uppercase text-slate-500">Net (Amount - Fee)</p>
             <p className="mt-1 text-2xl font-semibold">Rp {formatCurrency3(metrics.net_amount)}</p>
           </article>
+          {sourceSystem === "payment_gateway" ? (
+            <article className="card">
+              <p className="text-xs uppercase text-slate-500">Fee Amount (Abs)</p>
+              <p className="mt-1 text-2xl font-semibold">Rp {formatCurrency3(Math.abs(metrics.fee_amount))}</p>
+            </article>
+          ) : null}
+          {sourceSystem === "backoffice" ? (
+            <>
+              <article className="card">
+                <p className="text-xs uppercase text-slate-500">Payin Count / Amount</p>
+                <p className="mt-1 text-2xl font-semibold">{metrics.payin_count.toLocaleString("id-ID")}</p>
+                <p className="mt-1 text-sm text-slate-600">Rp {formatCurrency3(metrics.payin_amount)}</p>
+              </article>
+              <article className="card">
+                <p className="text-xs uppercase text-slate-500">Payout Count / Amount</p>
+                <p className="mt-1 text-2xl font-semibold">{metrics.payout_count.toLocaleString("id-ID")}</p>
+                <p className="mt-1 text-sm text-slate-600">Rp {formatCurrency3(metrics.payout_amount)}</p>
+              </article>
+            </>
+          ) : null}
         </section>
 
-        <form className="card grid grid-cols-1 gap-3 md:grid-cols-5">
+        <form className="card grid grid-cols-1 gap-3 lg:grid-cols-5">
           <input type="hidden" name="source" value={sourceSystem} />
           <label className="text-sm text-slate-700">
             <span className="mb-1 block">Status</span>
@@ -168,7 +170,7 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
             <span className="mb-1 block">Date To</span>
             <input name="dateTo" type="date" defaultValue={dateTo ?? ""} className="field" />
           </label>
-          <div className="md:col-span-5 flex gap-2">
+          <div className="flex gap-2 lg:col-span-5">
             <button className="btn" type="submit">
               Apply Filters
             </button>
@@ -180,7 +182,7 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
 
         <section className="card overflow-x-auto">
           <h2 className="mb-3 text-lg font-semibold">Web Transaction Records ({sourceLabel})</h2>
-          <table className="min-w-full text-sm">
+          <table className="min-w-[960px] text-sm">
             <thead className="border-b bg-slate-50 text-left">
               <tr>
                 <th className="px-3 py-2">Create Time</th>
@@ -222,6 +224,7 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
             </tbody>
           </table>
         </section>
+
       </div>
     );
   } catch (error) {

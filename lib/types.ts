@@ -96,4 +96,49 @@ export type WebTransactionMetrics = {
   gross_amount: number;
   fee_amount: number;
   net_amount: number;
+  payin_count: number;
+  payin_amount: number;
+  payout_count: number;
+  payout_amount: number;
+};
+
+export type WebTransactionComparisonOutcome =
+  | "matched"
+  | "mismatched"
+  | "missing_in_backoffice"
+  | "missing_in_gateway";
+
+export type WebTransactionComparisonRow = {
+  comparison_key: string;
+  transaction_no: string;
+  canonical_type: string;
+  outcome: WebTransactionComparisonOutcome;
+  status_matches: boolean;
+  type_matches: boolean;
+  amount_matches: boolean;
+  backoffice: Pick<WebTransaction, "id" | "create_time" | "canonical_status" | "canonical_type" | "amount"> | null;
+  payment_gateway: Pick<WebTransaction, "id" | "create_time" | "canonical_status" | "canonical_type" | "amount"> | null;
+};
+
+export type WebTransactionComparisonSourceMetrics = {
+  total_count: number;
+  total_amount: number;
+  payin_count: number;
+  payin_amount: number;
+  payout_count: number;
+  payout_amount: number;
+};
+
+export type WebTransactionComparisonMetrics = {
+  backoffice: WebTransactionComparisonSourceMetrics;
+  payment_gateway: WebTransactionComparisonSourceMetrics;
+  matched_count: number;
+  mismatched_count: number;
+  missing_in_backoffice_count: number;
+  missing_in_gateway_count: number;
+};
+
+export type WebTransactionComparisonResult = {
+  rows: WebTransactionComparisonRow[];
+  metrics: WebTransactionComparisonMetrics;
 };
