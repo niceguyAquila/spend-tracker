@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ZenPlay Spend Tracker",
+  title: "Brand Spend Tracker",
   description: "Monthly operations spending tracker with Supabase",
   robots: {
     index: false,

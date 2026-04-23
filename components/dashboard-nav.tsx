@@ -8,7 +8,7 @@ const links = [
 
 export function DashboardNav({ isAdmin }: { isAdmin: boolean }) {
   const navLinks = isAdmin
-    ? [...links, { href: "/dashboard/admin/users", label: "Admin Users" }]
+    ? [...links, { href: "/dashboard/admin/users", label: "Admin Users" }, { href: "/dashboard/admin/brands", label: "Admin Brands" }]
     : links;
 
   return (

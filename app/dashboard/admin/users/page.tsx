@@ -1,15 +1,19 @@
 import { AdminUsersPanel } from "@/components/admin-users-panel";
-import { requireAllowedRole } from "@/lib/auth";
+import { requireAllowedUser } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
 export default async function AdminUsersPage() {
-  await requireAllowedRole(["admin"]);
+  const { globalRole } = await requireAllowedUser();
+  if (globalRole !== "admin") {
+    redirect("/dashboard");
+  }
 
   return (
     <div className="space-y-4">
       <section className="card">
         <h1 className="text-xl font-semibold">Admin User Management</h1>
         <p className="text-sm text-slate-600">
-          Invite users, set their role, and control active access.
+          Invite users, set access role, and assign the brands each user can interact with.
         </p>
       </section>
       <AdminUsersPanel />

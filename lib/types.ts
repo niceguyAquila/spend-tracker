@@ -1,5 +1,22 @@
+export type AppRole = "admin" | "finance" | "viewer";
+
+export type Brand = {
+  id: string;
+  code: string;
+  name: string;
+  is_active: boolean;
+};
+
+export type UserBrandRole = {
+  brand_id: string;
+  role: AppRole;
+  is_active: boolean;
+  brand: Brand;
+};
+
 export type ExpenseCategory = {
   id: string;
+  brand_id: string;
   code: string;
   name: string;
   is_active: boolean;
@@ -7,6 +24,7 @@ export type ExpenseCategory = {
 
 export type ExpenseSubcategory = {
   id: string;
+  brand_id: string;
   category_id: string;
   name: string;
   is_active: boolean;
@@ -14,6 +32,7 @@ export type ExpenseSubcategory = {
 
 export type Expense = {
   id: string;
+  brand_id: string;
   expense_date: string;
   month_key: string;
   amount: number;

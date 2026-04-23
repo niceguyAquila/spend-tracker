@@ -21,14 +21,16 @@ export async function POST(request: Request) {
   }
 
   const supabase = await createClient();
+  const activeBrandId = authCheck.activeBrandId;
   const { data, error } = await supabase
     .from("expense_subcategories")
     .insert({
+      brand_id: activeBrandId,
       category_id: parsed.data.category_id,
       name: parsed.data.name,
       is_active: true
     })
-    .select("id, category_id, name, is_active")
+    .select("id, brand_id, category_id, name, is_active")
     .single();
 
   if (error) {
@@ -64,7 +66,11 @@ export async function PATCH(request: Request) {
     updatePayload.is_active = is_active;
   }
 
-  const { error } = await supabase.from("expense_subcategories").update(updatePayload).eq("id", id);
+  const { error } = await supabase
+    .from("expense_subcategories")
+    .update(updatePayload)
+    .eq("id", id)
+    .eq("brand_id", authCheck.activeBrandId);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }

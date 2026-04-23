@@ -35,24 +35,8 @@ create policy category_write_finance
 on public.expense_categories
 for all
 to authenticated
-using (
-  exists (
-    select 1
-    from public.allowed_users au
-    where au.normalized_email = lower(coalesce(auth.jwt() ->> 'email', ''))
-      and au.is_active = true
-      and au.role in ('finance', 'admin')
-  )
-)
-with check (
-  exists (
-    select 1
-    from public.allowed_users au
-    where au.normalized_email = lower(coalesce(auth.jwt() ->> 'email', ''))
-      and au.is_active = true
-      and au.role in ('finance', 'admin')
-  )
-);
+using (public.is_finance_or_admin())
+with check (public.is_finance_or_admin());
 
 drop policy if exists subcategory_select_authenticated on public.expense_subcategories;
 create policy subcategory_select_authenticated
@@ -68,24 +52,8 @@ create policy subcategory_write_finance
 on public.expense_subcategories
 for all
 to authenticated
-using (
-  exists (
-    select 1
-    from public.allowed_users au
-    where au.normalized_email = lower(coalesce(auth.jwt() ->> 'email', ''))
-      and au.is_active = true
-      and au.role in ('finance', 'admin')
-  )
-)
-with check (
-  exists (
-    select 1
-    from public.allowed_users au
-    where au.normalized_email = lower(coalesce(auth.jwt() ->> 'email', ''))
-      and au.is_active = true
-      and au.role in ('finance', 'admin')
-  )
-);
+using (public.is_finance_or_admin())
+with check (public.is_finance_or_admin());
 
 drop policy if exists subcategory_insert_anon on public.expense_subcategories;
 drop policy if exists subcategory_update_anon on public.expense_subcategories;
@@ -104,15 +72,7 @@ create policy expenses_insert_finance
 on public.expenses
 for insert
 to authenticated
-with check (
-  exists (
-    select 1
-    from public.allowed_users au
-    where au.normalized_email = lower(coalesce(auth.jwt() ->> 'email', ''))
-      and au.is_active = true
-      and au.role in ('finance', 'admin')
-  )
-);
+with check (public.is_finance_or_admin());
 
 drop policy if exists expenses_insert_anon on public.expenses;
 
@@ -121,24 +81,8 @@ create policy expenses_update_finance
 on public.expenses
 for update
 to authenticated
-using (
-  exists (
-    select 1
-    from public.allowed_users au
-    where au.normalized_email = lower(coalesce(auth.jwt() ->> 'email', ''))
-      and au.is_active = true
-      and au.role in ('finance', 'admin')
-  )
-)
-with check (
-  exists (
-    select 1
-    from public.allowed_users au
-    where au.normalized_email = lower(coalesce(auth.jwt() ->> 'email', ''))
-      and au.is_active = true
-      and au.role in ('finance', 'admin')
-  )
-);
+using (public.is_finance_or_admin())
+with check (public.is_finance_or_admin());
 
 drop policy if exists expenses_update_anon on public.expenses;
 
@@ -147,15 +91,7 @@ create policy expenses_delete_finance
 on public.expenses
 for delete
 to authenticated
-using (
-  exists (
-    select 1
-    from public.allowed_users au
-    where au.normalized_email = lower(coalesce(auth.jwt() ->> 'email', ''))
-      and au.is_active = true
-      and au.role in ('finance', 'admin')
-  )
-);
+using (public.is_finance_or_admin());
 
 drop policy if exists expenses_delete_anon on public.expenses;
 
@@ -164,15 +100,7 @@ create policy audit_select_finance
 on public.expense_audit_logs
 for select
 to authenticated
-using (
-  exists (
-    select 1
-    from public.allowed_users au
-    where au.normalized_email = lower(coalesce(auth.jwt() ->> 'email', ''))
-      and au.is_active = true
-      and au.role in ('finance', 'admin')
-  )
-);
+using (public.is_finance_or_admin());
 
 revoke all on public.expense_audit_logs from authenticated;
 grant select on public.expense_audit_logs to authenticated;

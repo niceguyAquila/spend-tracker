@@ -24,13 +24,13 @@ function normalizeSingleParam(param: SearchParamValue): string | null {
 
 export default async function TransactionsPage({ searchParams }: TransactionsPageProps) {
   try {
-    await requireAllowedRole(["finance", "admin"]);
+    const { activeBrandId } = await requireAllowedRole(["finance", "admin"]);
     const resolvedParams = (await searchParams) ?? {};
 
     const [categories, subcategories, monthKeys] = await Promise.all([
-      getCategories(),
-      getSubcategories(),
-      getExpenseMonthKeys()
+      getCategories(activeBrandId),
+      getSubcategories(activeBrandId),
+      getExpenseMonthKeys(activeBrandId)
     ]);
 
     const currentMonthKey = getMonthKeyForDate(new Date());
@@ -39,7 +39,7 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
     const activeMonth = selectedMonth && monthKeySet.has(selectedMonth) ? selectedMonth : currentMonthKey;
     const monthOptions = monthKeySet.has(currentMonthKey) ? monthKeys : [currentMonthKey, ...monthKeys];
 
-    const expenses = await getExpenses({ month: activeMonth, limit: 500 });
+    const expenses = await getExpenses({ brandId: activeBrandId, month: activeMonth, limit: 500 });
 
     return (
       <div className="space-y-4">

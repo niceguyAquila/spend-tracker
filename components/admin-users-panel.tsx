@@ -13,15 +13,29 @@ type AllowedUser = {
   is_active: boolean;
   invited_at: string;
   updated_at: string;
+  brand_roles: Array<{
+    brand_id: string;
+    role: "admin" | "finance" | "viewer";
+    is_active: boolean;
+  }>;
+};
+
+type Brand = {
+  id: string;
+  code: string;
+  name: string;
+  is_active: boolean;
 };
 
 export function AdminUsersPanel() {
   const [users, setUsers] = useState<AllowedUser[]>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<AllowedUser["role"]>("viewer");
+  const [selectedBrandIds, setSelectedBrandIds] = useState<string[]>([]);
   const [authMethod, setAuthMethod] = useState<"password" | "magic_link">("password");
   const [password, setPassword] = useState("");
   const [editingEmail, setEditingEmail] = useState<string | null>(null);
@@ -39,6 +53,10 @@ export function AdminUsersPanel() {
     const data = await response.json();
     if (response.ok) {
       setUsers(data.users ?? []);
+      setBrands((data.brands ?? []).filter((item: Brand) => item.is_active));
+      if (!selectedBrandIds.length && Array.isArray(data.brands) && data.brands.length > 0) {
+        setSelectedBrandIds([data.brands[0].id]);
+      }
     } else {
       setMessage(data.error ?? "Failed to load users.");
     }
@@ -55,7 +73,19 @@ export function AdminUsersPanel() {
     setInviteConfirmOpen(true);
   }
 
+  function toggleInviteBrand(brandId: string) {
+    setSelectedBrandIds((current) =>
+      current.includes(brandId) ? current.filter((item) => item !== brandId) : [...current, brandId]
+    );
+  }
+
   async function executeInvite() {
+    if (!selectedBrandIds.length) {
+      setMessage("Select at least one brand for this user.");
+      setInviteSubmitting(false);
+      setInviteConfirmOpen(false);
+      return;
+    }
     setInviteSubmitting(true);
     const response = await fetch("/api/admin/invite", {
       method: "POST",
@@ -64,6 +94,10 @@ export function AdminUsersPanel() {
         email,
         display_name: displayName.trim() || undefined,
         role,
+        brand_roles: selectedBrandIds.map((brandId) => ({
+          brand_id: brandId,
+          role
+        })),
         auth_method: authMethod,
         password: authMethod === "password" ? password : undefined
       })
@@ -85,6 +119,7 @@ export function AdminUsersPanel() {
     setEmail("");
     setDisplayName("");
     setRole("viewer");
+    setSelectedBrandIds(brands.length > 0 ? [brands[0].id] : []);
     setPassword("");
     setInviteSubmitting(false);
     setInviteConfirmOpen(false);
@@ -107,6 +142,40 @@ export function AdminUsersPanel() {
     }
     setMessage("User updated.");
     await loadUsers();
+  }
+
+  async function updateUserBrandRoles(
+    user: AllowedUser,
+    brandId: string,
+    roleValue: "admin" | "finance" | "viewer" | "none"
+  ) {
+    const nextRoles = user.brand_roles
+      .filter((item) => item.brand_id !== brandId)
+      .map((item) => ({ brand_id: item.brand_id, role: item.role, is_active: item.is_active }));
+    if (roleValue !== "none") {
+      nextRoles.push({ brand_id: brandId, role: roleValue, is_active: true });
+    }
+
+    const response = await fetch("/api/admin/users", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: user.email, brand_roles: nextRoles })
+    });
+    if (handleUnauthorizedResponse(response)) {
+      return;
+    }
+    const data = await response.json();
+    if (!response.ok) {
+      setMessage(data.error ?? "Failed to update brand access.");
+      return;
+    }
+    setMessage("Brand access updated.");
+    await loadUsers();
+  }
+
+  function getUserBrandRole(user: AllowedUser, brandId: string): "admin" | "finance" | "viewer" | "none" {
+    const roleRow = user.brand_roles.find((item) => item.brand_id === brandId && item.is_active);
+    return roleRow?.role ?? "none";
   }
 
   function startDisplayNameEdit(user: AllowedUser) {
@@ -170,6 +239,21 @@ export function AdminUsersPanel() {
             onChange={(event) => setPassword(event.target.value)}
             required={authMethod === "password"}
           />
+          <div className="md:col-span-2">
+            <p className="mb-1 text-xs font-medium text-slate-700">Brand access</p>
+            <div className="flex flex-wrap gap-2">
+              {brands.map((brand) => (
+                <label key={brand.id} className="inline-flex items-center gap-2 rounded border px-2 py-1 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={selectedBrandIds.includes(brand.id)}
+                    onChange={() => toggleInviteBrand(brand.id)}
+                  />
+                  {brand.name}
+                </label>
+              ))}
+            </div>
+          </div>
           <button className="btn" type="submit">
             {authMethod === "password" ? "Create User" : "Send Invite"}
           </button>
@@ -189,6 +273,7 @@ export function AdminUsersPanel() {
                   <th className="px-3 py-2">Display Name</th>
                   <th className="px-3 py-2">Role</th>
                   <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Brand Access</th>
                   <th className="px-3 py-2">Actions</th>
                 </tr>
               </thead>
@@ -210,6 +295,31 @@ export function AdminUsersPanel() {
                     </td>
                     <td className="px-3 py-2">{user.role}</td>
                     <td className="px-3 py-2">{user.is_active ? "Active" : "Inactive"}</td>
+                    <td className="px-3 py-2">
+                      <div className="grid gap-1">
+                        {brands.map((brand) => (
+                          <label key={brand.id} className="flex items-center justify-between gap-2 text-xs">
+                            <span>{brand.name}</span>
+                            <select
+                              className="field w-[120px]"
+                              value={getUserBrandRole(user, brand.id)}
+                              onChange={(event) =>
+                                void updateUserBrandRoles(
+                                  user,
+                                  brand.id,
+                                  event.target.value as "admin" | "finance" | "viewer" | "none"
+                                )
+                              }
+                            >
+                              <option value="none">No access</option>
+                              <option value="viewer">Viewer</option>
+                              <option value="finance">Finance</option>
+                              <option value="admin">Admin</option>
+                            </select>
+                          </label>
+                        ))}
+                      </div>
+                    </td>
                     <td className="px-3 py-2">
                       {editingEmail === user.email ? (
                         <div className="flex gap-2">
@@ -253,6 +363,7 @@ export function AdminUsersPanel() {
           <ul className="list-inside list-disc space-y-1">
             <li className="break-all font-medium text-slate-900">{email}</li>
             <li>Role: {role}</li>
+            <li>Brands: {selectedBrandIds.length}</li>
             <li>{authMethod === "password" ? "Sign-in: password (temporary password will be set)" : "Sign-in: magic link email"}</li>
             {displayName.trim() ? <li>Display name: {displayName.trim()}</li> : null}
           </ul>

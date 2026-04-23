@@ -1,11 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { DashboardReportRow, ExpenseCategory, ExpenseSubcategory, ExpenseWithNames } from "@/lib/types";
 
-export async function getCategories(): Promise<ExpenseCategory[]> {
+export async function getCategories(brandId: string): Promise<ExpenseCategory[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("expense_categories")
-    .select("id, code, name, is_active")
+    .select("id, brand_id, code, name, is_active")
+    .eq("brand_id", brandId)
     .eq("is_active", true)
     .order("name");
 
@@ -13,11 +14,12 @@ export async function getCategories(): Promise<ExpenseCategory[]> {
   return data ?? [];
 }
 
-export async function getSubcategories(categoryId?: string): Promise<ExpenseSubcategory[]> {
+export async function getSubcategories(brandId: string, categoryId?: string): Promise<ExpenseSubcategory[]> {
   const supabase = await createClient();
   let query = supabase
     .from("expense_subcategories")
-    .select("id, category_id, name, is_active")
+    .select("id, brand_id, category_id, name, is_active")
+    .eq("brand_id", brandId)
     .eq("is_active", true)
     .order("name");
 
@@ -30,7 +32,8 @@ export async function getSubcategories(categoryId?: string): Promise<ExpenseSubc
   return data ?? [];
 }
 
-export async function getExpenses(params?: {
+export async function getExpenses(params: {
+  brandId: string;
   month?: string;
   categoryId?: string;
   limit?: number;
@@ -40,11 +43,12 @@ export async function getExpenses(params?: {
     .from("expenses")
     .select(
       `
-      id, expense_date, month_key, amount, category_id, subcategory_id, note, reference, source, created_by, updated_by, created_at, updated_at,
+      id, brand_id, expense_date, month_key, amount, category_id, subcategory_id, note, reference, source, created_by, updated_by, created_at, updated_at,
       expense_categories(name),
       expense_subcategories(name)
     `
     )
+    .eq("brand_id", params.brandId)
     .order("expense_date", { ascending: false })
     .order("created_at", { ascending: false });
 
@@ -96,6 +100,7 @@ export async function getExpenses(params?: {
 
     return {
       id: row.id,
+      brand_id: row.brand_id,
       expense_date: row.expense_date,
       month_key: row.month_key,
       amount: Number(row.amount),
@@ -116,11 +121,12 @@ export async function getExpenses(params?: {
   });
 }
 
-export async function getExpenseMonthKeys(): Promise<string[]> {
+export async function getExpenseMonthKeys(brandId: string): Promise<string[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("expenses")
     .select("month_key")
+    .eq("brand_id", brandId)
     .order("month_key", { ascending: false });
 
   if (error) throw error;
@@ -135,32 +141,37 @@ export async function getExpenseMonthKeys(): Promise<string[]> {
   return [...monthKeySet];
 }
 
-export async function getMonthlySummary() {
+export async function getMonthlySummary(brandId: string) {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("get_expense_monthly_summary");
+  const { data, error } = await supabase.rpc("get_expense_monthly_summary", {
+    input_brand_id: brandId
+  });
   if (error) throw error;
   return data ?? [];
 }
 
-export async function getCategorySplit(month?: string) {
+export async function getCategorySplit(brandId: string, month?: string) {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("get_expense_category_split", {
+    input_brand_id: brandId,
     input_month: month ?? null
   });
   if (error) throw error;
   return data ?? [];
 }
 
-export async function getSubcategoryMovement(month?: string) {
+export async function getSubcategoryMovement(brandId: string, month?: string) {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("get_subcategory_movement", {
+    input_brand_id: brandId,
     input_month: month ?? null
   });
   if (error) throw error;
   return data ?? [];
 }
 
-export async function getDashboardReportRows(params?: {
+export async function getDashboardReportRows(params: {
+  brandId: string;
   categoryIds?: string[];
   subcategoryIds?: string[];
   monthKeys?: string[];
@@ -178,6 +189,7 @@ export async function getDashboardReportRows(params?: {
       expense_subcategories(name)
     `
     )
+    .eq("brand_id", params.brandId)
     .order("month_key", { ascending: true });
 
   if (params?.categoryIds?.length) {
