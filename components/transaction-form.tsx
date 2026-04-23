@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ExpenseCategory, ExpenseSubcategory } from "@/lib/types";
 import { handleUnauthorizedResponse } from "@/lib/client/auth-fetch";
+import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 
 type Props = {
   categories: ExpenseCategory[];
@@ -112,34 +113,37 @@ export function TransactionForm({
     setError(null);
     setSuccess(null);
 
-    const response = await fetch("/api/expenses", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...form,
-        amount: amountValue
-      })
-    });
-    if (handleUnauthorizedResponse(response)) {
-      setSaving(false);
-      return;
-    }
-    const data = await response.json();
+    try {
+      const response = await fetch("/api/expenses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          amount: amountValue
+        })
+      });
+      if (handleUnauthorizedResponse(response)) {
+        return;
+      }
+      const data = await response.json();
 
-    if (!response.ok) {
-      setSaving(false);
-      setError(extractApiError(data.error, "Failed to save transaction."));
-      return;
-    }
+      if (!response.ok) {
+        setError(extractApiError(data.error, "Failed to save transaction."));
+        return;
+      }
 
-    setSuccess("Transaction saved.");
-    if (addAnother) {
-      setForm((prev) => ({ ...prev, amount: "", note: "", reference: "" }));
-    } else {
-      setForm((prev) => ({ ...prev, amount: "" }));
+      setSuccess("Transaction saved.");
+      if (addAnother) {
+        setForm((prev) => ({ ...prev, amount: "", note: "", reference: "" }));
+      } else {
+        setForm((prev) => ({ ...prev, amount: "" }));
+      }
+      router.refresh();
+    } catch {
+      setError("Failed to save transaction due to a network error.");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    router.refresh();
   }
 
   async function handleCreateSubcategory() {
@@ -178,7 +182,8 @@ export function TransactionForm({
   }
 
   return (
-    <section className="card">
+    <section className="card relative" aria-busy={saving}>
+      <BlockingOverlay active={saving} label="Saving transaction..." />
       <h2 className="mb-3 text-lg font-semibold">Quick Add Transaction</h2>
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
         <label className="text-sm">
@@ -187,6 +192,7 @@ export function TransactionForm({
             className="field mt-1"
             type="date"
             required
+            disabled={saving}
             value={form.expense_date}
             onChange={(event) => setForm((prev) => ({ ...prev, expense_date: event.target.value }))}
           />
@@ -196,6 +202,7 @@ export function TransactionForm({
           <select
             className="field mt-1"
             required
+            disabled={saving}
             value={form.category_id}
             onChange={(event) =>
               setForm((prev) => ({
@@ -217,6 +224,7 @@ export function TransactionForm({
           <select
             className="field mt-1"
             required
+            disabled={saving}
             value={form.subcategory_id}
             onChange={(event) => setForm((prev) => ({ ...prev, subcategory_id: event.target.value }))}
           >
@@ -236,6 +244,7 @@ export function TransactionForm({
               className="w-full rounded-r-md py-2 pr-3 text-sm outline-none"
               inputMode="numeric"
               required
+              disabled={saving}
               placeholder="0"
               value={form.amount}
               onChange={(event) =>
@@ -249,6 +258,7 @@ export function TransactionForm({
           <input
             className="field mt-1"
             placeholder="Optional note"
+            disabled={saving}
             value={form.note}
             onChange={(event) => setForm((prev) => ({ ...prev, note: event.target.value }))}
           />
@@ -258,6 +268,7 @@ export function TransactionForm({
           <input
             className="field mt-1"
             placeholder="Invoice / transfer ref"
+            disabled={saving}
             value={form.reference}
             onChange={(event) => setForm((prev) => ({ ...prev, reference: event.target.value }))}
           />

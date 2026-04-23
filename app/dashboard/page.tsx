@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { DashboardReportFilters } from "@/components/dashboard-report-filters";
 import { DashboardReportTable } from "@/components/dashboard-report-table";
 import {
@@ -12,6 +13,13 @@ type SearchParamValue = string | string[] | undefined;
 type DashboardPageProps = {
   searchParams?: Promise<Record<string, SearchParamValue>>;
 };
+
+export async function generateMetadata(): Promise<Metadata> {
+  const { activeBrand } = await requireAllowedUser();
+  return {
+    title: `${activeBrand.name} - Web Spending`
+  };
+}
 
 function normalizeArrayParam(param: SearchParamValue): string[] {
   if (!param) return [];

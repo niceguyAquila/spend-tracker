@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ExpenseCategory, ExpenseSubcategory, ExpenseWithNames } from "@/lib/types";
 import { handleUnauthorizedResponse } from "@/lib/client/auth-fetch";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 
 type Props = {
   rows: ExpenseWithNames[];
@@ -100,6 +101,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const criticalPending = saving || deleteSubmitting;
 
   const [draft, setDraft] = useState<{
     expense_date: string;
@@ -225,29 +227,32 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
     }
     setSaving(true);
     setMessage(null);
-    const response = await fetch("/api/expenses", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: editingId,
-        ...draft,
-        amount: amountValue
-      })
-    });
-    if (handleUnauthorizedResponse(response)) {
+    try {
+      const response = await fetch("/api/expenses", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingId,
+          ...draft,
+          amount: amountValue
+        })
+      });
+      if (handleUnauthorizedResponse(response)) {
+        return;
+      }
+      const data = await response.json();
+      if (!response.ok) {
+        setMessage(extractApiError(data.error, "Failed to update transaction."));
+        return;
+      }
+      setMessage("Transaction updated.");
+      setEditingId(null);
+      router.refresh();
+    } catch {
+      setMessage("Failed to update transaction due to a network error.");
+    } finally {
       setSaving(false);
-      return;
     }
-    const data = await response.json();
-    if (!response.ok) {
-      setMessage(extractApiError(data.error, "Failed to update transaction."));
-      setSaving(false);
-      return;
-    }
-    setMessage("Transaction updated.");
-    setEditingId(null);
-    setSaving(false);
-    router.refresh();
   }
 
   function requestCancelEdit() {
@@ -273,40 +278,51 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
     if (!pendingDelete) return;
     setDeleteSubmitting(true);
     setMessage(null);
-    const response = await fetch(`/api/expenses?id=${pendingDelete.id}`, { method: "DELETE" });
-    if (handleUnauthorizedResponse(response)) {
-      setDeleteSubmitting(false);
+    try {
+      const response = await fetch(`/api/expenses?id=${pendingDelete.id}`, { method: "DELETE" });
+      if (handleUnauthorizedResponse(response)) {
+        setPendingDelete(null);
+        return;
+      }
+      const data = await response.json();
+      if (!response.ok) {
+        setMessage(data.error ?? "Failed to delete transaction.");
+        setPendingDelete(null);
+        return;
+      }
+      setMessage("Transaction deleted.");
       setPendingDelete(null);
-      return;
-    }
-    const data = await response.json();
-    if (!response.ok) {
-      setMessage(data.error ?? "Failed to delete transaction.");
-      setDeleteSubmitting(false);
+      router.refresh();
+    } catch {
+      setMessage("Failed to delete transaction due to a network error.");
       setPendingDelete(null);
-      return;
+    } finally {
+      setDeleteSubmitting(false);
     }
-    setMessage("Transaction deleted.");
-    setDeleteSubmitting(false);
-    setPendingDelete(null);
-    router.refresh();
   }
 
   return (
-    <section className="card">
+    <section className="card relative" aria-busy={criticalPending}>
+      <BlockingOverlay active={criticalPending} label={saving ? "Saving transaction..." : "Deleting transaction..."} />
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Transaction Ledger</h2>
         <input
           className="field max-w-xs"
           placeholder="Search note, category..."
           value={query}
+          disabled={criticalPending}
           onChange={(event) => setQuery(event.target.value)}
         />
       </div>
       <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-5">
         <label className="text-sm text-slate-700">
           <span className="mb-1 block">Month</span>
-          <select className="field" value={activeMonth} onChange={(event) => updateMonth(event.target.value)}>
+          <select
+            className="field"
+            value={activeMonth}
+            disabled={criticalPending}
+            onChange={(event) => updateMonth(event.target.value)}
+          >
             {monthOptions.map((monthKey) => (
               <option key={monthKey} value={monthKey}>
                 {formatMonthLabel(monthKey)}
@@ -316,17 +332,30 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
         </label>
         <label className="text-sm text-slate-700">
           <span className="mb-1 block">Date from</span>
-          <input className="field" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+          <input
+            className="field"
+            type="date"
+            value={dateFrom}
+            disabled={criticalPending}
+            onChange={(event) => setDateFrom(event.target.value)}
+          />
         </label>
         <label className="text-sm text-slate-700">
           <span className="mb-1 block">Date to</span>
-          <input className="field" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+          <input
+            className="field"
+            type="date"
+            value={dateTo}
+            disabled={criticalPending}
+            onChange={(event) => setDateTo(event.target.value)}
+          />
         </label>
         <label className="text-sm text-slate-700">
           <span className="mb-1 block">Category</span>
           <select
             className="field"
             value={categoryFilter}
+            disabled={criticalPending}
             onChange={(event) => {
               setCategoryFilter(event.target.value);
               setSubcategoryFilter("");
@@ -345,6 +374,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
           <select
             className="field"
             value={subcategoryFilter}
+            disabled={criticalPending}
             onChange={(event) => setSubcategoryFilter(event.target.value)}
           >
             <option value="">All sub-categories</option>
@@ -361,22 +391,22 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
           <thead className="border-b bg-slate-50 text-left">
             <tr>
               <th className="px-3 py-2">
-                <button className="font-medium" onClick={() => toggleSort("expense_date")}>
+                <button className="font-medium" disabled={criticalPending} onClick={() => toggleSort("expense_date")}>
                   Date{renderSortIndicator("expense_date")}
                 </button>
               </th>
               <th className="px-3 py-2">
-                <button className="font-medium" onClick={() => toggleSort("category_name")}>
+                <button className="font-medium" disabled={criticalPending} onClick={() => toggleSort("category_name")}>
                   Category{renderSortIndicator("category_name")}
                 </button>
               </th>
               <th className="px-3 py-2">
-                <button className="font-medium" onClick={() => toggleSort("subcategory_name")}>
+                <button className="font-medium" disabled={criticalPending} onClick={() => toggleSort("subcategory_name")}>
                   Sub-category{renderSortIndicator("subcategory_name")}
                 </button>
               </th>
               <th className="px-3 py-2">
-                <button className="font-medium" onClick={() => toggleSort("amount")}>
+                <button className="font-medium" disabled={criticalPending} onClick={() => toggleSort("amount")}>
                   Amount{renderSortIndicator("amount")}
                 </button>
               </th>
@@ -515,6 +545,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
                           onClick={() =>
                             setOpenActionMenuId((prev) => (prev === row.id ? null : row.id))
                           }
+                          disabled={criticalPending}
                         >
                           <svg
                             aria-hidden="true"

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { LoadingIndicator } from "@/components/ui/loading-indicator";
 
 type Option = {
   value: string;
@@ -24,9 +25,10 @@ type PickerProps = {
   options: Option[];
   selected: string[];
   onChange: (next: string[]) => void;
+  disabled?: boolean;
 };
 
-function SearchableDropdown({ label, options, selected, onChange }: PickerProps) {
+function SearchableDropdown({ label, options, selected, onChange, disabled = false }: PickerProps) {
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const rootRef = useRef<HTMLDetailsElement | null>(null);
@@ -77,17 +79,20 @@ function SearchableDropdown({ label, options, selected, onChange }: PickerProps)
       ref={rootRef}
       className="relative"
       open={isOpen}
+      onClick={(event) => {
+        if (disabled) event.preventDefault();
+      }}
       onToggle={(event) => setIsOpen(event.currentTarget.open)}
     >
-      <summary className="field mt-1 cursor-pointer list-none">
+      <summary className="field mt-1 list-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">
         {label} ({selected.length || "All"})
       </summary>
       <div className="absolute z-10 mt-2 w-full min-w-64 rounded-md border bg-white p-2 shadow-lg">
         <div className="mb-2 flex items-center gap-2 text-xs">
-          <button className="btn-secondary btn-sm" type="button" onClick={selectAll}>
+          <button className="btn-secondary btn-sm" type="button" onClick={selectAll} disabled={disabled}>
             All
           </button>
-          <button className="btn-secondary btn-sm" type="button" onClick={clearAll}>
+          <button className="btn-secondary btn-sm" type="button" onClick={clearAll} disabled={disabled}>
             Clear
           </button>
         </div>
@@ -95,6 +100,7 @@ function SearchableDropdown({ label, options, selected, onChange }: PickerProps)
           className="field mb-2"
           placeholder={`Search ${label.toLowerCase()}...`}
           value={query}
+          disabled={disabled}
           onChange={(event) => setQuery(event.target.value)}
         />
         <div className="max-h-56 space-y-1 overflow-auto text-sm">
@@ -103,6 +109,7 @@ function SearchableDropdown({ label, options, selected, onChange }: PickerProps)
               <input
                 type="checkbox"
                 checked={selected.includes(option.value)}
+                disabled={disabled}
                 onChange={() => toggleValue(option.value)}
               />
               <span>{option.label}</span>
@@ -121,9 +128,17 @@ type SingleMonthPickerProps = {
   options: Option[];
   value: string | null;
   onChange: (next: string | null) => void;
+  disabled?: boolean;
 };
 
-function SearchableSingleMonthPicker({ label, placeholder, options, value, onChange }: SingleMonthPickerProps) {
+function SearchableSingleMonthPicker({
+  label,
+  placeholder,
+  options,
+  value,
+  onChange,
+  disabled = false
+}: SingleMonthPickerProps) {
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const rootRef = useRef<HTMLDetailsElement | null>(null);
@@ -166,6 +181,9 @@ function SearchableSingleMonthPicker({ label, placeholder, options, value, onCha
       ref={rootRef}
       className="relative"
       open={isOpen}
+      onClick={(event) => {
+        if (disabled) event.preventDefault();
+      }}
       onToggle={(event) => setIsOpen(event.currentTarget.open)}
     >
       <summary className="field mt-1 cursor-pointer list-none">
@@ -173,7 +191,7 @@ function SearchableSingleMonthPicker({ label, placeholder, options, value, onCha
       </summary>
       <div className="absolute z-10 mt-2 w-full min-w-64 rounded-md border bg-white p-2 shadow-lg">
         <div className="mb-2 flex items-center gap-2 text-xs">
-          <button className="btn-secondary btn-sm" type="button" onClick={clearSelection}>
+          <button className="btn-secondary btn-sm" type="button" onClick={clearSelection} disabled={disabled}>
             Clear
           </button>
         </div>
@@ -181,6 +199,7 @@ function SearchableSingleMonthPicker({ label, placeholder, options, value, onCha
           className="field mb-2"
           placeholder={`Search ${label.toLowerCase()}...`}
           value={query}
+          disabled={disabled}
           onChange={(event) => setQuery(event.target.value)}
         />
         <div className="max-h-56 space-y-1 overflow-auto text-sm">
@@ -191,6 +210,7 @@ function SearchableSingleMonthPicker({ label, placeholder, options, value, onCha
               className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-slate-100 ${
                 value === option.value ? "bg-slate-100 font-medium" : ""
               }`}
+              disabled={disabled}
               onClick={() => pick(option.value)}
             >
               {option.label}
@@ -214,6 +234,7 @@ export function DashboardReportFilters({
 }: FilterProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const [isPending, startTransition] = useTransition();
 
   const [categoryValues, setCategoryValues] = useState<string[]>(selectedCategoryIds);
   const [subcategoryValues, setSubcategoryValues] = useState<string[]>(selectedSubcategoryIds);
@@ -233,7 +254,9 @@ export function DashboardReportFilters({
     if (nextMonthTo) params.set("monthTo", nextMonthTo);
 
     const query = params.toString();
-    router.push(query ? `${pathname}?${query}` : pathname);
+    startTransition(() => {
+      router.push(query ? `${pathname}?${query}` : pathname);
+    });
   }
 
   function resetFilters() {
@@ -241,7 +264,9 @@ export function DashboardReportFilters({
     setSubcategoryValues([]);
     setMonthFrom(null);
     setMonthTo(null);
-    router.push(pathname);
+    startTransition(() => {
+      router.push(pathname);
+    });
   }
 
   return (
@@ -251,6 +276,7 @@ export function DashboardReportFilters({
           label="Category"
           options={categories}
           selected={categoryValues}
+          disabled={isPending}
           onChange={(next) => {
             setCategoryValues(next);
             const validSubcategoryIds = new Set(
@@ -267,6 +293,7 @@ export function DashboardReportFilters({
           label="Sub-category"
           options={subcategories}
           selected={subcategoryValues}
+          disabled={isPending}
           onChange={(next) => {
             setSubcategoryValues(next);
             applyFilters(categoryValues, next, monthFrom, monthTo);
@@ -277,6 +304,7 @@ export function DashboardReportFilters({
           placeholder="Earliest in data"
           options={months}
           value={monthFrom}
+          disabled={isPending}
           onChange={(next) => {
             setMonthFrom(next);
             applyFilters(categoryValues, subcategoryValues, next, monthTo);
@@ -287,6 +315,7 @@ export function DashboardReportFilters({
           placeholder="Latest in data"
           options={months}
           value={monthTo}
+          disabled={isPending}
           onChange={(next) => {
             setMonthTo(next);
             applyFilters(categoryValues, subcategoryValues, monthFrom, next);
@@ -298,9 +327,10 @@ export function DashboardReportFilters({
         columns.
       </p>
       <div className="mt-3 flex items-center gap-2">
-        <button className="btn-secondary" type="button" onClick={resetFilters}>
+        <button className="btn-secondary" type="button" onClick={resetFilters} disabled={isPending}>
           Reset
         </button>
+        {isPending ? <LoadingIndicator label="Updating results..." /> : null}
       </div>
     </section>
   );

@@ -1,6 +1,7 @@
 import { getWebTransactionComparison } from "@/lib/db/queries";
 import { requireAllowedUser } from "@/lib/auth";
 import type { WebTransactionComparisonOutcome } from "@/lib/types";
+import { WebTransactionsComparisonFilters } from "@/components/web-transactions-comparison-filters";
 
 type SearchParamValue = string | string[] | undefined;
 
@@ -70,52 +71,15 @@ export default async function TransactionsComparisonPage({ searchParams }: Compa
         </p>
       </section>
 
-      <form className="card grid grid-cols-1 gap-3 xl:grid-cols-6">
-        <label className="text-sm text-slate-700">
-          <span className="mb-1 block">Transaction No</span>
-          <input name="transactionNo" type="text" defaultValue={transactionNo ?? ""} className="field" placeholder="Contains..." />
-        </label>
-        <label className="text-sm text-slate-700">
-          <span className="mb-1 block">Status</span>
-          <input name="status" type="text" defaultValue={status ?? ""} className="field" placeholder="Successful / Pending..." />
-        </label>
-        <label className="text-sm text-slate-700">
-          <span className="mb-1 block">Type</span>
-          <select name="canonicalType" defaultValue={canonicalType ?? ""} className="field">
-            <option value="">All types</option>
-            <option value="Payin">Payin</option>
-            <option value="Payout">Payout</option>
-            <option value="Other">Other</option>
-          </select>
-        </label>
-        <label className="text-sm text-slate-700">
-          <span className="mb-1 block">Result</span>
-          <select name="outcome" defaultValue={outcome ?? ""} className="field">
-            <option value="">All results</option>
-            {OUTCOME_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-sm text-slate-700">
-          <span className="mb-1 block">Date From</span>
-          <input name="dateFrom" type="date" defaultValue={dateFrom ?? ""} className="field" />
-        </label>
-        <label className="text-sm text-slate-700">
-          <span className="mb-1 block">Date To</span>
-          <input name="dateTo" type="date" defaultValue={dateTo ?? ""} className="field" />
-        </label>
-        <div className="flex gap-2 xl:col-span-6">
-          <button className="btn" type="submit">
-            Apply Filters
-          </button>
-          <a className="btn-secondary" href="/dashboard/transactions/comparison">
-            Clear
-          </a>
-        </div>
-      </form>
+      <WebTransactionsComparisonFilters
+        outcomeOptions={OUTCOME_OPTIONS}
+        selectedStatus={status}
+        selectedCanonicalType={canonicalType}
+        selectedTransactionNo={transactionNo}
+        selectedDateFrom={dateFrom}
+        selectedDateTo={dateTo}
+        selectedOutcome={outcome}
+      />
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <article className="card">

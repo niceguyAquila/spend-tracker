@@ -1,4 +1,5 @@
 import { WebTransactionImport } from "@/components/web-transaction-import";
+import { WebTransactionsFilters } from "@/components/web-transactions-filters";
 import { buildWebTransactionMetrics, getWebTransactions } from "@/lib/db/queries";
 import { requireAllowedUser } from "@/lib/auth";
 
@@ -127,58 +128,17 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
           ) : null}
         </section>
 
-        <form className="card grid grid-cols-1 gap-3 lg:grid-cols-5">
-          <input type="hidden" name="source" value={sourceSystem} />
-          <label className="text-sm text-slate-700">
-            <span className="mb-1 block">Status</span>
-            <select name="status" defaultValue={status ?? ""} className="field">
-              <option value="">All status</option>
-              {statusOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm text-slate-700">
-            <span className="mb-1 block">Type</span>
-            <select name="canonicalType" defaultValue={canonicalType ?? ""} className="field">
-              <option value="">All types</option>
-              {typeOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm text-slate-700">
-            <span className="mb-1 block">Merchant</span>
-            <select name="merchantName" defaultValue={merchantName ?? ""} className="field">
-              <option value="">All merchants</option>
-              {merchantOptions.map((option) => (
-                <option key={option} value={option ?? ""}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm text-slate-700">
-            <span className="mb-1 block">Date From</span>
-            <input name="dateFrom" type="date" defaultValue={dateFrom ?? ""} className="field" />
-          </label>
-          <label className="text-sm text-slate-700">
-            <span className="mb-1 block">Date To</span>
-            <input name="dateTo" type="date" defaultValue={dateTo ?? ""} className="field" />
-          </label>
-          <div className="flex gap-2 lg:col-span-5">
-            <button className="btn" type="submit">
-              Apply Filters
-            </button>
-            <a className="btn-secondary" href={`/dashboard/transactions?source=${sourceSystem}`}>
-              Clear
-            </a>
-          </div>
-        </form>
+        <WebTransactionsFilters
+          sourceSystem={sourceSystem}
+          statusOptions={statusOptions}
+          typeOptions={typeOptions}
+          merchantOptions={merchantOptions.filter((option): option is string => Boolean(option))}
+          selectedStatus={status}
+          selectedCanonicalType={canonicalType}
+          selectedMerchantName={merchantName}
+          selectedDateFrom={dateFrom}
+          selectedDateTo={dateTo}
+        />
 
         <section className="card overflow-x-auto">
           <h2 className="mb-3 text-lg font-semibold">Web Transaction Records ({sourceLabel})</h2>
