@@ -1,5 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
-import { DashboardReportRow, ExpenseCategory, ExpenseSubcategory, ExpenseWithNames } from "@/lib/types";
+import {
+  DashboardReportRow,
+  ExpenseCategory,
+  ExpenseSubcategory,
+  ExpenseWithNames,
+  WebTransaction,
+  WebTransactionMetrics
+} from "@/lib/types";
 
 export async function getCategories(brandId: string, options?: { includeInactive?: boolean }): Promise<ExpenseCategory[]> {
   const supabase = await createClient();
@@ -227,4 +234,82 @@ export async function getDashboardReportRows(params: {
       amount: Number(row.amount)
     };
   });
+}
+
+type WebTransactionFilters = {
+  sourceSystem?: "backoffice" | "payment_gateway";
+  status?: string;
+  canonicalType?: string;
+  merchantName?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  limit?: number;
+};
+
+export async function getWebTransactions(
+  brandId: string,
+  filters: WebTransactionFilters = {}
+): Promise<WebTransaction[]> {
+  const supabase = await createClient();
+  let query = supabase
+    .from("web_transactions")
+    .select(
+      `id, brand_id, source_system, create_time, last_update_time, external_txn_no, client_order_no, aggregator_order_no, raw_status, canonical_status, raw_type, canonical_type, product_type, currency_code, original_amount, amount, crypto_currency_code, crypto_amount, merchant_name, merchant_rate, merchant_fee, raw_payload, source_file_name, imported_at`
+    )
+    .eq("brand_id", brandId)
+    .order("create_time", { ascending: false });
+
+  if (filters.sourceSystem) {
+    query = query.eq("source_system", filters.sourceSystem);
+  }
+  if (filters.status) {
+    query = query.eq("canonical_status", filters.status);
+  }
+  if (filters.canonicalType) {
+    query = query.eq("canonical_type", filters.canonicalType);
+  }
+  if (filters.merchantName) {
+    query = query.eq("merchant_name", filters.merchantName);
+  }
+  if (filters.dateFrom) {
+    query = query.gte("create_time", `${filters.dateFrom}T00:00:00+07:00`);
+  }
+  if (filters.dateTo) {
+    query = query.lte("create_time", `${filters.dateTo}T23:59:59+07:00`);
+  }
+  query = query.limit(filters.limit ?? 500);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    ...row,
+    original_amount: Number(row.original_amount),
+    amount: Number(row.amount),
+    crypto_amount: row.crypto_amount === null ? null : Number(row.crypto_amount),
+    merchant_rate: row.merchant_rate === null ? null : Number(row.merchant_rate),
+    merchant_fee: row.merchant_fee === null ? null : Number(row.merchant_fee)
+  }));
+}
+
+export function buildWebTransactionMetrics(rows: WebTransaction[]): WebTransactionMetrics {
+  return rows.reduce<WebTransactionMetrics>(
+    (acc, row) => {
+      acc.total_count += 1;
+      if (row.canonical_status.toLowerCase() === "successful") {
+        acc.successful_count += 1;
+      }
+      acc.gross_amount += row.amount;
+      acc.fee_amount += row.merchant_fee ?? 0;
+      acc.net_amount += row.amount - Math.abs(row.merchant_fee ?? 0);
+      return acc;
+    },
+    {
+      total_count: 0,
+      successful_count: 0,
+      gross_amount: 0,
+      fee_amount: 0,
+      net_amount: 0
+    }
+  );
 }

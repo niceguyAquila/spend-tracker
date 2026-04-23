@@ -62,3 +62,38 @@ export type DashboardReportRow = {
   month_key: string;
   amount: number;
 };
+
+export type WebTransaction = {
+  id: string;
+  brand_id: string;
+  source_system: "backoffice" | "payment_gateway";
+  create_time: string;
+  last_update_time: string;
+  external_txn_no: string;
+  client_order_no: string | null;
+  aggregator_order_no: string | null;
+  raw_status: string;
+  canonical_status: string;
+  raw_type: string;
+  canonical_type: string;
+  product_type: string;
+  currency_code: string;
+  original_amount: number;
+  amount: number;
+  crypto_currency_code: string | null;
+  crypto_amount: number | null;
+  merchant_name: string | null;
+  merchant_rate: number | null;
+  merchant_fee: number | null;
+  raw_payload: Record<string, string> | null;
+  source_file_name: string | null;
+  imported_at: string;
+};
+
+export type WebTransactionMetrics = {
+  total_count: number;
+  successful_count: number;
+  gross_amount: number;
+  fee_amount: number;
+  net_amount: number;
+};

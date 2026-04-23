@@ -1,8 +1,8 @@
 import Link from "next/link";
 
 const links = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/dashboard/transactions", label: "Transactions" },
+  { href: "/dashboard", label: "Web Spending" },
+  { href: "/dashboard/transactions", label: "Web Transaction" },
   { href: "/dashboard/settings/categories", label: "Categories" }
 ];
 
