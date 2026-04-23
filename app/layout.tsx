@@ -3,7 +3,12 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "ZenPlay Spend Tracker",
-  description: "Monthly operations spending tracker with Supabase"
+  description: "Monthly operations spending tracker with Supabase",
+  robots: {
+    index: false,
+    follow: false,
+    googleBot: { index: false, follow: false }
+  }
 };
 
 export default function RootLayout({
