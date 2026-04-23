@@ -16,6 +16,7 @@ export function BigBookSubNav() {
   const isDashboardPage = pathname === "/dashboard/big-book";
   const isIndividualTypePage = pathname === "/dashboard/big-book/individual-type-ledger";
   const isSettingsPage = pathname === "/dashboard/big-book/settings";
+  const isExchangeHelperPage = pathname === "/dashboard/big-book/exchange-helper";
 
   return (
     <section className="card">
@@ -32,6 +33,9 @@ export function BigBookSubNav() {
         </Link>
         <Link href="/dashboard/big-book/settings" className={getButtonClassName(isSettingsPage)}>
           Settings
+        </Link>
+        <Link href="/dashboard/big-book/exchange-helper" className={getButtonClassName(isExchangeHelperPage)}>
+          Exchange Helper
         </Link>
       </div>
     </section>

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const bigBookCurrencySchema = z.enum(["IDR", "MYR", "USDT", "TRX"]);
+export type BigBookCurrencyCode = z.infer<typeof bigBookCurrencySchema>;
 export const bigBookEntryDirectionSchema = z.enum(["spending", "profit"]);
 
 export const bigBookTypeCreateSchema = z.object({
@@ -56,4 +57,10 @@ export const bigBookAttachmentDeleteSchema = z.object({
 
 export const bigBookAttachmentViewSchema = z.object({
   id: z.string().uuid()
+});
+
+export const bigBookExchangeRateQuerySchema = z.object({
+  amount: z.coerce.number().positive("Amount must be greater than 0"),
+  base_currency: bigBookCurrencySchema,
+  quote_currency: bigBookCurrencySchema
 });
