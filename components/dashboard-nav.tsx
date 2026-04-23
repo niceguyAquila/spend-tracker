@@ -1,0 +1,27 @@
+import Link from "next/link";
+
+const links = [
+  { href: "/dashboard", label: "Dashboard" },
+  { href: "/dashboard/transactions", label: "Transactions" },
+  { href: "/dashboard/settings/categories", label: "Categories" }
+];
+
+export function DashboardNav({ isAdmin }: { isAdmin: boolean }) {
+  const navLinks = isAdmin
+    ? [...links, { href: "/dashboard/admin/users", label: "Admin Users" }]
+    : links;
+
+  return (
+    <nav className="mb-6 flex flex-wrap gap-2">
+      {navLinks.map((item) => (
+        <Link
+          key={item.href}
+          href={item.href}
+          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50"
+        >
+          {item.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
