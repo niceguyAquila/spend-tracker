@@ -43,6 +43,7 @@ export function AdminUsersPanel() {
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
   const [editingUser, setEditingUser] = useState<AllowedUser | null>(null);
   const [editDisplayName, setEditDisplayName] = useState("");
+  const [editRole, setEditRole] = useState<AllowedUser["role"]>("viewer");
   const [editBrandRoles, setEditBrandRoles] = useState<Record<string, "admin" | "finance" | "viewer" | "none">>({});
   const [editSubmitting, setEditSubmitting] = useState(false);
 
@@ -131,7 +132,7 @@ export function AdminUsersPanel() {
 
   async function updateUser(
     emailToUpdate: string,
-    payload: Partial<Pick<AllowedUser, "display_name">> & {
+    payload: Partial<Pick<AllowedUser, "display_name" | "role">> & {
       brand_roles?: Array<{ brand_id: string; role: "admin" | "finance" | "viewer"; is_active: boolean }>;
     }
   ) {
@@ -164,6 +165,7 @@ export function AdminUsersPanel() {
     }
     setEditingUser(user);
     setEditDisplayName(user.display_name ?? "");
+    setEditRole(user.role);
     setEditBrandRoles(nextRoles);
   }
 
@@ -171,6 +173,7 @@ export function AdminUsersPanel() {
     if (editSubmitting) return;
     setEditingUser(null);
     setEditDisplayName("");
+    setEditRole("viewer");
     setEditBrandRoles({});
   }
 
@@ -187,6 +190,7 @@ export function AdminUsersPanel() {
       }));
 
     await updateUser(editingUser.email, {
+      role: editRole,
       display_name: editDisplayName.trim() || null,
       brand_roles: nextBrandRoles
     });
@@ -366,6 +370,19 @@ export function AdminUsersPanel() {
                 onChange={(event) => setEditDisplayName(event.target.value)}
                 disabled={editSubmitting}
               />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-slate-700">Global role</span>
+              <select
+                className="field"
+                value={editRole}
+                onChange={(event) => setEditRole(event.target.value as AllowedUser["role"])}
+                disabled={editSubmitting}
+              >
+                <option value="viewer">Viewer</option>
+                <option value="finance">Finance</option>
+                <option value="admin">Admin</option>
+              </select>
             </label>
             <div>
               <p className="mb-1 text-xs font-medium text-slate-700">Brand access</p>
