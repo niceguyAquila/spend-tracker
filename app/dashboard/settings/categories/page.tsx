@@ -4,8 +4,11 @@ import { requireAllowedRole } from "@/lib/auth";
 
 export default async function CategorySettingsPage() {
   try {
-    await requireAllowedRole(["finance", "admin"]);
-    const [categories, subcategories] = await Promise.all([getCategories(), getSubcategories()]);
+    const { activeBrandId } = await requireAllowedRole(["finance", "admin"]);
+    const [categories, subcategories] = await Promise.all([
+      getCategories(activeBrandId, { includeInactive: true }),
+      getSubcategories(activeBrandId)
+    ]);
 
     return <CategoryManager categories={categories} subcategories={subcategories} />;
   } catch (error) {

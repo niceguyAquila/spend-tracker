@@ -14,4 +14,14 @@ export const subcategoryInputSchema = z.object({
   name: z.string().min(2).max(100)
 });
 
+export const categoryInputSchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .min(2)
+    .max(64)
+    .regex(/^[A-Z0-9_]+$/, "Code must use uppercase letters, numbers, and underscores."),
+  name: z.string().trim().min(2).max(100)
+});
+
 export type ExpenseInput = z.infer<typeof expenseInputSchema>;

@@ -8,6 +8,14 @@ const inviteSchema = z.object({
   email: z.string().email(),
   display_name: z.string().trim().min(1).max(120).optional(),
   role: z.enum(["admin", "finance", "viewer"]),
+  brand_roles: z
+    .array(
+      z.object({
+        brand_id: z.string().uuid(),
+        role: z.enum(["admin", "finance", "viewer"])
+      })
+    )
+    .min(1, "At least one brand role is required."),
   auth_method: z.enum(["password", "magic_link"]).default("password"),
   password: z.string().min(8).optional()
 });
@@ -45,6 +53,28 @@ export async function POST(request: Request) {
 
   if (upsertError) {
     return NextResponse.json({ error: upsertError.message }, { status: 400 });
+  }
+
+  const { data: allowedUserRow, error: allowedUserError } = await adminClient
+    .from("allowed_users")
+    .select("id")
+    .eq("normalized_email", normalizedEmail)
+    .single();
+  if (allowedUserError) {
+    return NextResponse.json({ error: allowedUserError.message }, { status: 400 });
+  }
+
+  await adminClient.from("user_brand_roles").delete().eq("allowed_user_id", allowedUserRow.id);
+  const { error: insertRolesError } = await adminClient.from("user_brand_roles").insert(
+    parsed.data.brand_roles.map((item) => ({
+      allowed_user_id: allowedUserRow.id,
+      brand_id: item.brand_id,
+      role: item.role,
+      is_active: true
+    }))
+  );
+  if (insertRolesError) {
+    return NextResponse.json({ error: insertRolesError.message }, { status: 400 });
   }
 
   const listedUsers = await adminClient.auth.admin.listUsers();

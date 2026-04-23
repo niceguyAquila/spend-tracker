@@ -7,7 +7,13 @@ const config: Config = {
     "./lib/**/*.{js,ts,jsx,tsx,mdx}"
   ],
   theme: {
-    extend: {}
+    extend: {
+      maxWidth: {
+        "content-narrow": "48rem",
+        "content-default": "72rem",
+        "content-wide": "90rem"
+      }
+    }
   },
   plugins: []
 };

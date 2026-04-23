@@ -71,6 +71,9 @@ export function TransactionForm({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [newSubcategoryName, setNewSubcategoryName] = useState("");
+  const [newSubcategoryCategoryId, setNewSubcategoryCategoryId] = useState(
+    defaultCategoryId ?? categories[0]?.id ?? ""
+  );
   const [creatingSubcategory, setCreatingSubcategory] = useState(false);
   const [form, setForm] = useState<FormState>({
     expense_date: today,
@@ -140,7 +143,7 @@ export function TransactionForm({
   }
 
   async function handleCreateSubcategory() {
-    if (!newSubcategoryName.trim() || !form.category_id) return;
+    if (!newSubcategoryName.trim() || !newSubcategoryCategoryId) return;
     setCreatingSubcategory(true);
     setError(null);
 
@@ -148,7 +151,7 @@ export function TransactionForm({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        category_id: form.category_id,
+        category_id: newSubcategoryCategoryId,
         name: newSubcategoryName.trim()
       })
     });
@@ -166,14 +169,18 @@ export function TransactionForm({
 
     setSuccess("Sub-category created.");
     setNewSubcategoryName("");
-    setForm((prev) => ({ ...prev, subcategory_id: data.id }));
+    setForm((prev) => ({
+      ...prev,
+      category_id: newSubcategoryCategoryId,
+      subcategory_id: data.id
+    }));
     router.refresh();
   }
 
   return (
     <section className="card">
       <h2 className="mb-3 text-lg font-semibold">Quick Add Transaction</h2>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
         <label className="text-sm">
           Date *
           <input
@@ -257,7 +264,7 @@ export function TransactionForm({
         </label>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-5 flex flex-wrap gap-2">
         <button className="btn" disabled={saving} onClick={() => handleSave(false)}>
           {saving ? "Saving..." : submitLabel}
         </button>
@@ -266,9 +273,23 @@ export function TransactionForm({
         </button>
       </div>
 
-      <div className="mt-4 rounded-md border border-slate-200 p-3">
+      <div className="mt-5 rounded-md border border-slate-200 p-4">
         <p className="text-sm font-medium">Create sub-category inline</p>
+        <p className="mt-1 text-xs text-slate-600">
+          Choose the target category for this new sub-category.
+        </p>
         <div className="mt-2 flex flex-wrap gap-2">
+          <select
+            className="field max-w-xs"
+            value={newSubcategoryCategoryId}
+            onChange={(event) => setNewSubcategoryCategoryId(event.target.value)}
+          >
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
           <input
             className="field max-w-xs"
             placeholder="New sub-category name"

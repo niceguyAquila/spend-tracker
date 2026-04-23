@@ -8,7 +8,16 @@ const updateSchema = z.object({
   email: z.string().email(),
   role: z.enum(["admin", "finance", "viewer"]).optional(),
   display_name: z.string().trim().min(1).max(120).nullable().optional(),
-  is_active: z.boolean().optional()
+  is_active: z.boolean().optional(),
+  brand_roles: z
+    .array(
+      z.object({
+        brand_id: z.string().uuid(),
+        role: z.enum(["admin", "finance", "viewer"]),
+        is_active: z.boolean().default(true)
+      })
+    )
+    .optional()
 });
 
 export async function GET() {
@@ -18,16 +27,34 @@ export async function GET() {
   }
 
   const adminClient = createAdminClient();
-  const { data, error } = await adminClient
-    .from("allowed_users")
-    .select("id, auth_user_id, email, display_name, role, is_active, invited_at, updated_at")
-    .order("invited_at", { ascending: false });
+  const [{ data, error }, { data: brandRoles, error: brandRoleError }, { data: brands, error: brandsError }] =
+    await Promise.all([
+      adminClient
+        .from("allowed_users")
+        .select("id, auth_user_id, email, display_name, role, is_active, invited_at, updated_at")
+        .order("invited_at", { ascending: false }),
+      adminClient
+        .from("user_brand_roles")
+        .select("allowed_user_id, brand_id, role, is_active"),
+      adminClient
+        .from("brands")
+        .select("id, code, name, is_active")
+        .order("created_at", { ascending: true })
+    ]);
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error || brandRoleError || brandsError) {
+    return NextResponse.json(
+      { error: error?.message ?? brandRoleError?.message ?? brandsError?.message ?? "Failed to load users." },
+      { status: 400 }
+    );
   }
 
-  return NextResponse.json({ users: data ?? [] });
+  const userRows = (data ?? []).map((user) => ({
+    ...user,
+    brand_roles: (brandRoles ?? []).filter((item) => item.allowed_user_id === user.id)
+  }));
+
+  return NextResponse.json({ users: userRows, brands: brands ?? [] });
 }
 
 export async function PATCH(request: Request) {
@@ -56,6 +83,32 @@ export async function PATCH(request: Request) {
   const { error } = await adminClient.from("allowed_users").update(payload).eq("email", email);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  if (parsed.data.brand_roles) {
+    const { data: userRow, error: userRowError } = await adminClient
+      .from("allowed_users")
+      .select("id")
+      .eq("normalized_email", email)
+      .maybeSingle();
+    if (userRowError || !userRow) {
+      return NextResponse.json({ error: "Allowed user not found for brand assignment." }, { status: 400 });
+    }
+
+    await adminClient.from("user_brand_roles").delete().eq("allowed_user_id", userRow.id);
+    if (parsed.data.brand_roles.length > 0) {
+      const { error: roleError } = await adminClient.from("user_brand_roles").insert(
+        parsed.data.brand_roles.map((item) => ({
+          allowed_user_id: userRow.id,
+          brand_id: item.brand_id,
+          role: item.role,
+          is_active: item.is_active
+        }))
+      );
+      if (roleError) {
+        return NextResponse.json({ error: roleError.message }, { status: 400 });
+      }
+    }
   }
 
   // Keep user_metadata role in sync for existing auth users.

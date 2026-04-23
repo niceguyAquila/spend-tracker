@@ -5,6 +5,7 @@ import {
   getDashboardReportRows,
   getSubcategories,
 } from "@/lib/db/queries";
+import { requireAllowedUser } from "@/lib/auth";
 
 type SearchParamValue = string | string[] | undefined;
 
@@ -25,6 +26,7 @@ function normalizeSingleParam(param: SearchParamValue): string | null {
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   try {
+    const { activeBrandId } = await requireAllowedUser();
     const resolvedParams = (await searchParams) ?? {};
     const selectedCategoryIds = normalizeArrayParam(resolvedParams.category);
     const selectedSubcategoryIds = normalizeArrayParam(resolvedParams.subcategory);
@@ -32,9 +34,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     const monthToRaw = normalizeSingleParam(resolvedParams.monthTo);
 
     const [categories, subcategories, allReportRows] = await Promise.all([
-      getCategories(),
-      getSubcategories(),
-      getDashboardReportRows()
+      getCategories(activeBrandId),
+      getSubcategories(activeBrandId),
+      getDashboardReportRows({ brandId: activeBrandId })
     ]);
 
     const categoryIdSet = new Set(categories.map((item) => item.id));
@@ -152,7 +154,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     ].join("|");
 
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         <DashboardReportFilters
           key={filterKey}
           categories={categories.map((item) => ({ value: item.id, label: item.name }))}
