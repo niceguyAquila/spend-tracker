@@ -11,6 +11,7 @@ export async function middleware(request: NextRequest) {
   const protectedPath =
     path.startsWith("/dashboard") ||
     path.startsWith("/api/expenses") ||
+    path.startsWith("/api/categories") ||
     path.startsWith("/api/subcategories") ||
     path.startsWith("/api/brands") ||
     path.startsWith("/api/admin");

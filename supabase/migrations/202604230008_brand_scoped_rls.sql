@@ -1,6 +1,8 @@
 alter table public.brands enable row level security;
 alter table public.user_brand_roles enable row level security;
 
+grant insert, update, delete on table public.expense_categories to authenticated;
+
 grant select on table public.brands to authenticated;
 grant select on table public.user_brand_roles to authenticated;
 grant insert, update, delete on table public.brands to authenticated;

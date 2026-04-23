@@ -17,13 +17,19 @@ export function CategoryManager({
   const router = useRouter();
   const [selectedCategory, setSelectedCategory] = useState(categories[0]?.id ?? "");
   const [newName, setNewName] = useState("");
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryCode, setNewCategoryCode] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [creatingCategory, setCreatingCategory] = useState(false);
   const [disableTarget, setDisableTarget] = useState<ExpenseSubcategory | null>(null);
   const [disableSubmitting, setDisableSubmitting] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [renameSubmitting, setRenameSubmitting] = useState(false);
   const [toggleSubmittingId, setToggleSubmittingId] = useState<string | null>(null);
+  const [categoryRenameTarget, setCategoryRenameTarget] = useState<ExpenseCategory | null>(null);
+  const [categoryRenameSubmitting, setCategoryRenameSubmitting] = useState(false);
+  const [categoryToggleSubmittingId, setCategoryToggleSubmittingId] = useState<string | null>(null);
 
   const currentRows = useMemo(
     () => subcategories.filter((item) => item.category_id === selectedCategory),
@@ -55,6 +61,36 @@ export function CategoryManager({
     setMessage("Sub-category added.");
     setNewName("");
     setCreating(false);
+    router.refresh();
+  }
+
+  async function createCategory() {
+    if (creatingCategory) return;
+    const name = newCategoryName.trim();
+    const code = newCategoryCode.trim().toUpperCase();
+    if (name.length < 2 || code.length < 2) return;
+
+    setCreatingCategory(true);
+    setMessage(null);
+    const response = await fetch("/api/categories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, code })
+    });
+    if (handleUnauthorizedResponse(response)) {
+      setCreatingCategory(false);
+      return;
+    }
+    const data = await response.json();
+    if (!response.ok) {
+      setMessage(data.error ?? "Failed to create category.");
+      setCreatingCategory(false);
+      return;
+    }
+    setMessage("Category added.");
+    setNewCategoryName("");
+    setNewCategoryCode("");
+    setCreatingCategory(false);
     router.refresh();
   }
 
@@ -135,17 +171,125 @@ export function CategoryManager({
     router.refresh();
   }
 
+  async function submitCategoryRename(next: string) {
+    if (!categoryRenameTarget) return;
+    setCategoryRenameSubmitting(true);
+    setMessage(null);
+    const response = await fetch("/api/categories", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: categoryRenameTarget.id, name: next })
+    });
+    if (handleUnauthorizedResponse(response)) {
+      setCategoryRenameSubmitting(false);
+      setCategoryRenameTarget(null);
+      return;
+    }
+    const data = await response.json();
+    if (!response.ok) {
+      setMessage(data.error ?? "Category rename failed.");
+      setCategoryRenameSubmitting(false);
+      return;
+    }
+    setMessage("Category renamed.");
+    setCategoryRenameSubmitting(false);
+    setCategoryRenameTarget(null);
+    router.refresh();
+  }
+
+  async function toggleCategoryActive(id: string, isActive: boolean) {
+    if (categoryToggleSubmittingId) return;
+    setCategoryToggleSubmittingId(id);
+    setMessage(null);
+    const response = await fetch("/api/categories", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, is_active: !isActive })
+    });
+    if (handleUnauthorizedResponse(response)) {
+      setCategoryToggleSubmittingId(null);
+      return;
+    }
+    const data = await response.json();
+    if (!response.ok) {
+      setMessage(data.error ?? "Category update failed.");
+      setCategoryToggleSubmittingId(null);
+      return;
+    }
+    setMessage(!isActive ? "Category enabled." : "Category disabled.");
+    setCategoryToggleSubmittingId(null);
+    router.refresh();
+  }
+
   return (
     <div className="space-y-4">
       <section className="card">
-        <h2 className="mb-2 text-lg font-semibold">Main Categories (Fixed)</h2>
-        <ul className="grid grid-cols-1 gap-2 md:grid-cols-2">
-          {categories.map((item) => (
-            <li key={item.id} className="rounded border border-slate-200 p-2 text-sm">
-              {item.name}
-            </li>
-          ))}
-        </ul>
+        <h2 className="mb-2 text-lg font-semibold">Main Category Manager</h2>
+        <p className="mb-3 text-sm text-slate-600">
+          Categories are now brand-specific. You can create, rename, enable, or disable categories for the active brand.
+        </p>
+
+        <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+          <input
+            className="field"
+            placeholder="Category code (e.g. OFFICE_COST)"
+            value={newCategoryCode}
+            onChange={(event) => setNewCategoryCode(event.target.value.toUpperCase())}
+          />
+          <input
+            className="field"
+            placeholder="Category name"
+            value={newCategoryName}
+            onChange={(event) => setNewCategoryName(event.target.value)}
+          />
+          <button className="btn-secondary" disabled={creatingCategory} onClick={() => void createCategory()}>
+            {creatingCategory ? "Adding…" : "Add Category"}
+          </button>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50 text-left">
+              <tr>
+                <th className="px-3 py-2">Code</th>
+                <th className="px-3 py-2">Name</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {categories.map((item) => (
+                <tr key={item.id} className="border-b">
+                  <td className="px-3 py-2">{item.code}</td>
+                  <td className="px-3 py-2">{item.name}</td>
+                  <td className="px-3 py-2">{item.is_active ? "Active" : "Disabled"}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        className="btn-secondary"
+                        disabled={Boolean(categoryToggleSubmittingId) || categoryRenameSubmitting}
+                        onClick={() => setCategoryRenameTarget(item)}
+                      >
+                        Rename
+                      </button>
+                      <button
+                        className="btn-secondary"
+                        disabled={Boolean(categoryToggleSubmittingId) || categoryRenameSubmitting}
+                        onClick={() => void toggleCategoryActive(item.id, item.is_active)}
+                      >
+                        {categoryToggleSubmittingId === item.id
+                          ? "Updating…"
+                          : item.is_active
+                            ? "Disable"
+                            : "Enable"}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section className="card">
@@ -276,6 +420,18 @@ export function CategoryManager({
         initialValue={renameTarget?.name ?? ""}
         submitting={renameSubmitting}
         onConfirm={(value) => void submitRename(value)}
+      />
+
+      <PromptDialog
+        open={Boolean(categoryRenameTarget)}
+        onOpenChange={(open) => {
+          if (!open && !categoryRenameSubmitting) setCategoryRenameTarget(null);
+        }}
+        title="Rename category"
+        label="Name"
+        initialValue={categoryRenameTarget?.name ?? ""}
+        submitting={categoryRenameSubmitting}
+        onConfirm={(value) => void submitCategoryRename(value)}
       />
     </div>
   );

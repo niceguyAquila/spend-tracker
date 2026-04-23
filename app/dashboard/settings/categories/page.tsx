@@ -6,7 +6,7 @@ export default async function CategorySettingsPage() {
   try {
     const { activeBrandId } = await requireAllowedRole(["finance", "admin"]);
     const [categories, subcategories] = await Promise.all([
-      getCategories(activeBrandId),
+      getCategories(activeBrandId, { includeInactive: true }),
       getSubcategories(activeBrandId)
     ]);
 

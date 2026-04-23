@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { handleUnauthorizedResponse } from "@/lib/client/auth-fetch";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Modal } from "@/components/ui/modal";
 
 type AllowedUser = {
   id: string;
@@ -38,10 +39,12 @@ export function AdminUsersPanel() {
   const [selectedBrandIds, setSelectedBrandIds] = useState<string[]>([]);
   const [authMethod, setAuthMethod] = useState<"password" | "magic_link">("password");
   const [password, setPassword] = useState("");
-  const [editingEmail, setEditingEmail] = useState<string | null>(null);
-  const [editingDisplayName, setEditingDisplayName] = useState("");
   const [inviteConfirmOpen, setInviteConfirmOpen] = useState(false);
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
+  const [editingUser, setEditingUser] = useState<AllowedUser | null>(null);
+  const [editDisplayName, setEditDisplayName] = useState("");
+  const [editBrandRoles, setEditBrandRoles] = useState<Record<string, "admin" | "finance" | "viewer" | "none">>({});
+  const [editSubmitting, setEditSubmitting] = useState(false);
 
   async function loadUsers() {
     setLoading(true);
@@ -126,7 +129,12 @@ export function AdminUsersPanel() {
     await loadUsers();
   }
 
-  async function updateUser(emailToUpdate: string, payload: Partial<Pick<AllowedUser, "display_name">>) {
+  async function updateUser(
+    emailToUpdate: string,
+    payload: Partial<Pick<AllowedUser, "display_name">> & {
+      brand_roles?: Array<{ brand_id: string; role: "admin" | "finance" | "viewer"; is_active: boolean }>;
+    }
+  ) {
     const response = await fetch("/api/admin/users", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -144,54 +152,47 @@ export function AdminUsersPanel() {
     await loadUsers();
   }
 
-  async function updateUserBrandRoles(
-    user: AllowedUser,
-    brandId: string,
-    roleValue: "admin" | "finance" | "viewer" | "none"
-  ) {
-    const nextRoles = user.brand_roles
-      .filter((item) => item.brand_id !== brandId)
-      .map((item) => ({ brand_id: item.brand_id, role: item.role, is_active: item.is_active }));
-    if (roleValue !== "none") {
-      nextRoles.push({ brand_id: brandId, role: roleValue, is_active: true });
-    }
-
-    const response = await fetch("/api/admin/users", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: user.email, brand_roles: nextRoles })
-    });
-    if (handleUnauthorizedResponse(response)) {
-      return;
-    }
-    const data = await response.json();
-    if (!response.ok) {
-      setMessage(data.error ?? "Failed to update brand access.");
-      return;
-    }
-    setMessage("Brand access updated.");
-    await loadUsers();
-  }
-
   function getUserBrandRole(user: AllowedUser, brandId: string): "admin" | "finance" | "viewer" | "none" {
     const roleRow = user.brand_roles.find((item) => item.brand_id === brandId && item.is_active);
     return roleRow?.role ?? "none";
   }
 
-  function startDisplayNameEdit(user: AllowedUser) {
-    setEditingEmail(user.email);
-    setEditingDisplayName(user.display_name ?? "");
+  function startUserEdit(user: AllowedUser) {
+    const nextRoles: Record<string, "admin" | "finance" | "viewer" | "none"> = {};
+    for (const brand of brands) {
+      nextRoles[brand.id] = getUserBrandRole(user, brand.id);
+    }
+    setEditingUser(user);
+    setEditDisplayName(user.display_name ?? "");
+    setEditBrandRoles(nextRoles);
   }
 
-  function cancelDisplayNameEdit() {
-    setEditingEmail(null);
-    setEditingDisplayName("");
+  function closeUserEditDialog() {
+    if (editSubmitting) return;
+    setEditingUser(null);
+    setEditDisplayName("");
+    setEditBrandRoles({});
   }
 
-  async function saveDisplayName(emailToUpdate: string) {
-    await updateUser(emailToUpdate, { display_name: editingDisplayName.trim() || null });
-    setEditingEmail(null);
-    setEditingDisplayName("");
+  async function saveUserEdit() {
+    if (!editingUser) return;
+    setEditSubmitting(true);
+
+    const nextBrandRoles = Object.entries(editBrandRoles)
+      .filter(([, roleValue]) => roleValue !== "none")
+      .map(([brandId, roleValue]) => ({
+        brand_id: brandId,
+        role: roleValue as "admin" | "finance" | "viewer",
+        is_active: true
+      }));
+
+    await updateUser(editingUser.email, {
+      display_name: editDisplayName.trim() || null,
+      brand_roles: nextBrandRoles
+    });
+
+    setEditSubmitting(false);
+    closeUserEditDialog();
   }
 
   return (
@@ -281,60 +282,23 @@ export function AdminUsersPanel() {
                 {users.map((user) => (
                   <tr key={user.id} className="border-b">
                     <td className="px-3 py-2">{user.email}</td>
-                    <td className="px-3 py-2">
-                      {editingEmail === user.email ? (
-                        <input
-                          className="field max-w-[220px]"
-                          value={editingDisplayName}
-                          placeholder="No display name"
-                          onChange={(event) => setEditingDisplayName(event.target.value)}
-                        />
-                      ) : (
-                        <span>{user.display_name ?? "-"}</span>
-                      )}
-                    </td>
+                    <td className="px-3 py-2">{user.display_name ?? "-"}</td>
                     <td className="px-3 py-2">{user.role}</td>
                     <td className="px-3 py-2">{user.is_active ? "Active" : "Inactive"}</td>
                     <td className="px-3 py-2">
-                      <div className="grid gap-1">
+                      <div className="grid gap-1 text-xs">
                         {brands.map((brand) => (
-                          <label key={brand.id} className="flex items-center justify-between gap-2 text-xs">
+                          <div key={brand.id} className="flex items-center justify-between gap-2">
                             <span>{brand.name}</span>
-                            <select
-                              className="field w-[120px]"
-                              value={getUserBrandRole(user, brand.id)}
-                              onChange={(event) =>
-                                void updateUserBrandRoles(
-                                  user,
-                                  brand.id,
-                                  event.target.value as "admin" | "finance" | "viewer" | "none"
-                                )
-                              }
-                            >
-                              <option value="none">No access</option>
-                              <option value="viewer">Viewer</option>
-                              <option value="finance">Finance</option>
-                              <option value="admin">Admin</option>
-                            </select>
-                          </label>
+                            <span className="rounded bg-slate-100 px-2 py-0.5">{getUserBrandRole(user, brand.id)}</span>
+                          </div>
                         ))}
                       </div>
                     </td>
                     <td className="px-3 py-2">
-                      {editingEmail === user.email ? (
-                        <div className="flex gap-2">
-                          <button className="btn-secondary" onClick={() => saveDisplayName(user.email)}>
-                            Save
-                          </button>
-                          <button className="btn-secondary" onClick={cancelDisplayNameEdit}>
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <button className="btn-secondary" onClick={() => startDisplayNameEdit(user)}>
-                          Edit
-                        </button>
-                      )}
+                      <button className="btn-secondary" onClick={() => startUserEdit(user)}>
+                        Edit
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -370,6 +334,68 @@ export function AdminUsersPanel() {
         }
         onConfirm={() => void executeInvite()}
       />
+
+      <Modal
+        open={Boolean(editingUser)}
+        onOpenChange={(open) => {
+          if (!open) closeUserEditDialog();
+        }}
+        title="Edit Allowed User"
+        dismissible={!editSubmitting}
+        closeOnBackdrop={!editSubmitting}
+        footer={
+          <>
+            <button type="button" className="btn-secondary" disabled={editSubmitting} onClick={closeUserEditDialog}>
+              Cancel
+            </button>
+            <button type="button" className="btn" disabled={editSubmitting} onClick={() => void saveUserEdit()}>
+              {editSubmitting ? "Saving..." : "Save"}
+            </button>
+          </>
+        }
+      >
+        {editingUser ? (
+          <div className="space-y-3">
+            <p className="text-xs text-slate-500">{editingUser.email}</p>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-slate-700">Display name</span>
+              <input
+                className="field"
+                value={editDisplayName}
+                placeholder="No display name"
+                onChange={(event) => setEditDisplayName(event.target.value)}
+                disabled={editSubmitting}
+              />
+            </label>
+            <div>
+              <p className="mb-1 text-xs font-medium text-slate-700">Brand access</p>
+              <div className="space-y-2">
+                {brands.map((brand) => (
+                  <label key={brand.id} className="flex items-center justify-between gap-2">
+                    <span className="text-xs">{brand.name}</span>
+                    <select
+                      className="field w-[140px]"
+                      value={editBrandRoles[brand.id] ?? "none"}
+                      disabled={editSubmitting}
+                      onChange={(event) =>
+                        setEditBrandRoles((current) => ({
+                          ...current,
+                          [brand.id]: event.target.value as "admin" | "finance" | "viewer" | "none"
+                        }))
+                      }
+                    >
+                      <option value="none">No access</option>
+                      <option value="viewer">Viewer</option>
+                      <option value="finance">Finance</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

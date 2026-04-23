@@ -1,14 +1,19 @@
 import { createClient } from "@/lib/supabase/server";
 import { DashboardReportRow, ExpenseCategory, ExpenseSubcategory, ExpenseWithNames } from "@/lib/types";
 
-export async function getCategories(brandId: string): Promise<ExpenseCategory[]> {
+export async function getCategories(brandId: string, options?: { includeInactive?: boolean }): Promise<ExpenseCategory[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from("expense_categories")
     .select("id, brand_id, code, name, is_active")
     .eq("brand_id", brandId)
-    .eq("is_active", true)
     .order("name");
+
+  if (!options?.includeInactive) {
+    query = query.eq("is_active", true);
+  }
+
+  const { data, error } = await query;
 
   if (error) throw error;
   return data ?? [];
