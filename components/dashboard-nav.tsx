@@ -2,7 +2,7 @@ import Link from "next/link";
 import { BrandSwitcher } from "@/components/brand-switcher";
 
 const links = [
-  { href: "/dashboard", label: "Web Spending" },
+  { href: "/dashboard/spending", label: "Web Spending" },
   { href: "/dashboard/transactions", label: "Web Transaction" },
   { href: "/dashboard/settings/categories", label: "Categories" }
 ];
