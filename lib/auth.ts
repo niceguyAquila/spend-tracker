@@ -58,7 +58,6 @@ export async function requireAllowedUser() {
   if (error || !data || !data.is_active) {
     redirect("/login?error=not-allowed");
   }
-
   return { user, role: data.role as AppRole };
 }
 

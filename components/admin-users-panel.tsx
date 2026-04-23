@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { handleUnauthorizedResponse } from "@/lib/client/auth-fetch";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
@@ -29,7 +29,7 @@ export function AdminUsersPanel() {
   const [inviteConfirmOpen, setInviteConfirmOpen] = useState(false);
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
 
-  async function loadUsers() {
+  const loadUsers = useCallback(async () => {
     setLoading(true);
     const response = await fetch("/api/admin/users");
     if (handleUnauthorizedResponse(response)) {
@@ -43,11 +43,11 @@ export function AdminUsersPanel() {
       setMessage(data.error ?? "Failed to load users.");
     }
     setLoading(false);
-  }
+  }, []);
 
   useEffect(() => {
-    loadUsers();
-  }, []);
+    void loadUsers();
+  }, [loadUsers]);
 
   function requestInvite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
