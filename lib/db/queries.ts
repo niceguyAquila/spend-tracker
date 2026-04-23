@@ -197,15 +197,13 @@ export async function getBigBookLedgerTypeByCode(
   let query = supabase
     .from("business_ledger_types")
     .select("id, code, name, is_active, sort_order, created_at, updated_at")
-    .eq("code", normalized)
-    .limit(1)
-    .maybeSingle();
+    .eq("code", normalized);
 
   if (!options?.includeInactive) {
     query = query.eq("is_active", true);
   }
 
-  const { data, error } = await query;
+  const { data, error } = await query.limit(1).maybeSingle();
   if (error) throw error;
   if (!data) return null;
 

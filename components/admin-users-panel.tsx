@@ -58,9 +58,12 @@ export function AdminUsersPanel() {
     if (response.ok) {
       setUsers(data.users ?? []);
       setBrands((data.brands ?? []).filter((item: Brand) => item.is_active));
-      if (!selectedBrandIds.length && Array.isArray(data.brands) && data.brands.length > 0) {
-        setSelectedBrandIds([data.brands[0].id]);
-      }
+      setSelectedBrandIds((current) => {
+        if (current.length || !Array.isArray(data.brands) || data.brands.length === 0) {
+          return current;
+        }
+        return [data.brands[0].id];
+      });
     } else {
       setMessage(data.error ?? "Failed to load users.");
     }
