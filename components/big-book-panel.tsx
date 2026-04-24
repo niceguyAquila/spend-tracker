@@ -480,7 +480,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
                 Actor {metric.actor_display_name}
               </p>
               <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                <div className="rounded-md bg-slate-50 p-2">
+                <div className="rounded-md bg-slate-50 p-2 text-slate-900">
                   <p className="text-xs uppercase text-slate-500">IDR</p>
                   <p
                     className={`font-medium ${getAmountColorClass(metric.totals.IDR)}`}
@@ -488,7 +488,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
                     {formatAmount(metric.totals.IDR, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
                   </p>
                 </div>
-                <div className="rounded-md bg-slate-50 p-2">
+                <div className="rounded-md bg-slate-50 p-2 text-slate-900">
                   <p className="text-xs uppercase text-slate-500">MYR</p>
                   <p
                     className={`font-medium ${getAmountColorClass(metric.totals.MYR)}`}
@@ -496,7 +496,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
                     {formatAmount(metric.totals.MYR, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
                   </p>
                 </div>
-                <div className="rounded-md bg-slate-50 p-2">
+                <div className="rounded-md bg-slate-50 p-2 text-slate-900">
                   <p className="text-xs uppercase text-slate-500">USDT</p>
                   <p
                     className={`font-medium ${getAmountColorClass(metric.totals.USDT)}`}
@@ -504,7 +504,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
                     {formatAmount(metric.totals.USDT, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
                   </p>
                 </div>
-                <div className="rounded-md bg-slate-50 p-2">
+                <div className="rounded-md bg-slate-50 p-2 text-slate-900">
                   <p className="text-xs uppercase text-slate-500">TRX</p>
                   <p
                     className={`font-medium ${getAmountColorClass(metric.totals.TRX)}`}
@@ -600,7 +600,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1200px] text-sm">
-            <thead className="border-b bg-slate-50 text-left">
+            <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
               <tr>
                 <th className="px-3 py-2">Date</th>
                 <th className="px-3 py-2">Cash Flow</th>
@@ -615,7 +615,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
             </thead>
             <tbody>
               {visibleEntries.map((row) => (
-                <tr key={row.id} className="border-b align-top">
+                <tr key={row.id} className="border-b border-[rgb(var(--border))] align-top">
                   <td className="px-3 py-2">{formatDateDisplay(row.entry_date)}</td>
                   <td className="px-3 py-2">
                     <span
@@ -712,7 +712,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
         <div
           ref={actionMenuRef}
           role="menu"
-          className="fixed z-50 w-44 rounded-md border border-slate-200 bg-white p-1 shadow-lg"
+          className="fixed z-50 w-44 rounded-md border border-slate-200 bg-white p-1 text-slate-900 shadow-lg"
           style={{ top: openActionMenu.top, left: openActionMenu.left }}
         >
           {(() => {
@@ -885,7 +885,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
               onChange={(event) => setCreateAttachmentFiles(Array.from(event.target.files ?? []))}
             />
             {createAttachmentFiles.length > 0 ? (
-              <ul className="mt-2 space-y-1 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs">
+              <ul className="mt-2 space-y-1 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-900">
                 {createAttachmentFiles.map((file, index) => (
                   <li key={`${file.name}-${file.size}-${index}`} className="flex items-center justify-between gap-2">
                     <span className="truncate">
@@ -941,7 +941,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
           </button>
         }
       >
-        <p className="whitespace-pre-wrap break-words text-sm text-slate-700">{viewingRemark?.text ?? ""}</p>
+        <p className="whitespace-pre-wrap break-words text-sm text-muted">{viewingRemark?.text ?? ""}</p>
       </Modal>
 
       <Modal
@@ -1136,7 +1136,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
               onChange={(event) => setManageAttachmentFiles(Array.from(event.target.files ?? []))}
             />
             {manageAttachmentFiles.length ? (
-              <ul className="space-y-1 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs">
+              <ul className="space-y-1 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-900">
                 {manageAttachmentFiles.map((file, index) => (
                   <li key={`${file.name}-${file.size}-${index}`}>{file.name}</li>
                 ))}
@@ -1144,7 +1144,10 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
             ) : null}
             <ul className="space-y-2">
               {manageAttachmentsEntry.attachments.map((attachment) => (
-                <li key={attachment.id} className="flex items-center justify-between gap-2 rounded-md border border-slate-200 p-2">
+                <li
+                  key={attachment.id}
+                  className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-[rgb(var(--surface))] p-2"
+                >
                   <button
                     className="truncate text-left text-xs text-blue-700 underline"
                     onClick={() => void viewAttachment(attachment.id)}

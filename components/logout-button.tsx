@@ -17,7 +17,7 @@ export function LogoutButton() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[rgb(var(--border))] bg-[rgb(var(--surface))] text-[rgb(var(--text))] transition hover:bg-[rgb(var(--surface-muted))]"
         aria-label="Sign out"
         title="Sign out"
       >

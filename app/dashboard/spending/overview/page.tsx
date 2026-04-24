@@ -177,7 +177,7 @@ export default async function SpendingOverviewPage({ searchParams }: DashboardPa
         />
 
         {rangeHasNoOverlap ? (
-          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <p className="rounded-md border border-amber-300 bg-amber-100 px-3 py-2 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
             No months fall in the selected range for the current category filters. Adjust From/To or clear the month
             range.
           </p>
@@ -206,10 +206,10 @@ export default async function SpendingOverviewPage({ searchParams }: DashboardPa
     return (
       <section className="card">
         <h2 className="mb-2 text-lg font-semibold">Dashboard setup required</h2>
-        <p className="text-sm text-slate-700">
+        <p className="text-sm text-muted">
           The app cannot read spending tables yet. Apply SQL migrations in `supabase/migrations` and refresh.
         </p>
-        <p className="mt-2 text-xs text-slate-500">Error: {errorText}</p>
+        <p className="mt-2 text-xs text-muted">Error: {errorText}</p>
       </section>
     );
   }

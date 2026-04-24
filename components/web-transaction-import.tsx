@@ -76,7 +76,7 @@ export function WebTransactionImport({ canImport, sourceSystem, sourceLabel }: P
       <BlockingOverlay active={submitting} label="Uploading and processing CSV..." />
       <div>
         <h2 className="text-lg font-semibold">Daily CSV Import</h2>
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-muted">
           Upload {sourceLabel} CSV. Duplicate transaction numbers are updated per source and brand.
         </p>
       </div>
@@ -94,17 +94,19 @@ export function WebTransactionImport({ canImport, sourceSystem, sourceLabel }: P
           </button>
         </div>
       ) : (
-        <p className="text-sm text-amber-700">Viewer role can view data, but only finance/admin can import files.</p>
+        <p className="text-sm text-amber-700 dark:text-amber-300">
+          Viewer role can view data, but only finance/admin can import files.
+        </p>
       )}
       {submitting ? (
         <div className="space-y-2">
-          <p className="text-sm text-slate-700">Uploading and processing...</p>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200" aria-hidden>
-            <div className="h-full w-1/3 animate-pulse rounded-full bg-slate-500" />
+          <p className="text-sm text-muted">Uploading and processing...</p>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-[rgb(var(--surface-muted))]" aria-hidden>
+            <div className="h-full w-1/3 animate-pulse rounded-full bg-[rgb(var(--primary))]" />
           </div>
         </div>
       ) : null}
-      {message ? <p className="text-sm text-slate-700">{message}</p> : null}
+      {message ? <p className="text-sm text-muted">{message}</p> : null}
       {errors.length ? (
         <ul className="list-inside list-disc space-y-1 text-xs text-rose-700">
           {errors.slice(0, 10).map((item) => (

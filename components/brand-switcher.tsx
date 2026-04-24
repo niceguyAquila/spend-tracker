@@ -35,11 +35,13 @@ export function BrandSwitcher({
   }
 
   return (
-    <label className={compact ? "block text-xs text-slate-600 lg:text-right" : "mb-2 block text-left text-xs text-slate-600"}>
+    <label className={compact ? "block text-xs text-muted lg:text-right" : "mb-2 block text-left text-xs text-muted"}>
       <span className={compact ? "sr-only" : ""}>Active brand</span>
       <select
         className={`${compact ? "field min-w-[220px]" : "field mt-1 min-w-[220px]"} ${
-          disabled ? "cursor-not-allowed border-slate-500 bg-slate-400 text-slate-800 opacity-100" : ""
+          disabled
+            ? "cursor-not-allowed border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-[rgb(var(--text-muted))] opacity-100"
+            : ""
         }`}
         value={activeBrandId}
         onChange={(event) => void onBrandChange(event.target.value)}

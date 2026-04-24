@@ -58,7 +58,7 @@ export function DashboardReportTable({
 
       <div className="overflow-x-auto">
         <table className="min-w-[980px] text-sm">
-          <thead className="border-b bg-slate-50 text-left">
+          <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
             <tr>
               <th className="px-3 py-2">Category</th>
               <th className="px-3 py-2">Sub-category</th>
@@ -81,7 +81,7 @@ export function DashboardReportTable({
                   {categoryRows.map((row, index) => (
                     <tr
                       key={`${row.categoryId}:${row.subcategoryId}`}
-                      className="border-b"
+                      className={`border-b border-[rgb(var(--border))] ${rowBackgroundColor ? "text-slate-900" : ""}`}
                       style={rowBackgroundColor ? { backgroundColor: rowBackgroundColor } : undefined}
                     >
                       <td className="px-3 py-2 font-medium">{index === 0 ? categoryName : ""}</td>
@@ -93,7 +93,7 @@ export function DashboardReportTable({
                       ))}
                     </tr>
                   ))}
-                  <tr className="border-b" style={{ backgroundColor: "#ffe699" }}>
+                  <tr className="border-b border-[rgb(var(--border))] text-slate-900" style={{ backgroundColor: "#ffe699" }}>
                     <td className="px-3 py-2 font-semibold" colSpan={2}>
                       {categoryName} Subtotal
                     </td>

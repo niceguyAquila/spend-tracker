@@ -206,7 +206,7 @@ export function AdminUsersPanel() {
     <div className="space-y-6">
       <section className="card">
         <h2 className="mb-3 text-lg font-semibold">Provision Allowed User</h2>
-        <p className="mb-4 text-sm text-slate-600">
+        <p className="mb-4 text-sm text-muted">
           Admin can create password users directly or send a magic-link invite. Public sign-up should remain disabled.
         </p>
         <form className="grid grid-cols-1 gap-3 lg:grid-cols-2" onSubmit={requestInvite}>
@@ -248,7 +248,7 @@ export function AdminUsersPanel() {
             required={authMethod === "password"}
           />
           <div className="lg:col-span-2">
-            <p className="mb-1 text-xs font-medium text-slate-700">Brand access</p>
+            <p className="mb-1 text-xs font-medium text-muted">Brand access</p>
             <div className="flex flex-wrap gap-2">
               {brands.map((brand) => (
                 <label key={brand.id} className="inline-flex items-center gap-2 rounded border px-2 py-1 text-xs">
@@ -271,11 +271,11 @@ export function AdminUsersPanel() {
       <section className="card">
         <h2 className="mb-3 text-lg font-semibold">Allowed Users</h2>
         {loading ? (
-          <p className="text-sm text-slate-600">Loading users...</p>
+          <p className="text-sm text-muted">Loading users...</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-[980px] text-sm">
-              <thead className="bg-slate-50 text-left">
+              <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
                 <tr>
                   <th className="px-3 py-2">Email</th>
                   <th className="px-3 py-2">Display Name</th>
@@ -287,7 +287,7 @@ export function AdminUsersPanel() {
               </thead>
               <tbody>
                 {users.map((user) => (
-                  <tr key={user.id} className="border-b">
+                  <tr key={user.id} className="border-b border-[rgb(var(--border))]">
                     <td className="px-3 py-2">{user.email}</td>
                     <td className="px-3 py-2">{user.display_name ?? "-"}</td>
                     <td className="px-3 py-2">{user.role}</td>
@@ -297,7 +297,9 @@ export function AdminUsersPanel() {
                         {brands.map((brand) => (
                           <div key={brand.id} className="flex items-center justify-between gap-2">
                             <span>{brand.name}</span>
-                            <span className="rounded bg-slate-100 px-2 py-0.5">{getUserBrandRole(user, brand.id)}</span>
+                            <span className="rounded bg-slate-100 px-2 py-0.5 text-slate-900">
+                              {getUserBrandRole(user, brand.id)}
+                            </span>
                           </div>
                         ))}
                       </div>
@@ -316,7 +318,7 @@ export function AdminUsersPanel() {
       </section>
 
       {message ? (
-        <p className="text-sm text-slate-700" role="status" aria-live="polite">
+        <p className="text-sm text-muted" role="status" aria-live="polite">
           {message}
         </p>
       ) : null}
@@ -363,9 +365,9 @@ export function AdminUsersPanel() {
       >
         {editingUser ? (
           <div className="space-y-3">
-            <p className="text-xs text-slate-500">{editingUser.email}</p>
+            <p className="text-xs text-muted">{editingUser.email}</p>
             <label className="block">
-              <span className="mb-1 block text-xs font-medium text-slate-700">Display name</span>
+              <span className="mb-1 block text-xs font-medium text-muted">Display name</span>
               <input
                 className="field"
                 value={editDisplayName}
@@ -375,7 +377,7 @@ export function AdminUsersPanel() {
               />
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs font-medium text-slate-700">Global role</span>
+              <span className="mb-1 block text-xs font-medium text-muted">Global role</span>
               <select
                 className="field"
                 value={editRole}
@@ -388,7 +390,7 @@ export function AdminUsersPanel() {
               </select>
             </label>
             <div>
-              <p className="mb-1 text-xs font-medium text-slate-700">Brand access</p>
+              <p className="mb-1 text-xs font-medium text-muted">Brand access</p>
               <div className="space-y-2">
                 {brands.map((brand) => (
                   <label key={brand.id} className="flex items-center justify-between gap-2">

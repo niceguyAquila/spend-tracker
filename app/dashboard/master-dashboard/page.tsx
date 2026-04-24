@@ -253,7 +253,7 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
 
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[980px] text-sm">
-              <thead className="border-b bg-slate-50 text-left">
+              <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
                 <tr>
                   <th className="px-3 py-2">Currency</th>
                   <th className="px-3 py-2">Source</th>
@@ -265,7 +265,7 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
               <tbody>
                 {sourceRowsByCurrency.map((row, index) => (
                   <Fragment key={row.currency}>
-                    <tr className="border-b">
+                    <tr className="border-b border-[rgb(var(--border))]">
                       <td className="px-3 py-2">{row.currency}</td>
                       <td className="px-3 py-2">Web Spending</td>
                       <td className={`px-3 py-2 ${getAmountColorClass(row.webSpending.inflow)}`}>
@@ -278,7 +278,7 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
                         {row.currency} {formatAmount(row.webSpending.net)}
                       </td>
                     </tr>
-                    <tr className="border-b">
+                    <tr className="border-b border-[rgb(var(--border))]">
                       <td className="px-3 py-2">{row.currency}</td>
                       <td className="px-3 py-2">Big Book</td>
                       <td className={`px-3 py-2 ${getAmountColorClass(row.bigBook.inflow)}`}>
@@ -291,7 +291,7 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
                         {row.currency} {formatAmount(row.bigBook.net)}
                       </td>
                     </tr>
-                    <tr className="border-b bg-slate-50">
+                    <tr className="border-b border-[rgb(var(--border))] bg-slate-50 text-slate-900">
                       <td className="px-3 py-2">{row.currency}</td>
                       <td className="px-3 py-2 font-semibold">Combined</td>
                       <td className={`px-3 py-2 font-semibold ${getAmountColorClass(row.combined.inflow)}`}>
@@ -350,7 +350,7 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
           {ledgerType ? (
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[980px] text-sm">
-                <thead className="border-b bg-slate-50 text-left">
+                <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
                   <tr>
                     <th className="px-3 py-2">Date</th>
                     <th className="px-3 py-2">Cash Flow</th>
@@ -362,7 +362,7 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
                 </thead>
                 <tbody>
                   {bigBookEntries.map((entry) => (
-                    <tr key={entry.id} className="border-b">
+                    <tr key={entry.id} className="border-b border-[rgb(var(--border))]">
                       <td className="px-3 py-2">{formatDateDisplay(entry.entry_date)}</td>
                       <td className="px-3 py-2">{entry.entry_direction === "profit" ? "In" : "Out"}</td>
                       <td className="px-3 py-2">{entry.type_name}</td>
@@ -375,7 +375,7 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
                   ))}
                   {!bigBookEntries.length ? (
                     <tr>
-                      <td className="px-3 py-4 text-center text-slate-600" colSpan={6}>
+                      <td className="px-3 py-4 text-center text-muted" colSpan={6}>
                         No Big Book entries found for this brand type mapping.
                       </td>
                     </tr>

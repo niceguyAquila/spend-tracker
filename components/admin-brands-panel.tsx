@@ -103,11 +103,11 @@ export function AdminBrandsPanel() {
       <section className="card">
         <h2 className="mb-3 text-lg font-semibold">Brands</h2>
         {loading ? (
-          <p className="text-sm text-slate-600">Loading brands...</p>
+          <p className="text-sm text-muted">Loading brands...</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-[760px] text-sm">
-              <thead className="bg-slate-50 text-left">
+              <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
                 <tr>
                   <th className="px-3 py-2">Code</th>
                   <th className="px-3 py-2">Name</th>
@@ -117,7 +117,7 @@ export function AdminBrandsPanel() {
               </thead>
               <tbody>
                 {brands.map((brand) => (
-                  <tr key={brand.id} className="border-b">
+                  <tr key={brand.id} className="border-b border-[rgb(var(--border))]">
                     <td className="px-3 py-2">{brand.code}</td>
                     <td className="px-3 py-2">{brand.name}</td>
                     <td className="px-3 py-2">{brand.is_active ? "Active" : "Inactive"}</td>
@@ -137,7 +137,7 @@ export function AdminBrandsPanel() {
           </div>
         )}
       </section>
-      {message ? <p className="text-sm text-slate-700">{message}</p> : null}
+      {message ? <p className="text-sm text-muted">{message}</p> : null}
     </div>
   );
 }

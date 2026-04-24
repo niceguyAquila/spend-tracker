@@ -73,32 +73,32 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
           }`}
         >
           <article className="card">
-            <p className="text-xs uppercase text-slate-500">Total Transactions</p>
+            <p className="text-xs uppercase text-muted">Total Transactions</p>
             <p className="mt-1 text-2xl font-semibold">{metrics.total_count.toLocaleString("id-ID")}</p>
           </article>
           <article className="card">
-            <p className="text-xs uppercase text-slate-500">Successful</p>
+            <p className="text-xs uppercase text-muted">Successful</p>
             <p className="mt-1 text-2xl font-semibold">{metrics.successful_count.toLocaleString("id-ID")}</p>
           </article>
           <article className="card">
-            <p className="text-xs uppercase text-slate-500">Success Rate</p>
+            <p className="text-xs uppercase text-muted">Success Rate</p>
             <p className="mt-1 text-2xl font-semibold">{successRate.toFixed(2)}%</p>
           </article>
           <article className="card">
-            <p className="text-xs uppercase text-slate-500">Gross Amount</p>
+            <p className="text-xs uppercase text-muted">Gross Amount</p>
             <p className={`mt-1 text-2xl font-semibold ${getAmountColorClass(metrics.gross_amount)}`}>
               Rp {formatAmount(metrics.gross_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
             </p>
           </article>
           <article className="card">
-            <p className="text-xs uppercase text-slate-500">Net (Amount - Fee)</p>
+            <p className="text-xs uppercase text-muted">Net (Amount - Fee)</p>
             <p className={`mt-1 text-2xl font-semibold ${getAmountColorClass(metrics.net_amount)}`}>
               Rp {formatAmount(metrics.net_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
             </p>
           </article>
           {sourceSystem === "payment_gateway" ? (
             <article className="card">
-              <p className="text-xs uppercase text-slate-500">Fee Amount (Abs)</p>
+              <p className="text-xs uppercase text-muted">Fee Amount (Abs)</p>
               <p className="mt-1 text-2xl font-semibold">
                 Rp {formatAmount(Math.abs(metrics.fee_amount), { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
               </p>
@@ -107,14 +107,14 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
           {sourceSystem === "backoffice" ? (
             <>
               <article className="card">
-                <p className="text-xs uppercase text-slate-500">Payin Count / Amount</p>
+                <p className="text-xs uppercase text-muted">Payin Count / Amount</p>
                 <p className="mt-1 text-2xl font-semibold">{metrics.payin_count.toLocaleString("id-ID")}</p>
                 <p className={`mt-1 text-sm ${getAmountColorClass(metrics.payin_amount)}`}>
                   Rp {formatAmount(metrics.payin_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                 </p>
               </article>
               <article className="card">
-                <p className="text-xs uppercase text-slate-500">Payout Count / Amount</p>
+                <p className="text-xs uppercase text-muted">Payout Count / Amount</p>
                 <p className="mt-1 text-2xl font-semibold">{metrics.payout_count.toLocaleString("id-ID")}</p>
                 <p className={`mt-1 text-sm ${getAmountColorClass(metrics.payout_amount)}`}>
                   Rp {formatAmount(metrics.payout_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
@@ -139,7 +139,7 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
         <section className="card overflow-x-auto">
           <h2 className="mb-3 text-lg font-semibold">Web Transaction Records ({sourceLabel})</h2>
           <table className="min-w-[960px] text-sm">
-            <thead className="border-b bg-slate-50 text-left">
+            <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
               <tr>
                 <th className="px-3 py-2">Create Time</th>
                 <th className="px-3 py-2">Transaction No</th>
@@ -154,7 +154,7 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.id} className="border-b">
+                <tr key={row.id} className="border-b border-[rgb(var(--border))]">
                   <td className="px-3 py-2">{formatDateTimeDisplay(row.create_time)}</td>
                   <td className="px-3 py-2 font-mono text-xs">{row.external_txn_no}</td>
                   <td className="px-3 py-2">{row.canonical_status}</td>
@@ -175,7 +175,7 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
               ))}
               {!rows.length ? (
                 <tr>
-                  <td className="px-3 py-4 text-center text-slate-600" colSpan={9}>
+                  <td className="px-3 py-4 text-center text-muted" colSpan={9}>
                     No web transactions match current filters.
                   </td>
                 </tr>
@@ -201,10 +201,10 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
     return (
       <section className="card">
         <h2 className="mb-2 text-lg font-semibold">Web Transactions setup required</h2>
-        <p className="text-sm text-slate-700">
+        <p className="text-sm text-muted">
           The app cannot read web transactions yet. Apply SQL migrations and check your Supabase env keys.
         </p>
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-xs text-muted">
           Error: {errorText}
         </p>
       </section>

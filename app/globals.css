@@ -2,24 +2,77 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  :root {
+    color-scheme: light;
+    --bg: 248 250 252;
+    --surface: 255 255 255;
+    --surface-muted: 241 245 249;
+    --text: 15 23 42;
+    --text-muted: 71 85 105;
+    --border: 203 213 225;
+    --primary: 59 130 246;
+    --primary-strong: 79 70 229;
+    --focus: 96 165 250;
+  }
+
+  .dark {
+    color-scheme: dark;
+    --bg: 11 18 32;
+    --surface: 17 24 39;
+    --surface-muted: 30 41 59;
+    --text: 229 231 235;
+    --text-muted: 148 163 184;
+    --border: 71 85 105;
+    --primary: 96 165 250;
+    --primary-strong: 129 140 248;
+    --focus: 125 211 252;
+  }
+
+  body {
+    @apply antialiased;
+    background-color: rgb(var(--bg));
+    color: rgb(var(--text));
+  }
+}
+
+@layer utilities {
+  .text-muted {
+    color: rgb(var(--text-muted));
+  }
+}
+
 body {
-  @apply bg-slate-50 text-slate-900;
+  @apply bg-[rgb(var(--bg))] text-[rgb(var(--text))];
 }
 
 .card {
-  @apply rounded-lg border border-slate-200 bg-white p-4 shadow-sm lg:p-5;
+  @apply rounded-xl border p-4 shadow-sm lg:p-5;
+  border-color: rgb(var(--border));
+  background: linear-gradient(140deg, rgb(var(--surface)) 0%, rgba(var(--surface), 0.98) 60%, rgba(var(--primary), 0.05) 100%);
 }
 
 .field {
-  @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none;
+  @apply w-full rounded-md border bg-[rgb(var(--surface))] px-3 py-2 text-sm text-[rgb(var(--text))] focus:outline-none;
+  border-color: rgb(var(--border));
+}
+
+.field:focus {
+  box-shadow: 0 0 0 3px rgba(var(--focus), 0.25);
 }
 
 .btn {
-  @apply inline-flex items-center justify-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60;
+  @apply inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60;
+  background-color: rgb(var(--primary));
+}
+
+.btn:hover {
+  background-color: rgb(var(--primary-strong));
 }
 
 .btn-secondary {
-  @apply inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60;
+  @apply inline-flex items-center justify-center rounded-md border bg-[rgb(var(--surface))] px-4 py-2 text-sm font-medium text-[rgb(var(--text))] transition-colors hover:bg-[rgb(var(--surface-muted))] disabled:cursor-not-allowed disabled:opacity-60;
+  border-color: rgb(var(--border));
 }
 
 .btn-sm {

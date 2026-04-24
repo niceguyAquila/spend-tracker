@@ -58,7 +58,7 @@ export function WebTransactionsFilters({
 
   return (
     <form action={applyFilters} className="card grid grid-cols-1 gap-3 lg:grid-cols-5" aria-busy={isPending}>
-      <label className="text-sm text-slate-700">
+      <label className="text-sm text-muted">
         <span className="mb-1 block">Status</span>
         <select name="status" defaultValue={selectedStatus ?? ""} className="field" disabled={isPending}>
           <option value="">All status</option>
@@ -69,7 +69,7 @@ export function WebTransactionsFilters({
           ))}
         </select>
       </label>
-      <label className="text-sm text-slate-700">
+      <label className="text-sm text-muted">
         <span className="mb-1 block">Type</span>
         <select name="canonicalType" defaultValue={selectedCanonicalType ?? ""} className="field" disabled={isPending}>
           <option value="">All types</option>
@@ -80,7 +80,7 @@ export function WebTransactionsFilters({
           ))}
         </select>
       </label>
-      <label className="text-sm text-slate-700">
+      <label className="text-sm text-muted">
         <span className="mb-1 block">Merchant</span>
         <select name="merchantName" defaultValue={selectedMerchantName ?? ""} className="field" disabled={isPending}>
           <option value="">All merchants</option>
@@ -91,11 +91,11 @@ export function WebTransactionsFilters({
           ))}
         </select>
       </label>
-      <label className="text-sm text-slate-700">
+      <label className="text-sm text-muted">
         <span className="mb-1 block">Date From</span>
         <input name="dateFrom" type="date" defaultValue={selectedDateFrom ?? ""} className="field" disabled={isPending} />
       </label>
-      <label className="text-sm text-slate-700">
+      <label className="text-sm text-muted">
         <span className="mb-1 block">Date To</span>
         <input name="dateTo" type="date" defaultValue={selectedDateTo ?? ""} className="field" disabled={isPending} />
       </label>
