@@ -97,6 +97,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
   const [entrySubmitting, setEntrySubmitting] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
   const [pendingEntryConfirm, setPendingEntryConfirm] = useState(false);
   const [createEntryMode, setCreateEntryMode] = useState<CreateEntryMode>("create");
   const [createAttachmentFiles, setCreateAttachmentFiles] = useState<File[]>([]);
@@ -115,6 +116,9 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
   });
   const [pendingDeleteEntry, setPendingDeleteEntry] = useState<BigBookEntry | null>(null);
   const [entryDeleting, setEntryDeleting] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importSubmitting, setImportSubmitting] = useState(false);
+  const [importErrors, setImportErrors] = useState<string[]>([]);
   const [manageAttachmentsEntry, setManageAttachmentsEntry] = useState<BigBookEntry | null>(null);
   const [manageAttachmentFiles, setManageAttachmentFiles] = useState<File[]>([]);
   const [pendingUploadEntryId, setPendingUploadEntryId] = useState<string | null>(null);
@@ -178,6 +182,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
   const criticalPending =
     entrySubmitting ||
     entryDeleting ||
+    importSubmitting ||
     uploadSubmitting ||
     attachmentDeleting;
 
@@ -297,6 +302,51 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
       setError("Failed to delete ledger entry due to a network error.");
     } finally {
       setEntryDeleting(false);
+    }
+  }
+
+  async function importEntries() {
+    if (!importFile) {
+      setError("Choose a CSV file first.");
+      return;
+    }
+
+    setImportSubmitting(true);
+    setError(null);
+    setMessage(null);
+    setImportErrors([]);
+    try {
+      const formData = new FormData();
+      formData.append("file", importFile);
+      const response = await fetch("/api/big-book/import", {
+        method: "POST",
+        body: formData
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        if (Array.isArray(data?.errors)) {
+          const list = data.errors
+            .filter((item: unknown): item is string => typeof item === "string" && item.trim().length > 0)
+            .slice(0, 50);
+          if (list.length) {
+            setImportErrors(list);
+            setError(data.message ?? "Import failed due to validation errors.");
+            return;
+          }
+        }
+        setError(data.error ?? data.message ?? "Failed to import CSV.");
+        return;
+      }
+
+      const imported = typeof data.processed === "number" ? data.processed : 0;
+      setImportFile(null);
+      setMessage(`Imported ${imported} ledger row${imported === 1 ? "" : "s"} successfully.`);
+      triggerRefresh();
+    } catch {
+      setError("Failed to import CSV due to a network error.");
+    } finally {
+      setImportSubmitting(false);
     }
   }
 
@@ -507,9 +557,14 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
               Add operational spending/profit records from a dedicated popup form.
             </p>
           </div>
-          <button className="btn" onClick={() => setCreateModalOpen(true)} disabled={criticalPending}>
-            New Ledger Entry
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button className="btn-secondary" onClick={() => setImportModalOpen(true)} disabled={criticalPending}>
+              Import CSV
+            </button>
+            <button className="btn" onClick={() => setCreateModalOpen(true)} disabled={criticalPending}>
+              New Ledger Entry
+            </button>
+          </div>
         </div>
       </section>
 
@@ -794,6 +849,76 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
           })()}
         </div>
       ) : null}
+
+      <Modal
+        open={importModalOpen}
+        onOpenChange={(open) => {
+          if (!importSubmitting) {
+            setImportModalOpen(open);
+            if (!open) {
+              setImportErrors([]);
+              setImportFile(null);
+            }
+          }
+        }}
+        title="Bulk Import (CSV)"
+        dismissible={!importSubmitting}
+        closeOnBackdrop={!importSubmitting}
+        footer={
+          <>
+            <button
+              className="btn-secondary"
+              disabled={importSubmitting}
+              onClick={() => {
+                setImportModalOpen(false);
+                setImportErrors([]);
+                setImportFile(null);
+              }}
+            >
+              Close
+            </button>
+            <button className="btn" onClick={() => void importEntries()} disabled={importSubmitting || !importFile}>
+              {importSubmitting ? "Importing..." : "Import CSV"}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <div>
+              <p className="text-sm text-slate-600">
+                Download the template, fill multiple rows, then import all at once.
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Type name and actor name must match currently available values in Big Book.
+              </p>
+            </div>
+          </div>
+          <label className="text-sm text-slate-700">
+            <span className="mb-1 block">CSV File</span>
+            <input
+              className="field"
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(event) => {
+                const nextFile = event.target.files?.[0] ?? null;
+                setImportFile(nextFile);
+                setImportErrors([]);
+              }}
+            />
+          </label>
+          {importErrors.length ? (
+            <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+              <p className="font-medium">Import validation errors:</p>
+              <ul className="mt-1 list-disc pl-5">
+                {importErrors.map((item, index) => (
+                  <li key={`${item}-${index}`}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      </Modal>
 
       <Modal
         open={createModalOpen}
