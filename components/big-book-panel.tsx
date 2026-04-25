@@ -119,6 +119,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importSubmitting, setImportSubmitting] = useState(false);
   const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [importSuccessCount, setImportSuccessCount] = useState<number | null>(null);
   const [manageAttachmentsEntry, setManageAttachmentsEntry] = useState<BigBookEntry | null>(null);
   const [manageAttachmentFiles, setManageAttachmentFiles] = useState<File[]>([]);
   const [pendingUploadEntryId, setPendingUploadEntryId] = useState<string | null>(null);
@@ -342,6 +343,8 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
       const imported = typeof data.processed === "number" ? data.processed : 0;
       setImportFile(null);
       setMessage(`Imported ${imported} ledger row${imported === 1 ? "" : "s"} successfully.`);
+      setImportSuccessCount(imported);
+      setImportModalOpen(false);
       triggerRefresh();
     } catch {
       setError("Failed to import CSV due to a network error.");
@@ -918,6 +921,23 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
             </div>
           ) : null}
         </div>
+      </Modal>
+
+      <Modal
+        open={importSuccessCount !== null}
+        onOpenChange={(open) => {
+          if (!open) setImportSuccessCount(null);
+        }}
+        title="Import Completed"
+        footer={
+          <button className="btn" onClick={() => setImportSuccessCount(null)}>
+            OK
+          </button>
+        }
+      >
+        <p className="text-sm text-slate-700">
+          Imported {importSuccessCount ?? 0} ledger row{(importSuccessCount ?? 0) === 1 ? "" : "s"} successfully.
+        </p>
       </Modal>
 
       <Modal

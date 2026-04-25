@@ -26,6 +26,7 @@ export async function POST(request: Request) {
   const { data, error } = await supabase
     .from("business_ledger_entries")
     .insert({
+      brand_id: authCheck.activeBrandId,
       entry_date: payload.entry_date,
       entry_direction: payload.entry_direction,
       entry_type_id: payload.entry_type_id,
