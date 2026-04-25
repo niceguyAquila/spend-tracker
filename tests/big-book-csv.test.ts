@@ -16,6 +16,18 @@ describe("parseBigBookCsv", () => {
     expect(result.rows[1].remark).toBeNull();
   });
 
+  it("parses dates in YYYY-MMM-DD format", () => {
+    const csv = [
+      "entry_date,entry_direction,type_name,explanation,amount,currency_code,remark,actor_name",
+      "2024-Nov-01,spending,Operational,Register fee,104517,MYR,,JB"
+    ].join("\n");
+
+    const result = parseBigBookCsv(csv);
+    expect(result.errors).toEqual([]);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].entry_date).toBe("2024-11-01");
+  });
+
   it("returns error for missing headers", () => {
     const csv = [
       "entry_date,entry_direction,explanation,amount,currency_code,remark,actor_name",

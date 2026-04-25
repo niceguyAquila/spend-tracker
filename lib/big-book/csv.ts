@@ -82,12 +82,38 @@ function normalizeOptional(value: string | undefined) {
 }
 
 function parseDate(value: string): string | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const date = new Date(`${value}T00:00:00Z`);
+  const isoCandidate = value.trim();
+  const monthNameCandidate = value.trim().match(/^(\d{4})-([A-Za-z]{3})-(\d{2})$/);
+  let normalized = isoCandidate;
+
+  if (monthNameCandidate) {
+    const monthMap: Record<string, string> = {
+      jan: "01",
+      feb: "02",
+      mar: "03",
+      apr: "04",
+      may: "05",
+      jun: "06",
+      jul: "07",
+      aug: "08",
+      sep: "09",
+      oct: "10",
+      nov: "11",
+      dec: "12"
+    };
+    const [, year, monthShortRaw, day] = monthNameCandidate;
+    const monthShort = monthShortRaw.toLowerCase();
+    const month = monthMap[monthShort];
+    if (!month) return null;
+    normalized = `${year}-${month}-${day}`;
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return null;
+  const date = new Date(`${normalized}T00:00:00Z`);
   if (Number.isNaN(date.getTime())) return null;
-  const [year, month, day] = value.split("-").map(Number);
+  const [year, month, day] = normalized.split("-").map(Number);
   if (date.getUTCFullYear() !== year || date.getUTCMonth() + 1 !== month || date.getUTCDate() !== day) return null;
-  return value;
+  return normalized;
 }
 
 function parseAmount(value: string): number | null {
@@ -138,7 +164,7 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
 
     const entryDate = parseDate(entryDateRaw);
     if (!entryDate) {
-      errors.push(`Row ${lineNumber}: entry_date must be in YYYY-MM-DD format.`);
+      errors.push(`Row ${lineNumber}: entry_date must use YYYY-MM-DD or YYYY-MMM-DD format.`);
       continue;
     }
 
