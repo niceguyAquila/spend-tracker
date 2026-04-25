@@ -123,10 +123,13 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
   const [pendingDeleteAttachmentId, setPendingDeleteAttachmentId] = useState<string | null>(null);
   const [attachmentDeleting, setAttachmentDeleting] = useState(false);
   const [viewingRemark, setViewingRemark] = useState<{ entryId: string; text: string } | null>(null);
+  const [entries, setEntries] = useState<BigBookEntry[]>(initialEntries);
 
   const activeTypes = useMemo(() => initialTypes.filter((item) => item.is_active), [initialTypes]);
   const currencies: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR", "USDT", "TRX"];
   const today = new Date().toISOString().slice(0, 10);
+  const typeById = useMemo(() => new Map(initialTypes.map((type) => [type.id, type])), [initialTypes]);
+  const actorById = useMemo(() => new Map(initialActors.map((actor) => [actor.id, actor])), [initialActors]);
 
   const [entryForm, setEntryForm] = useState<EntryFormState>({
     entry_date: today,
@@ -141,7 +144,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
 
   const visibleEntries = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    return initialEntries.filter((row) => {
+    return entries.filter((row) => {
       if (dateFrom && row.entry_date < dateFrom) return false;
       if (dateTo && row.entry_date > dateTo) return false;
       if (typeFilter && row.entry_type_id !== typeFilter) return false;
@@ -151,7 +154,26 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
       if (!normalized) return true;
       return [row.explanation, row.remark ?? "", row.type_name, row.actor_display_name].join(" ").toLowerCase().includes(normalized);
     });
-  }, [initialEntries, query, dateFrom, dateTo, typeFilter, currencyFilter, actorFilter, directionFilter]);
+  }, [entries, query, dateFrom, dateTo, typeFilter, currencyFilter, actorFilter, directionFilter]);
+
+  const actorCurrencyMetrics = useMemo(() => {
+    const totalsByActor = new Map<string, BigBookActorCurrencyMetrics>();
+    for (const row of entries) {
+      const actor = actorById.get(row.responsible_actor_id);
+      const current =
+        totalsByActor.get(row.responsible_actor_id) ??
+        ({
+          actor_id: row.responsible_actor_id,
+          actor_code: actor?.actor_code ?? "A",
+          actor_display_name: actor?.display_name ?? row.actor_display_name,
+          totals: { IDR: 0, MYR: 0, USDT: 0, TRX: 0 }
+        } as BigBookActorCurrencyMetrics);
+      const signedAmount = row.entry_direction === "spending" ? -Math.abs(row.amount) : Math.abs(row.amount);
+      current.totals[row.currency_code] += signedAmount;
+      totalsByActor.set(row.responsible_actor_id, current);
+    }
+    return [...totalsByActor.values()].sort((a, b) => a.actor_code.localeCompare(b.actor_code));
+  }, [entries, actorById]);
 
   const criticalPending =
     entrySubmitting ||
@@ -324,8 +346,31 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
       setMessage("Ledger entry updated.");
       setPendingEditConfirm(false);
       setEditModalOpen(false);
+      const selectedType = typeById.get(editForm.entry_type_id);
+      const selectedActor = actorById.get(editForm.responsible_actor_id);
+      setEntries((prev) =>
+        prev.map((entry) =>
+          entry.id === editingEntryId
+            ? {
+                ...entry,
+                entry_date: editForm.entry_date,
+                entry_direction: editForm.entry_direction,
+                entry_type_id: editForm.entry_type_id,
+                explanation: editForm.explanation.trim(),
+                amount: amountValue,
+                currency_code: editForm.currency_code,
+                remark: editForm.remark.trim() || null,
+                responsible_actor_id: editForm.responsible_actor_id,
+                type_name: selectedType?.name ?? entry.type_name,
+                type_code: selectedType?.code ?? entry.type_code,
+                actor_code: selectedActor?.actor_code ?? entry.actor_code,
+                actor_display_name: selectedActor?.display_name ?? entry.actor_display_name,
+                updated_at: new Date().toISOString()
+              }
+            : entry
+        )
+      );
       setEditingEntryId(null);
-      triggerRefresh();
     } catch {
       setError("Failed to update ledger entry due to a network error.");
     } finally {
@@ -474,7 +519,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
           Total amount grouped by actor and currency across all Big Book records.
         </p>
         <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
-          {initialActorMetrics.map((metric) => (
+          {actorCurrencyMetrics.map((metric) => (
             <article key={metric.actor_id} className="rounded-md border border-slate-200 p-4">
               <p className="font-semibold">
                 Actor {metric.actor_display_name}
@@ -515,7 +560,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
               </div>
             </article>
           ))}
-          {!initialActorMetrics.length ? (
+          {!actorCurrencyMetrics.length ? (
             <p className="text-sm text-slate-600">No actor totals yet.</p>
           ) : null}
         </div>
@@ -716,7 +761,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
           style={{ top: openActionMenu.top, left: openActionMenu.left }}
         >
           {(() => {
-            const targetRow = initialEntries.find((entry) => entry.id === openActionMenu.id);
+            const targetRow = entries.find((entry) => entry.id === openActionMenu.id);
             if (!targetRow) return null;
             return (
               <>

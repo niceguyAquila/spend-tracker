@@ -33,6 +33,13 @@ export function Modal({
   const autoTitleId = useId();
   const titleId = titleIdProp ?? autoTitleId;
   const panelRef = useRef<HTMLDivElement>(null);
+  const dismissibleRef = useRef(dismissible);
+  const onOpenChangeRef = useRef(onOpenChange);
+
+  useEffect(() => {
+    dismissibleRef.current = dismissible;
+    onOpenChangeRef.current = onOpenChange;
+  }, [dismissible, onOpenChange]);
 
   useEffect(() => {
     if (!open) return;
@@ -40,9 +47,9 @@ export function Modal({
     document.body.style.overflow = "hidden";
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && dismissible) {
+      if (e.key === "Escape" && dismissibleRef.current) {
         e.preventDefault();
-        onOpenChange(false);
+        onOpenChangeRef.current(false);
       }
     };
     document.addEventListener("keydown", onKeyDown);
@@ -57,7 +64,7 @@ export function Modal({
       document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = prevOverflow;
     };
-  }, [open, onOpenChange, initialFocusRef, dismissible]);
+  }, [open, initialFocusRef]);
 
   if (!open || typeof document === "undefined") {
     return null;
@@ -70,7 +77,7 @@ export function Modal({
         className="absolute inset-0 bg-black/40"
         aria-label="Close dialog"
         onClick={() => {
-          if (closeOnBackdrop && dismissible) onOpenChange(false);
+          if (closeOnBackdrop && dismissibleRef.current) onOpenChangeRef.current(false);
         }}
       />
       <div
