@@ -1,5 +1,3 @@
-import { redirect } from "next/navigation";
-import { requireAllowedUser } from "@/lib/auth";
 import {
   getBigBookActors,
   getBigBookActorCurrencyMetrics,
@@ -11,16 +9,11 @@ import { BigBookSubNav } from "@/components/big-book-sub-nav";
 
 export default async function BigBookPage() {
   try {
-    const { globalRole, activeBrandId } = await requireAllowedUser();
-    if (globalRole !== "admin") {
-      redirect("/dashboard");
-    }
-
     const [types, actors, entries, actorMetrics] = await Promise.all([
       getBigBookLedgerTypes({ includeInactive: true }),
       getBigBookActors(),
-      getBigBookEntries(activeBrandId, { limit: 1000 }),
-      getBigBookActorCurrencyMetrics(activeBrandId)
+      getBigBookEntries({ limit: 1000 }),
+      getBigBookActorCurrencyMetrics()
     ]);
 
     return (

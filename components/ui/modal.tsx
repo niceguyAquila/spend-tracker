@@ -79,14 +79,14 @@ export function Modal({
         aria-modal="true"
         aria-labelledby={titleId}
         {...(descriptionId ? { "aria-describedby": descriptionId } : {})}
-        className="card relative z-10 max-h-[90vh] w-full max-w-md overflow-y-auto shadow-lg"
+        className="relative z-10 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4 shadow-lg lg:p-5"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 id={titleId} className="mb-3 text-lg font-semibold">
           {title}
         </h2>
         <div className="text-sm text-slate-700">{children}</div>
-        {footer ? <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-4">{footer}</div> : null}
+        {footer ? <div className="mt-4 flex flex-wrap justify-end gap-2 pt-4">{footer}</div> : null}
       </div>
     </div>,
     document.body

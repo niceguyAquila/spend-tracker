@@ -24,11 +24,10 @@ export async function GET(request: Request) {
     .select(
       `
       id, storage_path, file_name,
-      business_ledger_entries!inner(id, brand_id)
+      business_ledger_entries!inner(id)
       `
     )
     .eq("id", parsed.data.id)
-    .eq("business_ledger_entries.brand_id", authCheck.activeBrandId)
     .maybeSingle();
 
   if (error || !row) {

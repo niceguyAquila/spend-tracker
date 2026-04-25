@@ -34,7 +34,7 @@ export async function POST(request: Request) {
   }
 
   const safeName = sanitizeFileName(file.name || "attachment");
-  const storagePath = `${authCheck.activeBrandId}/${ledgerEntryId}/${randomUUID()}-${safeName}`;
+  const storagePath = `entries/${ledgerEntryId}/${randomUUID()}-${safeName}`;
   const createInput = bigBookAttachmentCreateSchema.safeParse({
     ledger_entry_id: ledgerEntryId,
     storage_path: storagePath,
@@ -100,11 +100,10 @@ export async function DELETE(request: Request) {
     .select(
       `
       id, storage_path, ledger_entry_id,
-      business_ledger_entries!inner(id, brand_id)
+      business_ledger_entries!inner(id)
       `
     )
     .eq("id", parsed.data.id)
-    .eq("business_ledger_entries.brand_id", authCheck.activeBrandId)
     .maybeSingle();
 
   if (fetchError || !row) {

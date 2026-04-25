@@ -1,14 +1,7 @@
-import { redirect } from "next/navigation";
 import { BigBookSubNav } from "@/components/big-book-sub-nav";
 import { BigBookExchangeHelperPanel } from "@/components/big-book-exchange-helper-panel";
-import { requireAllowedUser } from "@/lib/auth";
 
 export default async function BigBookExchangeHelperPage() {
-  const { globalRole } = await requireAllowedUser();
-  if (globalRole !== "admin") {
-    redirect("/dashboard");
-  }
-
   return (
     <div className="space-y-6">
       <section className="card">

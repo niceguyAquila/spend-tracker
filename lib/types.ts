@@ -173,7 +173,6 @@ export type BigBookAttachment = {
 
 export type BigBookEntry = {
   id: string;
-  brand_id: string;
   entry_date: string;
   entry_direction: "spending" | "profit";
   entry_type_id: string;

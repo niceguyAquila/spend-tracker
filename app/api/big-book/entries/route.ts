@@ -26,7 +26,6 @@ export async function POST(request: Request) {
   const { data, error } = await supabase
     .from("business_ledger_entries")
     .insert({
-      brand_id: authCheck.activeBrandId,
       entry_date: payload.entry_date,
       entry_direction: payload.entry_direction,
       entry_type_id: payload.entry_type_id,
@@ -72,8 +71,7 @@ export async function PATCH(request: Request) {
       remark: payload.remark || null,
       updated_by: authCheck.user.id
     })
-    .eq("id", id)
-    .eq("brand_id", authCheck.activeBrandId);
+    .eq("id", id);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
@@ -101,8 +99,7 @@ export async function DELETE(request: Request) {
   const { error } = await supabase
     .from("business_ledger_entries")
     .delete()
-    .eq("id", id)
-    .eq("brand_id", authCheck.activeBrandId);
+    .eq("id", id);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });

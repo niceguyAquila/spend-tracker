@@ -241,7 +241,7 @@ export async function getBigBookAllowedUsers(): Promise<BigBookAllowedUserOption
   }));
 }
 
-export async function getBigBookEntries(brandId: string, filters?: {
+export async function getBigBookEntries(filters?: {
   typeId?: string;
   currencyCode?: string;
   direction?: "spending" | "profit";
@@ -255,13 +255,12 @@ export async function getBigBookEntries(brandId: string, filters?: {
     .from("business_ledger_entries")
     .select(
       `
-      id, brand_id, entry_date, entry_direction, entry_type_id, explanation, amount, currency_code, remark, responsible_actor_id, created_by, updated_by, created_at, updated_at,
+      id, entry_date, entry_direction, entry_type_id, explanation, amount, currency_code, remark, responsible_actor_id, created_by, updated_by, created_at, updated_at,
       business_ledger_types(id, code, name),
       big_book_actors(id, actor_code, display_name),
       business_ledger_attachments(id, ledger_entry_id, storage_path, file_name, mime_type, file_size, uploaded_by, created_at)
     `
     )
-    .eq("brand_id", brandId)
     .order("entry_date", { ascending: false })
     .order("created_at", { ascending: false });
 
@@ -310,7 +309,6 @@ export async function getBigBookEntries(brandId: string, filters?: {
 
     return {
       id: row.id,
-      brand_id: row.brand_id,
       entry_date: row.entry_date,
       entry_direction: row.entry_direction as "spending" | "profit",
       entry_type_id: row.entry_type_id,
@@ -337,9 +335,7 @@ export async function getBigBookEntries(brandId: string, filters?: {
   });
 }
 
-export async function getBigBookActorCurrencyMetrics(
-  brandId: string
-): Promise<BigBookActorCurrencyMetrics[]> {
+export async function getBigBookActorCurrencyMetrics(): Promise<BigBookActorCurrencyMetrics[]> {
   const supabase = await createClient();
   const pageSize = 1000;
   let offset = 0;
@@ -360,7 +356,6 @@ export async function getBigBookActorCurrencyMetrics(
         big_book_actors(actor_code, display_name)
       `
       )
-      .eq("brand_id", brandId)
       .order("created_at", { ascending: false })
       .range(offset, offset + pageSize - 1);
 
@@ -425,7 +420,6 @@ export function buildBigBookTypeMonthlyCurrencySummary(
 }
 
 export async function getBigBookTypeMonthlyCurrencySummary(
-  brandId: string,
   typeId: string,
   year: number
 ): Promise<BigBookMonthlyCurrencyRow[]> {
@@ -435,7 +429,6 @@ export async function getBigBookTypeMonthlyCurrencySummary(
   const { data, error } = await supabase
     .from("business_ledger_entries")
     .select("entry_date, entry_direction, currency_code, amount")
-    .eq("brand_id", brandId)
     .eq("entry_type_id", typeId)
     .gte("entry_date", startDate)
     .lte("entry_date", endDate);

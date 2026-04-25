@@ -140,7 +140,7 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
     const [spendingRows, bigBookEntries] = await Promise.all([
       getDashboardReportRows({ brandId: selectedBrand.id }),
       ledgerType
-        ? getBigBookEntries(selectedBrand.id, {
+        ? getBigBookEntries({
             typeId: ledgerType.id,
             dateFrom: dateFrom ?? undefined,
             dateTo: dateTo ?? undefined,

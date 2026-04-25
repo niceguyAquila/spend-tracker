@@ -1,15 +1,8 @@
-import { redirect } from "next/navigation";
-import { requireAllowedUser } from "@/lib/auth";
 import { getBigBookActors, getBigBookAllowedUsers, getBigBookLedgerTypes } from "@/lib/db/queries";
 import { BigBookSettingsPanel } from "@/components/big-book-settings-panel";
 import { BigBookSubNav } from "@/components/big-book-sub-nav";
 
 export default async function BigBookSettingsPage() {
-  const { globalRole } = await requireAllowedUser();
-  if (globalRole !== "admin") {
-    redirect("/dashboard");
-  }
-
   const [types, actors, allowedUsers] = await Promise.all([
     getBigBookLedgerTypes({ includeInactive: true }),
     getBigBookActors(),

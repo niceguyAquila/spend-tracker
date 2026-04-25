@@ -1,19 +1,12 @@
-import { redirect } from "next/navigation";
 import { BigBookIndividualTypeLedgerPanel } from "@/components/big-book-individual-type-ledger-panel";
 import { BigBookSubNav } from "@/components/big-book-sub-nav";
-import { requireAllowedUser } from "@/lib/auth";
 import { getBigBookEntries, getBigBookLedgerTypes } from "@/lib/db/queries";
 
 export default async function IndividualTypeLedgerPage() {
   try {
-    const { globalRole, activeBrandId } = await requireAllowedUser();
-    if (globalRole !== "admin") {
-      redirect("/dashboard");
-    }
-
     const [types, entries] = await Promise.all([
       getBigBookLedgerTypes({ includeInactive: true }),
-      getBigBookEntries(activeBrandId, { limit: 3000 })
+      getBigBookEntries({ limit: 3000 })
     ]);
 
     return (
