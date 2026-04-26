@@ -115,17 +115,17 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
       </section>
 
       <section className="card">
-        <h3 className="text-base font-semibold">Type Records With Filters</h3>
+        <h3 className="text-base font-semibold text-[rgb(var(--text))]">Type Records With Filters</h3>
         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
-          <label className="text-sm text-slate-700">
+          <label className="text-sm text-muted">
             <span className="mb-1 block">Date From</span>
             <input className="field w-full" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
           </label>
-          <label className="text-sm text-slate-700">
+          <label className="text-sm text-muted">
             <span className="mb-1 block">Date To</span>
             <input className="field w-full" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
           </label>
-          <label className="text-sm text-slate-700">
+          <label className="text-sm text-muted">
             <span className="mb-1 block">Currency</span>
             <select className="field w-full" value={currencyFilter} onChange={(event) => setCurrencyFilter(event.target.value)}>
               <option value="">All currencies</option>
@@ -135,7 +135,7 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
               <option value="TRX">TRX</option>
             </select>
           </label>
-          <label className="text-sm text-slate-700">
+          <label className="text-sm text-muted">
             <span className="mb-1 block">Cash Flow</span>
             <select className="field w-full" value={directionFilter} onChange={(event) => setDirectionFilter(event.target.value)}>
               <option value="">All directions</option>
@@ -147,7 +147,7 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
 
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[900px] text-sm">
-            <thead className="border-b bg-slate-50 text-left">
+            <thead className="border-b text-left bg-[rgb(var(--surface-muted))] text-[rgb(var(--text))]">
               <tr>
                 <th className="px-3 py-2">Date</th>
                 <th className="px-3 py-2">Cash Flow</th>
@@ -174,7 +174,7 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
               ))}
               {!visibleEntries.length ? (
                 <tr>
-                  <td className="px-3 py-4 text-center text-slate-600" colSpan={6}>
+                  <td className="px-3 py-4 text-center text-muted" colSpan={6}>
                     No records found for this type and filters.
                   </td>
                 </tr>
@@ -195,8 +195,8 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
 
       <section className="card">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-base font-semibold">Monthly Type Summary</h3>
-          <label className="text-sm text-slate-700">
+          <h3 className="text-base font-semibold text-[rgb(var(--text))]">Monthly Type Summary</h3>
+          <label className="text-sm text-muted">
             <span className="mr-2">Year</span>
             <select
               className="field inline-block w-auto"
@@ -213,7 +213,7 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[680px] text-sm">
-            <thead className="border-b bg-slate-100 text-left">
+            <thead className="border-b text-left bg-[rgb(var(--surface-muted))] text-[rgb(var(--text))]">
               <tr>
                 <th className="px-3 py-2">Month</th>
                 <th className="px-3 py-2">IDR</th>
@@ -222,7 +222,7 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
               </tr>
             </thead>
             <tbody>
-              <tr className="border-b bg-slate-50 font-semibold">
+              <tr className="border-b font-semibold bg-[rgb(var(--surface-muted))/0.65] text-[rgb(var(--text))]">
                 <td className="px-3 py-2">Total ({selectedYear})</td>
                 <td className={`px-3 py-2 ${getAmountColorClass(grandTotals.IDR)}`}>
                   {formatSignedAmount(grandTotals.IDR, "IDR")}
