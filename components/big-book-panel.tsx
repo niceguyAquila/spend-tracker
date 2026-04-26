@@ -201,10 +201,10 @@ export function BigBookPanel({
 
   // Race-safe request token: ignore stale fetch responses.
   const loadRequestIdRef = useRef(0);
-  // Skip the initial fetch on mount — SSR already provided initial rows + totalCount
-  // for the default view (no filters, page 0, default pageSize). This ref turns false
-  // after the first render so subsequent state changes always trigger a fetch.
-  const skipNextLoadRef = useRef(true);
+  // Skip the initial fetch on mount when SSR already provided the first page.
+  // If SSR reports a positive count but no rows, force a client fetch to heal
+  // the "empty table on first load" mismatch.
+  const skipNextLoadRef = useRef(!(initialEntries.length === 0 && initialTotalCount > 0));
 
   const loadEntries = useCallback(async () => {
     const requestId = ++loadRequestIdRef.current;
