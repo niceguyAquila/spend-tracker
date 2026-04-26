@@ -48,11 +48,33 @@ export function AdminUsersPanel() {
   const [editRole, setEditRole] = useState<AllowedUser["role"]>("viewer");
   const [editBrandRoles, setEditBrandRoles] = useState<Record<string, "admin" | "finance" | "viewer" | "none">>({});
   const [editSubmitting, setEditSubmitting] = useState(false);
+  const [statusSubmittingEmail, setStatusSubmittingEmail] = useState<string | null>(null);
+  const [statusConfirmUser, setStatusConfirmUser] = useState<AllowedUser | null>(null);
+  const [resetPasswordUser, setResetPasswordUser] = useState<AllowedUser | null>(null);
+  const [temporaryPassword, setTemporaryPassword] = useState("");
+  const [resetSubmitting, setResetSubmitting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [roleFilter, setRoleFilter] = useState<"all" | AllowedUser["role"]>("all");
+  const [openActionsForUserId, setOpenActionsForUserId] = useState<string | null>(null);
 
-  const userPagination = useTablePagination(users.length);
+  const filteredUsers = useMemo(() => {
+    const normalizedSearch = searchQuery.trim().toLowerCase();
+    return users.filter((user) => {
+      if (statusFilter === "active" && !user.is_active) return false;
+      if (statusFilter === "inactive" && user.is_active) return false;
+      if (roleFilter !== "all" && user.role !== roleFilter) return false;
+      if (!normalizedSearch) return true;
+
+      const searchable = `${user.email} ${user.display_name ?? ""}`.toLowerCase();
+      return searchable.includes(normalizedSearch);
+    });
+  }, [users, roleFilter, searchQuery, statusFilter]);
+
+  const userPagination = useTablePagination(filteredUsers.length);
   const pagedUsers = useMemo(
-    () => sliceForPage(users, userPagination.page, userPagination.pageSize),
-    [users, userPagination.page, userPagination.pageSize]
+    () => sliceForPage(filteredUsers, userPagination.page, userPagination.pageSize),
+    [filteredUsers, userPagination.page, userPagination.pageSize]
   );
 
   const loadUsers = useCallback(async () => {
@@ -81,6 +103,16 @@ export function AdminUsersPanel() {
   useEffect(() => {
     void loadUsers();
   }, [loadUsers]);
+
+  useEffect(() => {
+    function handleDocumentClick() {
+      setOpenActionsForUserId(null);
+    }
+
+    if (!openActionsForUserId) return;
+    document.addEventListener("click", handleDocumentClick);
+    return () => document.removeEventListener("click", handleDocumentClick);
+  }, [openActionsForUserId]);
 
   function requestInvite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -143,7 +175,7 @@ export function AdminUsersPanel() {
 
   async function updateUser(
     emailToUpdate: string,
-    payload: Partial<Pick<AllowedUser, "display_name" | "role">> & {
+    payload: Partial<Pick<AllowedUser, "display_name" | "role" | "is_active">> & {
       brand_roles?: Array<{ brand_id: string; role: "admin" | "finance" | "viewer"; is_active: boolean }>;
     }
   ) {
@@ -162,6 +194,47 @@ export function AdminUsersPanel() {
     }
     setMessage("User updated.");
     await loadUsers();
+  }
+
+  async function toggleUserActiveState(user: AllowedUser) {
+    const nextActiveState = !user.is_active;
+    setStatusSubmittingEmail(user.email);
+    await updateUser(user.email, { is_active: nextActiveState });
+    setStatusSubmittingEmail(null);
+    setStatusConfirmUser(null);
+    setOpenActionsForUserId(null);
+  }
+
+  async function submitResetPassword() {
+    if (!resetPasswordUser) return;
+    if (!temporaryPassword) {
+      setMessage("Temporary password is required.");
+      return;
+    }
+    setResetSubmitting(true);
+    const response = await fetch("/api/admin/users/reset-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: resetPasswordUser.email,
+        temporary_password: temporaryPassword
+      })
+    });
+    if (handleUnauthorizedResponse(response)) {
+      setResetSubmitting(false);
+      return;
+    }
+    const data = await response.json();
+    if (!response.ok) {
+      setMessage(data.error ?? "Failed to reset password.");
+      setResetSubmitting(false);
+      return;
+    }
+    setMessage("Temporary password has been reset.");
+    setTemporaryPassword("");
+    setResetPasswordUser(null);
+    setResetSubmitting(false);
+    setOpenActionsForUserId(null);
   }
 
   function getUserBrandRole(user: AllowedUser, brandId: string): "admin" | "finance" | "viewer" | "none" {
@@ -278,11 +351,48 @@ export function AdminUsersPanel() {
 
       <section className="card">
         <h2 className="mb-3 text-lg font-semibold">Allowed Users</h2>
+        <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+          <input
+            className="field md:col-span-1"
+            type="search"
+            placeholder="Search by email or display name"
+            value={searchQuery}
+            onChange={(event) => {
+              setSearchQuery(event.target.value);
+              userPagination.setPage(0);
+            }}
+          />
+          <select
+            className="field"
+            value={roleFilter}
+            onChange={(event) => {
+              setRoleFilter(event.target.value as "all" | AllowedUser["role"]);
+              userPagination.setPage(0);
+            }}
+          >
+            <option value="all">All roles</option>
+            <option value="admin">Admin</option>
+            <option value="finance">Finance</option>
+            <option value="viewer">Viewer</option>
+          </select>
+          <select
+            className="field"
+            value={statusFilter}
+            onChange={(event) => {
+              setStatusFilter(event.target.value as "all" | "active" | "inactive");
+              userPagination.setPage(0);
+            }}
+          >
+            <option value="all">All statuses</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </div>
         {loading ? (
           <p className="text-sm text-muted">Loading users...</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-[980px] text-sm">
+          <div className="w-full overflow-x-auto">
+            <table className="w-full text-sm">
               <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
                 <tr>
                   <th className="px-3 py-2">Email</th>
@@ -294,6 +404,13 @@ export function AdminUsersPanel() {
                 </tr>
               </thead>
               <tbody>
+                {pagedUsers.length === 0 ? (
+                  <tr>
+                    <td className="px-3 py-4 text-sm text-muted" colSpan={6}>
+                      No users match the current search/filter.
+                    </td>
+                  </tr>
+                ) : null}
                 {pagedUsers.map((user) => (
                   <tr key={user.id} className="border-b border-[rgb(var(--border))]">
                     <td className="px-3 py-2">{user.email}</td>
@@ -313,16 +430,61 @@ export function AdminUsersPanel() {
                       </div>
                     </td>
                     <td className="px-3 py-2">
-                      <button className="btn-secondary" onClick={() => startUserEdit(user)}>
-                        Edit
-                      </button>
+                      <div className="relative inline-block">
+                        <button
+                          className="btn-secondary"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setOpenActionsForUserId((current) => (current === user.id ? null : user.id));
+                          }}
+                        >
+                          Actions
+                        </button>
+                        {openActionsForUserId === user.id ? (
+                          <div className="absolute right-0 z-20 mt-1 w-44 rounded border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-1 shadow-lg">
+                            <button
+                              className="block w-full rounded px-2 py-1 text-left text-xs text-[rgb(var(--foreground))] hover:bg-[rgb(var(--surface-muted))]"
+                              onClick={() => {
+                                startUserEdit(user);
+                                setOpenActionsForUserId(null);
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className="block w-full rounded px-2 py-1 text-left text-xs text-[rgb(var(--foreground))] hover:bg-[rgb(var(--surface-muted))] disabled:opacity-60"
+                              disabled={statusSubmittingEmail === user.email}
+                              onClick={() => {
+                                setStatusConfirmUser(user);
+                                setOpenActionsForUserId(null);
+                              }}
+                            >
+                              {statusSubmittingEmail === user.email
+                                ? "Saving..."
+                                : user.is_active
+                                  ? "Deactivate"
+                                  : "Reactivate"}
+                            </button>
+                            <button
+                              className="block w-full rounded px-2 py-1 text-left text-xs text-[rgb(var(--foreground))] hover:bg-[rgb(var(--surface-muted))]"
+                              onClick={() => {
+                                setTemporaryPassword("");
+                                setResetPasswordUser(user);
+                                setOpenActionsForUserId(null);
+                              }}
+                            >
+                              Reset Password
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
             <TablePaginationBar
-              totalCount={users.length}
+              totalCount={filteredUsers.length}
               page={userPagination.page}
               setPage={userPagination.setPage}
               pageSize={userPagination.pageSize}
@@ -359,6 +521,34 @@ export function AdminUsersPanel() {
           </ul>
         }
         onConfirm={() => void executeInvite()}
+      />
+
+      <ConfirmDialog
+        open={Boolean(statusConfirmUser)}
+        onOpenChange={(open) => {
+          if (!open && !statusSubmittingEmail) setStatusConfirmUser(null);
+        }}
+        title={statusConfirmUser?.is_active ? "Deactivate user?" : "Reactivate user?"}
+        closeOnBackdrop={false}
+        confirming={Boolean(statusConfirmUser && statusSubmittingEmail === statusConfirmUser.email)}
+        confirmLabel={statusConfirmUser?.is_active ? "Deactivate" : "Reactivate"}
+        description={
+          statusConfirmUser ? (
+            <ul className="list-inside list-disc space-y-1">
+              <li className="break-all font-medium text-slate-900">{statusConfirmUser.email}</li>
+              <li>
+                {statusConfirmUser.is_active
+                  ? "This user will be blocked from signing in and API access."
+                  : "This user will regain access based on current role assignments."}
+              </li>
+            </ul>
+          ) : null
+        }
+        onConfirm={() => {
+          if (statusConfirmUser) {
+            void toggleUserActiveState(statusConfirmUser);
+          }
+        }}
       />
 
       <Modal
@@ -432,6 +622,61 @@ export function AdminUsersPanel() {
                 ))}
               </div>
             </div>
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={Boolean(resetPasswordUser)}
+        onOpenChange={(open) => {
+          if (!open && !resetSubmitting) {
+            setResetPasswordUser(null);
+            setTemporaryPassword("");
+          }
+        }}
+        title="Reset Temporary Password"
+        dismissible={!resetSubmitting}
+        closeOnBackdrop={!resetSubmitting}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={resetSubmitting}
+              onClick={() => {
+                setResetPasswordUser(null);
+                setTemporaryPassword("");
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={resetSubmitting || temporaryPassword.length < 8}
+              onClick={() => void submitResetPassword()}
+            >
+              {resetSubmitting ? "Resetting..." : "Reset Password"}
+            </button>
+          </>
+        }
+      >
+        {resetPasswordUser ? (
+          <div className="space-y-3">
+            <p className="text-xs text-muted">{resetPasswordUser.email}</p>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-muted">Temporary password</span>
+              <input
+                className="field"
+                type="password"
+                value={temporaryPassword}
+                placeholder="At least 8 chars with upper, lower, and number"
+                onChange={(event) => setTemporaryPassword(event.target.value)}
+                disabled={resetSubmitting}
+                minLength={8}
+                required
+              />
+            </label>
           </div>
         ) : null}
       </Modal>

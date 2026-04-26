@@ -110,6 +110,11 @@ function createNavModules(globalRole: AppRole, role: AppRole): NavModule[] {
           isActive: (pathname) => pathname === "/dashboard/big-book"
         },
         {
+          href: "/dashboard/big-book/master-dashboard",
+          label: "Type Master Dashboard",
+          isActive: (pathname) => pathname === "/dashboard/big-book/master-dashboard"
+        },
+        {
           href: "/dashboard/big-book/individual-type-ledger",
           label: "Individual Type Ledger",
           isActive: (pathname) => pathname === "/dashboard/big-book/individual-type-ledger"

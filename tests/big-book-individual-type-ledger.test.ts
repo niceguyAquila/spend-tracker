@@ -44,11 +44,24 @@ describe("individual type ledger utils", () => {
     const filtered = filterIndividualTypeEntries(rows, {
       dateFrom: "2026-02-01",
       dateTo: "2026-02-28",
-      currencyCode: "USDT",
-      direction: "profit"
+      currencyCode: ["USDT"],
+      direction: ["profit"]
     });
     expect(filtered).toHaveLength(1);
     expect(filtered[0].id).toBe("b");
+  });
+
+  it("supports multi-select currency and direction filters", () => {
+    const rows: BigBookEntry[] = [
+      { ...baseEntry, id: "a", currency_code: "IDR", entry_direction: "spending" },
+      { ...baseEntry, id: "b", currency_code: "USDT", entry_direction: "profit" },
+      { ...baseEntry, id: "c", currency_code: "MYR", entry_direction: "spending" }
+    ];
+    const filtered = filterIndividualTypeEntries(rows, {
+      currencyCode: ["USDT", "MYR"],
+      direction: ["profit", "spending"]
+    });
+    expect(filtered.map((row) => row.id)).toEqual(["b", "c"]);
   });
 
   it("builds monthly summary with signed amounts and TRX skipped", () => {

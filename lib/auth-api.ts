@@ -4,6 +4,10 @@ import { cookies } from "next/headers";
 import { ACTIVE_BRAND_COOKIE } from "@/lib/auth";
 import type { AppRole } from "@/lib/auth";
 
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 type ApiAccessContext = {
   user: { id: string; email?: string | null };
   allowedUserId: string;
@@ -75,15 +79,22 @@ async function resolveApiAccess(): Promise<
     return { ok: false as const, status: 403, message: "No brand access assigned" };
   }
 
-  const brandIds = Array.from(new Set(resolvedMemberships.map((row) => row.brand_id)));
+  const normalizedMemberships = resolvedMemberships.filter(
+    (row) => typeof row.brand_id === "string" && isUuid(row.brand_id)
+  );
+  if (!normalizedMemberships.length) {
+    return { ok: false as const, status: 403, message: "No valid brand access assigned" };
+  }
+
+  const brandIds = Array.from(new Set(normalizedMemberships.map((row) => row.brand_id)));
   const { data: brands, error: brandsError } = await adminClient
     .from("brands")
     .select("id, is_active")
     .in("id", brandIds);
-  let activeMemberships = resolvedMemberships;
+  let activeMemberships = normalizedMemberships;
   if (!brandsError && brands && brands.length > 0) {
     const activeBrandSet = new Set(brands.filter((brand) => brand.is_active).map((brand) => brand.id));
-    const filtered = resolvedMemberships.filter((row) => activeBrandSet.has(row.brand_id));
+    const filtered = normalizedMemberships.filter((row) => activeBrandSet.has(row.brand_id));
     if (filtered.length > 0) {
       activeMemberships = filtered;
     }

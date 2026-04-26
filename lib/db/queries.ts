@@ -6,6 +6,8 @@ import {
   BigBookAttachment,
   BigBookEntry,
   BigBookLedgerType,
+  BigBookTypeCashflowByCurrency,
+  BigBookTypeCashflowRow,
   BigBookMonthlyCurrencyRow,
   DashboardReportRow,
   ExpenseCategory,
@@ -241,15 +243,35 @@ export async function getBigBookAllowedUsers(): Promise<BigBookAllowedUserOption
   }));
 }
 
-export async function getBigBookEntries(filters?: {
-  typeId?: string;
-  currencyCode?: string;
-  direction?: "spending" | "profit";
+export type BigBookEntryFilters = {
+  typeId?: string[];
+  currencyCode?: string[];
+  direction?: Array<"spending" | "profit">;
+  actorId?: string[];
   dateFrom?: string;
   dateTo?: string;
   query?: string;
-  limit?: number;
-}): Promise<BigBookEntry[]> {
+};
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function sanitizeBigBookSearchQuery(value: string): string {
+  // Strip characters that have special meaning for Supabase `.or()` / `.ilike()`
+  // so user input cannot break the filter expression or inject wildcards.
+  return value.replace(/[,()%]/g, " ").trim();
+}
+
+// Defensive: callers occasionally pass a single id instead of an array. Without
+// this, supabase-js's `.in()` would iterate the string's characters and send
+// each one as a UUID, producing `invalid input syntax for type uuid: "<char>"`.
+function toFilterArray<T>(value: T | T[] | undefined | null): T[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  return Array.isArray(value) ? value : [value];
+}
+
+export async function getBigBookEntries(filters?: BigBookEntryFilters & { limit?: number }): Promise<BigBookEntry[]> {
   const supabase = await createClient();
   let query = supabase
     .from("business_ledger_entries")
@@ -264,12 +286,22 @@ export async function getBigBookEntries(filters?: {
     .order("entry_date", { ascending: false })
     .order("created_at", { ascending: false });
 
-  if (filters?.typeId) query = query.eq("entry_type_id", filters.typeId);
-  if (filters?.currencyCode) query = query.eq("currency_code", filters.currencyCode);
-  if (filters?.direction) query = query.eq("entry_direction", filters.direction);
+  const filterTypeIds = toFilterArray(filters?.typeId);
+  const filterCurrencyCodes = toFilterArray(filters?.currencyCode);
+  const filterDirections = toFilterArray(filters?.direction);
+  const filterActorIds = toFilterArray(filters?.actorId);
+  if (filterTypeIds?.length) query = query.in("entry_type_id", filterTypeIds);
+  if (filterCurrencyCodes?.length) query = query.in("currency_code", filterCurrencyCodes);
+  if (filterDirections?.length) query = query.in("entry_direction", filterDirections);
+  if (filterActorIds?.length) query = query.in("responsible_actor_id", filterActorIds);
   if (filters?.dateFrom) query = query.gte("entry_date", filters.dateFrom);
   if (filters?.dateTo) query = query.lte("entry_date", filters.dateTo);
-  if (filters?.query) query = query.ilike("explanation", `%${filters.query}%`);
+  if (filters?.query) {
+    const sanitized = sanitizeBigBookSearchQuery(filters.query);
+    if (sanitized) {
+      query = query.or(`explanation.ilike.%${sanitized}%,remark.ilike.%${sanitized}%`);
+    }
+  }
   query = query.limit(filters?.limit ?? 500);
 
   const { data, error } = await query;
@@ -277,8 +309,8 @@ export async function getBigBookEntries(filters?: {
 
   const actorIds = new Set<string>();
   for (const row of data ?? []) {
-    if (row.created_by) actorIds.add(row.created_by);
-    if (row.updated_by) actorIds.add(row.updated_by);
+    if (row.created_by && isUuid(row.created_by)) actorIds.add(row.created_by);
+    if (row.updated_by && isUuid(row.updated_by)) actorIds.add(row.updated_by);
   }
 
   const actorMap = new Map<string, string>();
@@ -335,6 +367,120 @@ export async function getBigBookEntries(filters?: {
   });
 }
 
+export type BigBookEntriesPagedResult = {
+  rows: BigBookEntry[];
+  totalCount: number;
+};
+
+export async function getBigBookEntriesPaged(
+  filters: BigBookEntryFilters & { page: number; pageSize: number }
+): Promise<BigBookEntriesPagedResult> {
+  const supabase = await createClient();
+  const page = Math.max(0, Math.floor(filters.page));
+  const pageSize = Math.max(1, Math.floor(filters.pageSize));
+  const fromIndex = page * pageSize;
+  const toIndex = fromIndex + pageSize - 1;
+
+  let query = supabase
+    .from("business_ledger_entries")
+    .select(
+      `
+      id, entry_date, entry_direction, entry_type_id, explanation, amount, currency_code, remark, responsible_actor_id, created_by, updated_by, created_at, updated_at,
+      business_ledger_types(id, code, name),
+      big_book_actors(id, actor_code, display_name),
+      business_ledger_attachments(id, ledger_entry_id, storage_path, file_name, mime_type, file_size, uploaded_by, created_at)
+    `,
+      { count: "exact" }
+    )
+    .order("entry_date", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  const filterTypeIds = toFilterArray(filters.typeId);
+  const filterCurrencyCodes = toFilterArray(filters.currencyCode);
+  const filterDirections = toFilterArray(filters.direction);
+  const filterActorIds = toFilterArray(filters.actorId);
+  if (filterTypeIds?.length) query = query.in("entry_type_id", filterTypeIds);
+  if (filterCurrencyCodes?.length) query = query.in("currency_code", filterCurrencyCodes);
+  if (filterDirections?.length) query = query.in("entry_direction", filterDirections);
+  if (filterActorIds?.length) query = query.in("responsible_actor_id", filterActorIds);
+  if (filters.dateFrom) query = query.gte("entry_date", filters.dateFrom);
+  if (filters.dateTo) query = query.lte("entry_date", filters.dateTo);
+  if (filters.query) {
+    const sanitized = sanitizeBigBookSearchQuery(filters.query);
+    if (sanitized) {
+      query = query.or(`explanation.ilike.%${sanitized}%,remark.ilike.%${sanitized}%`);
+    }
+  }
+
+  query = query.range(fromIndex, toIndex);
+
+  const { data, error, count } = await query;
+  if (error) throw error;
+
+  const totalCount = count ?? 0;
+
+  const actorIds = new Set<string>();
+  for (const row of data ?? []) {
+    if (row.created_by && isUuid(row.created_by)) actorIds.add(row.created_by);
+    if (row.updated_by && isUuid(row.updated_by)) actorIds.add(row.updated_by);
+  }
+
+  const actorMap = new Map<string, string>();
+  if (actorIds.size > 0) {
+    const { data: actorRows, error: actorError } = await supabase
+      .from("allowed_users")
+      .select("auth_user_id, display_name, email")
+      .in("auth_user_id", [...actorIds]);
+    if (actorError) throw actorError;
+    for (const actor of actorRows ?? []) {
+      if (!actor.auth_user_id) continue;
+      actorMap.set(actor.auth_user_id, actor.display_name?.trim() || actor.email || actor.auth_user_id);
+    }
+  }
+
+  const rows: BigBookEntry[] = (data ?? []).map((row) => {
+    const type = Array.isArray(row.business_ledger_types)
+      ? row.business_ledger_types[0]
+      : row.business_ledger_types;
+    const actor = Array.isArray(row.big_book_actors)
+      ? row.big_book_actors[0]
+      : row.big_book_actors;
+    const attachments = (Array.isArray(row.business_ledger_attachments)
+      ? row.business_ledger_attachments
+      : row.business_ledger_attachments
+        ? [row.business_ledger_attachments]
+        : []) as BigBookAttachment[];
+
+    return {
+      id: row.id,
+      entry_date: row.entry_date,
+      entry_direction: row.entry_direction as "spending" | "profit",
+      entry_type_id: row.entry_type_id,
+      explanation: row.explanation,
+      amount: Number(row.amount),
+      currency_code: row.currency_code,
+      remark: row.remark,
+      responsible_actor_id: row.responsible_actor_id,
+      created_by: row.created_by,
+      updated_by: row.updated_by,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      type_name: type?.name ?? "-",
+      type_code: type?.code ?? "-",
+      actor_code: (actor?.actor_code ?? "A") as "A" | "B",
+      actor_display_name: actor?.display_name ?? "-",
+      creator_display_name: row.created_by ? (actorMap.get(row.created_by) ?? row.created_by) : "-",
+      updater_display_name: row.updated_by ? (actorMap.get(row.updated_by) ?? row.updated_by) : "-",
+      attachments: attachments.map((attachment) => ({
+        ...attachment,
+        file_size: Number(attachment.file_size)
+      }))
+    };
+  });
+
+  return { rows, totalCount };
+}
+
 export async function getBigBookActorCurrencyMetrics(): Promise<BigBookActorCurrencyMetrics[]> {
   const supabase = await createClient();
   const pageSize = 1000;
@@ -384,6 +530,99 @@ export async function getBigBookActorCurrencyMetrics(): Promise<BigBookActorCurr
   }
 
   return [...byActor.values()].sort((a, b) => a.actor_code.localeCompare(b.actor_code));
+}
+
+export async function getBigBookTypeCashflowByCurrency(filters?: {
+  actorId?: string[];
+  typeId?: string[];
+  currencyCode?: Array<BigBookTypeCashflowByCurrency["currency"]>;
+  dateFrom?: string;
+  dateTo?: string;
+}): Promise<BigBookTypeCashflowByCurrency[]> {
+  const activeTypes = await getBigBookLedgerTypes({ includeInactive: true });
+  const allCurrencies: Array<BigBookTypeCashflowByCurrency["currency"]> = ["IDR", "MYR", "USDT", "TRX"];
+  const currencies = filters?.currencyCode?.length
+    ? allCurrencies.filter((currency) => filters.currencyCode!.includes(currency))
+    : allCurrencies;
+  const entries = await getBigBookEntries({
+    actorId: filters?.actorId,
+    typeId: filters?.typeId,
+    currencyCode: filters?.currencyCode,
+    dateFrom: filters?.dateFrom,
+    dateTo: filters?.dateTo,
+    limit: 5000
+  });
+  const typeMap = new Map(activeTypes.map((type) => [type.id, type]));
+
+  const totalsMap = new Map<string, { inflow: number; outflow: number; net: number }>();
+  for (const entry of entries) {
+    const amount = Math.abs(Number(entry.amount));
+    const key = `${entry.currency_code}:${entry.responsible_actor_id}:${entry.entry_type_id}`;
+    const existing = totalsMap.get(key) ?? { inflow: 0, outflow: 0, net: 0 };
+
+    if (entry.entry_direction === "profit") {
+      existing.inflow += amount;
+      existing.net += amount;
+    } else {
+      existing.outflow += amount;
+      existing.net -= amount;
+    }
+
+    totalsMap.set(key, existing);
+  }
+
+  return currencies.map((currency) => {
+    const rowMap = entries
+      .filter((entry) => entry.currency_code === currency)
+      .reduce<Map<string, BigBookTypeCashflowRow>>((acc, entry) => {
+        const rowKey = `${entry.responsible_actor_id}:${entry.entry_type_id}`;
+        if (acc.has(rowKey)) return acc;
+        const type = typeMap.get(entry.entry_type_id);
+        acc.set(rowKey, {
+          row_key: rowKey,
+          actor_id: entry.responsible_actor_id,
+          actor_display_name: entry.actor_display_name,
+          type_id: entry.entry_type_id,
+          type_code: type?.code ?? entry.type_code,
+          type_name: type?.name ?? entry.type_name,
+          inflow: 0,
+          outflow: 0,
+          net: 0
+        });
+        return acc;
+      }, new Map<string, BigBookTypeCashflowRow>());
+    const rows: BigBookTypeCashflowRow[] = Array.from(rowMap.values());
+
+    for (const row of rows) {
+      const totals =
+        totalsMap.get(`${currency}:${row.actor_id}:${row.type_id}`) ?? {
+          inflow: 0,
+          outflow: 0,
+          net: 0
+        };
+      row.inflow = totals.inflow;
+      row.outflow = totals.outflow;
+      row.net = totals.net;
+    }
+
+    rows.sort((a, b) => {
+      if (a.actor_display_name !== b.actor_display_name) {
+        return a.actor_display_name.localeCompare(b.actor_display_name);
+      }
+      return a.type_name.localeCompare(b.type_name);
+    });
+
+    const combined = rows.reduce(
+      (acc, row) => ({
+        inflow: acc.inflow + row.inflow,
+        outflow: acc.outflow + row.outflow,
+        net: acc.net + row.net
+      }),
+      { inflow: 0, outflow: 0, net: 0 }
+    );
+
+    return { currency, rows, combined };
+  });
 }
 
 const BIG_BOOK_MONTH_LABELS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];

@@ -32,6 +32,10 @@ type CashflowSummary = {
   net: number;
 };
 
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 function normalizeSingleParam(param: SearchParamValue): string | null {
   if (!param) return null;
   if (Array.isArray(param)) return param[0] ?? null;
@@ -117,13 +121,15 @@ function buildCashflowSummary(rows: UnifiedCashflowRow[]): CashflowSummary {
 }
 
 export default async function MasterDashboardPage({ searchParams }: MasterDashboardPageProps) {
+  const initialParams = (await searchParams) ?? {};
+  const requestedBrandIdRaw = normalizeSingleParam(initialParams.brandId);
   try {
     const { globalRole, activeBrandId, brandRoles } = await requireAllowedUser();
     if (globalRole !== "admin") {
       redirect("/dashboard");
     }
 
-    const resolvedParams = (await searchParams) ?? {};
+    const resolvedParams = initialParams;
     const requestedBrandId = normalizeSingleParam(resolvedParams.brandId);
     const dateFrom = normalizeDateParam(resolvedParams.dateFrom);
     const dateTo = normalizeDateParam(resolvedParams.dateTo);
@@ -137,17 +143,34 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
     const selectedBrand = selectedBrandRole.brand;
     const ledgerType = await getBigBookLedgerTypeByCode(selectedBrand.code, { includeInactive: true });
 
-    const [spendingRows, bigBookEntries] = await Promise.all([
-      getDashboardReportRows({ brandId: selectedBrand.id }),
-      ledgerType
-        ? getBigBookEntries({
-            typeId: ledgerType.id,
-            dateFrom: dateFrom ?? undefined,
-            dateTo: dateTo ?? undefined,
-            limit: 500
-          })
-        : Promise.resolve([])
-    ]);
+    const hasValidLedgerTypeId = Boolean(ledgerType?.id && isUuid(ledgerType.id));
+
+    let spendingRows: Awaited<ReturnType<typeof getDashboardReportRows>> = [];
+    try {
+      spendingRows = await getDashboardReportRows({ brandId: selectedBrand.id });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : JSON.stringify(error);
+      throw new Error(
+        `[master-dashboard:getDashboardReportRows] brandId=${selectedBrand.id} code=${selectedBrand.code} :: ${detail}`
+      );
+    }
+
+    let bigBookEntries: Awaited<ReturnType<typeof getBigBookEntries>> = [];
+    if (hasValidLedgerTypeId) {
+      try {
+        bigBookEntries = await getBigBookEntries({
+          typeId: [ledgerType!.id],
+          dateFrom: dateFrom ?? undefined,
+          dateTo: dateTo ?? undefined,
+          limit: 500
+        });
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : JSON.stringify(error);
+        throw new Error(
+          `[master-dashboard:getBigBookEntries] typeId=${ledgerType!.id} typeCode=${ledgerType!.code} brand=${selectedBrand.code} :: ${detail}`
+        );
+      }
+    }
 
     const filteredSpendingRows = spendingRows.filter((row) => {
       const rowMonth = normalizeMonthKey(row.month_key);
@@ -268,10 +291,18 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
           <p className="mt-1 text-sm text-slate-600">
             Mapping rule: <code>{selectedBrand.code}</code> brand code must equal Big Book ledger type code.
           </p>
-          {!ledgerType ? (
-            <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              No Big Book ledger type matches brand code <strong>{selectedBrand.code}</strong>.
-            </p>
+          {!ledgerType || !hasValidLedgerTypeId ? (
+            <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <p>
+                No valid Big Book ledger type mapping is available for brand code <strong>{selectedBrand.code}</strong>.
+              </p>
+              {ledgerType ? (
+                <p className="mt-1 text-xs">
+                  Resolved type: <strong>{ledgerType.code}</strong> ({ledgerType.name}) with id{" "}
+                  <code>{ledgerType.id}</code>. Expected a UUID id.
+                </p>
+              ) : null}
+            </div>
           ) : (
             <p className="mt-3 text-sm text-slate-700">
               Showing type: <strong>{ledgerType.code}</strong> - {ledgerType.name}
@@ -300,6 +331,13 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
         <p className="text-sm text-slate-700">
           The app cannot read required tables yet. Apply SQL migrations in `supabase/migrations` and refresh.
         </p>
+        {errorText.includes("invalid input syntax for type uuid") ? (
+          <p className="mt-2 text-xs text-amber-700">
+            Diagnostic: a non-UUID value was used where UUID is required. Requested brandId from URL is{" "}
+            <code>{requestedBrandIdRaw ?? "(empty)"}</code>. If this is not a UUID, remove the `brandId` query param
+            or choose a valid brand from the brand selector.
+          </p>
+        ) : null}
         <p className="mt-2 text-xs text-slate-500">Error: {errorText}</p>
       </section>
     );

@@ -1,3 +1,5 @@
+"use client";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 export const DEFAULT_PAGE_SIZE = 20;

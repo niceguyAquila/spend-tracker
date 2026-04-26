@@ -5,12 +5,9 @@ import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { Modal } from "@/components/ui/modal";
 import type { BigBookEntry, BigBookLedgerType } from "@/lib/types";
-import {
-  buildIndividualTypeMonthlySummary,
-  filterIndividualTypeEntries,
-  shouldShowTypeSelector
-} from "@/lib/big-book-individual-type-ledger";
+import { buildIndividualTypeMonthlySummary, filterIndividualTypeEntries } from "@/lib/big-book-individual-type-ledger";
 import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
+import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
 
 type Props = {
   types: BigBookLedgerType[];
@@ -28,13 +25,29 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
   const activeTypes = useMemo(() => types.filter((row) => row.is_active), [types]);
   const [selectedTypeId, setSelectedTypeId] = useState("");
   const [pendingTypeId, setPendingTypeId] = useState(activeTypes[0]?.id ?? types[0]?.id ?? "");
+  const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(true);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [currencyFilter, setCurrencyFilter] = useState("");
-  const [directionFilter, setDirectionFilter] = useState("");
+  const [currencyFilter, setCurrencyFilter] = useState<string[]>([]);
+  const [directionFilter, setDirectionFilter] = useState<Array<"spending" | "profit">>([]);
   const [selectedYear, setSelectedYear] = useState(new Date().getUTCFullYear());
+  const currencyOptions = useMemo(
+    () => [
+      { value: "IDR", label: "IDR" },
+      { value: "MYR", label: "MYR" },
+      { value: "USDT", label: "USDT" },
+      { value: "TRX", label: "TRX" }
+    ],
+    []
+  );
+  const directionOptions = useMemo(
+    () => [
+      { value: "spending", label: "Out" },
+      { value: "profit", label: "In" }
+    ],
+    []
+  );
 
-  const showTypeSelector = shouldShowTypeSelector(selectedTypeId);
   const selectedType = types.find((row) => row.id === selectedTypeId) ?? null;
 
   const selectedTypeEntries = useMemo(
@@ -56,8 +69,8 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
     return filterIndividualTypeEntries(selectedTypeEntries, {
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
-      currencyCode: currencyFilter || undefined,
-      direction: (directionFilter as "spending" | "profit" | "") || undefined
+      currencyCode: currencyFilter.length ? currencyFilter : undefined,
+      direction: directionFilter.length ? directionFilter : undefined
     });
   }, [selectedTypeEntries, dateFrom, dateTo, currencyFilter, directionFilter]);
 
@@ -108,8 +121,14 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
               {selectedType ? `Showing records for type: ${selectedType.name}` : "Select a type to start."}
             </p>
           </div>
-          <button className="btn-secondary" onClick={() => setSelectedTypeId("")}>
-            Change Type
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              setPendingTypeId(selectedTypeId || activeTypes[0]?.id || types[0]?.id || "");
+              setIsTypeSelectorOpen(true);
+            }}
+          >
+            {selectedType ? "Change Type" : "Select Type"}
           </button>
         </div>
       </section>
@@ -127,21 +146,23 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
           </label>
           <label className="text-sm text-muted">
             <span className="mb-1 block">Currency</span>
-            <select className="field w-full" value={currencyFilter} onChange={(event) => setCurrencyFilter(event.target.value)}>
-              <option value="">All currencies</option>
-              <option value="IDR">IDR</option>
-              <option value="MYR">MYR</option>
-              <option value="USDT">USDT</option>
-              <option value="TRX">TRX</option>
-            </select>
+            <SearchableMultiSelect
+              label="Currency"
+              selectedValues={currencyFilter}
+              options={currencyOptions}
+              onChange={setCurrencyFilter}
+              searchPlaceholder="Search currency..."
+            />
           </label>
           <label className="text-sm text-muted">
             <span className="mb-1 block">Cash Flow</span>
-            <select className="field w-full" value={directionFilter} onChange={(event) => setDirectionFilter(event.target.value)}>
-              <option value="">All directions</option>
-              <option value="spending">Out</option>
-              <option value="profit">In</option>
-            </select>
+            <SearchableMultiSelect
+              label="Cash Flow"
+              selectedValues={directionFilter}
+              options={directionOptions}
+              onChange={(next) => setDirectionFilter(next as Array<"spending" | "profit">)}
+              searchPlaceholder="Search direction..."
+            />
           </label>
         </div>
 
@@ -175,7 +196,7 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
               {!visibleEntries.length ? (
                 <tr>
                   <td className="px-3 py-4 text-center text-muted" colSpan={6}>
-                    No records found for this type and filters.
+                    {selectedType ? "No records found for this type and filters." : "No type selected. Click Select Type to begin."}
                   </td>
                 </tr>
               ) : null}
@@ -263,11 +284,11 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
       </section>
 
       <Modal
-        open={showTypeSelector}
-        onOpenChange={() => undefined}
+        open={isTypeSelectorOpen}
+        onOpenChange={setIsTypeSelectorOpen}
         title="Select Ledger Type"
-        dismissible={false}
-        closeOnBackdrop={false}
+        dismissible
+        closeOnBackdrop
         footer={
           <button
             className="btn"
@@ -275,6 +296,7 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
             onClick={() => {
               if (!pendingTypeId) return;
               setSelectedTypeId(pendingTypeId);
+              setIsTypeSelectorOpen(false);
               const firstYear = Number(
                 entries.find((entry) => entry.entry_type_id === pendingTypeId)?.entry_date.slice(0, 4) ?? new Date().getUTCFullYear()
               );

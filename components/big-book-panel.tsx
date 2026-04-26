@@ -9,13 +9,15 @@ import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
 import { Modal } from "@/components/ui/modal";
 import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
-import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
+import { useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
+import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
 
 type Props = {
   initialTypes: BigBookLedgerType[];
   initialActors: BigBookActor[];
   initialEntries: BigBookEntry[];
+  initialTotalCount: number;
   initialActorMetrics: BigBookActorCurrencyMetrics[];
 };
 
@@ -79,7 +81,18 @@ function extractApiError(error: unknown, fallback: string) {
   return fallback;
 }
 
-export function BigBookPanel({ initialTypes, initialActors, initialEntries, initialActorMetrics }: Props) {
+function arraysEqual(left: string[], right: string[]) {
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+}
+
+export function BigBookPanel({
+  initialTypes,
+  initialActors,
+  initialEntries,
+  initialTotalCount,
+  initialActorMetrics
+}: Props) {
   const router = useRouter();
   const [isRefreshing, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
@@ -87,10 +100,18 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
   const [query, setQuery] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
-  const [currencyFilter, setCurrencyFilter] = useState("");
-  const [actorFilter, setActorFilter] = useState("");
-  const [directionFilter, setDirectionFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string[]>([]);
+  const [currencyFilter, setCurrencyFilter] = useState<string[]>([]);
+  const [actorFilter, setActorFilter] = useState<string[]>([]);
+  const [directionFilter, setDirectionFilter] = useState<string[]>([]);
+  // Draft filter state: drives the inputs. Filters only run after "Apply Filters".
+  const [draftQuery, setDraftQuery] = useState("");
+  const [draftDateFrom, setDraftDateFrom] = useState("");
+  const [draftDateTo, setDraftDateTo] = useState("");
+  const [draftTypeFilter, setDraftTypeFilter] = useState<string[]>([]);
+  const [draftCurrencyFilter, setDraftCurrencyFilter] = useState<string[]>([]);
+  const [draftActorFilter, setDraftActorFilter] = useState<string[]>([]);
+  const [draftDirectionFilter, setDraftDirectionFilter] = useState<string[]>([]);
   const [openActionMenu, setOpenActionMenu] = useState<{
     id: string;
     top: number;
@@ -130,13 +151,34 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
   const [pendingDeleteAttachmentId, setPendingDeleteAttachmentId] = useState<string | null>(null);
   const [attachmentDeleting, setAttachmentDeleting] = useState(false);
   const [viewingRemark, setViewingRemark] = useState<{ entryId: string; text: string } | null>(null);
+  // Current server-paged rows. Re-fetched whenever filters / page / pageSize change
+  // or after a mutation. Not filtered client-side.
   const [entries, setEntries] = useState<BigBookEntry[]>(initialEntries);
+  const [totalCount, setTotalCount] = useState<number>(initialTotalCount);
+  const [entriesLoading, setEntriesLoading] = useState(false);
 
   const activeTypes = useMemo(() => initialTypes.filter((item) => item.is_active), [initialTypes]);
   const currencies: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR", "USDT", "TRX"];
+  const typeOptions = useMemo(
+    () => initialTypes.map((type) => ({ value: type.id, label: type.name })),
+    [initialTypes]
+  );
+  const currencyOptions = useMemo(
+    () => currencies.map((currency) => ({ value: currency, label: currency })),
+    []
+  );
+  const actorOptions = useMemo(
+    () => initialActors.map((actor) => ({ value: actor.id, label: actor.display_name })),
+    [initialActors]
+  );
+  const directionOptions = useMemo(
+    () => [
+      { value: "spending", label: "Out" },
+      { value: "profit", label: "In" }
+    ],
+    []
+  );
   const today = new Date().toISOString().slice(0, 10);
-  const typeById = useMemo(() => new Map(initialTypes.map((type) => [type.id, type])), [initialTypes]);
-  const actorById = useMemo(() => new Map(initialActors.map((actor) => [actor.id, actor])), [initialActors]);
 
   const [entryForm, setEntryForm] = useState<EntryFormState>({
     entry_date: today,
@@ -149,48 +191,130 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
     responsible_actor_id: initialActors[0]?.id ?? ""
   });
 
-  const visibleEntries = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return entries.filter((row) => {
-      if (dateFrom && row.entry_date < dateFrom) return false;
-      if (dateTo && row.entry_date > dateTo) return false;
-      if (typeFilter && row.entry_type_id !== typeFilter) return false;
-      if (currencyFilter && row.currency_code !== currencyFilter) return false;
-      if (actorFilter && row.responsible_actor_id !== actorFilter) return false;
-      if (directionFilter && row.entry_direction !== directionFilter) return false;
-      if (!normalized) return true;
-      return [row.explanation, row.remark ?? "", row.type_name, row.actor_display_name].join(" ").toLowerCase().includes(normalized);
-    });
-  }, [entries, query, dateFrom, dateTo, typeFilter, currencyFilter, actorFilter, directionFilter]);
-
-  const ledgerPagination = useTablePagination(visibleEntries.length);
-  const pagedLedgerRows = useMemo(
-    () => sliceForPage(visibleEntries, ledgerPagination.page, ledgerPagination.pageSize),
-    [visibleEntries, ledgerPagination.page, ledgerPagination.pageSize]
-  );
+  const ledgerPagination = useTablePagination(totalCount);
 
   useEffect(() => {
     ledgerPagination.setPage(0);
   }, [query, dateFrom, dateTo, typeFilter, currencyFilter, actorFilter, directionFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const actorCurrencyMetrics = useMemo(() => {
-    const totalsByActor = new Map<string, BigBookActorCurrencyMetrics>();
-    for (const row of entries) {
-      const actor = actorById.get(row.responsible_actor_id);
-      const current =
-        totalsByActor.get(row.responsible_actor_id) ??
-        ({
-          actor_id: row.responsible_actor_id,
-          actor_code: actor?.actor_code ?? "A",
-          actor_display_name: actor?.display_name ?? row.actor_display_name,
-          totals: { IDR: 0, MYR: 0, USDT: 0, TRX: 0 }
-        } as BigBookActorCurrencyMetrics);
-      const signedAmount = row.entry_direction === "spending" ? -Math.abs(row.amount) : Math.abs(row.amount);
-      current.totals[row.currency_code] += signedAmount;
-      totalsByActor.set(row.responsible_actor_id, current);
+  // Race-safe request token: ignore stale fetch responses.
+  const loadRequestIdRef = useRef(0);
+  // Skip the initial fetch on mount — SSR already provided initial rows + totalCount
+  // for the default view (no filters, page 0, default pageSize). This ref turns false
+  // after the first render so subsequent state changes always trigger a fetch.
+  const skipNextLoadRef = useRef(true);
+
+  const loadEntries = useCallback(async () => {
+    const requestId = ++loadRequestIdRef.current;
+    setEntriesLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      params.set("page", String(ledgerPagination.page));
+      params.set("pageSize", String(ledgerPagination.pageSize));
+      if (query) params.set("query", query);
+      if (dateFrom) params.set("dateFrom", dateFrom);
+      if (dateTo) params.set("dateTo", dateTo);
+      for (const typeId of typeFilter) params.append("typeId", typeId);
+      for (const currencyCode of currencyFilter) params.append("currencyCode", currencyCode);
+      for (const actorId of actorFilter) params.append("actorId", actorId);
+      for (const direction of directionFilter) params.append("direction", direction);
+
+      const response = await fetch(`/api/big-book/entries?${params.toString()}`);
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (loadRequestIdRef.current !== requestId) return; // a newer request superseded us
+      if (!response.ok) {
+        setError(extractApiError(data?.error, "Failed to load ledger entries."));
+        return;
+      }
+      setEntries(Array.isArray(data?.rows) ? data.rows : []);
+      setTotalCount(typeof data?.totalCount === "number" ? data.totalCount : 0);
+    } catch {
+      if (loadRequestIdRef.current !== requestId) return;
+      setError("Failed to load ledger entries due to a network error.");
+    } finally {
+      if (loadRequestIdRef.current === requestId) {
+        setEntriesLoading(false);
+      }
     }
-    return [...totalsByActor.values()].sort((a, b) => a.actor_code.localeCompare(b.actor_code));
-  }, [entries, actorById]);
+  }, [
+    ledgerPagination.page,
+    ledgerPagination.pageSize,
+    query,
+    dateFrom,
+    dateTo,
+    typeFilter,
+    currencyFilter,
+    actorFilter,
+    directionFilter
+  ]);
+
+  useEffect(() => {
+    if (skipNextLoadRef.current) {
+      skipNextLoadRef.current = false;
+      return;
+    }
+    void loadEntries();
+  }, [loadEntries]);
+
+  const filtersDirty =
+    draftQuery !== query ||
+    draftDateFrom !== dateFrom ||
+    draftDateTo !== dateTo ||
+    !arraysEqual(draftTypeFilter, typeFilter) ||
+    !arraysEqual(draftCurrencyFilter, currencyFilter) ||
+    !arraysEqual(draftActorFilter, actorFilter) ||
+    !arraysEqual(draftDirectionFilter, directionFilter);
+
+  const filtersActive =
+    Boolean(query) ||
+    Boolean(dateFrom) ||
+    Boolean(dateTo) ||
+    Boolean(typeFilter.length) ||
+    Boolean(currencyFilter.length) ||
+    Boolean(actorFilter.length) ||
+    Boolean(directionFilter.length);
+
+  const draftFiltersActive =
+    Boolean(draftQuery) ||
+    Boolean(draftDateFrom) ||
+    Boolean(draftDateTo) ||
+    Boolean(draftTypeFilter.length) ||
+    Boolean(draftCurrencyFilter.length) ||
+    Boolean(draftActorFilter.length) ||
+    Boolean(draftDirectionFilter.length);
+
+  function applyFilters() {
+    setQuery(draftQuery);
+    setDateFrom(draftDateFrom);
+    setDateTo(draftDateTo);
+    setTypeFilter(draftTypeFilter);
+    setCurrencyFilter(draftCurrencyFilter);
+    setActorFilter(draftActorFilter);
+    setDirectionFilter(draftDirectionFilter);
+  }
+
+  function resetFilters() {
+    setDraftQuery("");
+    setDraftDateFrom("");
+    setDraftDateTo("");
+    setDraftTypeFilter([]);
+    setDraftCurrencyFilter([]);
+    setDraftActorFilter([]);
+    setDraftDirectionFilter([]);
+    setQuery("");
+    setDateFrom("");
+    setDateTo("");
+    setTypeFilter([]);
+    setCurrencyFilter([]);
+    setActorFilter([]);
+    setDirectionFilter([]);
+  }
+
+  // Totals reflect ALL ledger rows in the database (computed server-side in
+  // `getBigBookActorCurrencyMetrics`), not just the currently rendered page.
+  const actorCurrencyMetrics = initialActorMetrics;
 
   const criticalPending =
     entrySubmitting ||
@@ -222,9 +346,14 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
   }, [openActionMenu]);
 
   function triggerRefresh() {
+    void loadEntries();
     startTransition(() => {
       router.refresh();
     });
+  }
+
+  function refreshEntriesOnly() {
+    void loadEntries();
   }
 
   async function createEntry() {
@@ -297,6 +426,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
 
   async function deleteEntry() {
     if (!pendingDeleteEntry) return;
+    const deletingEntryId = pendingDeleteEntry.id;
     setEntryDeleting(true);
     setError(null);
     setMessage(null);
@@ -309,8 +439,10 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
         return;
       }
       setMessage("Ledger entry deleted.");
+      setEntries((prev) => prev.filter((row) => row.id !== deletingEntryId));
+      setTotalCount((prev) => Math.max(0, prev - 1));
       setPendingDeleteEntry(null);
-      triggerRefresh();
+      refreshEntriesOnly();
     } catch {
       setError("Failed to delete ledger entry due to a network error.");
     } finally {
@@ -411,31 +543,8 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
       setMessage("Ledger entry updated.");
       setPendingEditConfirm(false);
       setEditModalOpen(false);
-      const selectedType = typeById.get(editForm.entry_type_id);
-      const selectedActor = actorById.get(editForm.responsible_actor_id);
-      setEntries((prev) =>
-        prev.map((entry) =>
-          entry.id === editingEntryId
-            ? {
-                ...entry,
-                entry_date: editForm.entry_date,
-                entry_direction: editForm.entry_direction,
-                entry_type_id: editForm.entry_type_id,
-                explanation: editForm.explanation.trim(),
-                amount: amountValue,
-                currency_code: editForm.currency_code,
-                remark: editForm.remark.trim() || null,
-                responsible_actor_id: editForm.responsible_actor_id,
-                type_name: selectedType?.name ?? entry.type_name,
-                type_code: selectedType?.code ?? entry.type_code,
-                actor_code: selectedActor?.actor_code ?? entry.actor_code,
-                actor_display_name: selectedActor?.display_name ?? entry.actor_display_name,
-                updated_at: new Date().toISOString()
-              }
-            : entry
-        )
-      );
       setEditingEntryId(null);
+      triggerRefresh();
     } catch {
       setError("Failed to update ledger entry due to a network error.");
     } finally {
@@ -642,80 +751,103 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
       <section className="card">
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Ledger Records</h2>
-          {isRefreshing ? <LoadingIndicator label="Refreshing..." /> : null}
+          {isRefreshing || entriesLoading ? <LoadingIndicator label="Refreshing..." /> : null}
         </div>
-        <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
-          <label className="text-sm text-slate-700 md:col-span-2 xl:col-span-2 2xl:col-span-2">
-            <span className="mb-1 block">Search</span>
-            <input
-              className="field w-full"
-              placeholder="Explanation, remark, type..."
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </label>
-          <label className="text-sm text-slate-700">
-            <span className="mb-1 block">Date From:</span>
-            <input
-              className="field w-full"
-              type="date"
-              value={dateFrom}
-              onChange={(event) => setDateFrom(event.target.value)}
-              aria-label="Filter from date"
-            />
-          </label>
-          <label className="text-sm text-slate-700">
-            <span className="mb-1 block">Date To:</span>
-            <input
-              className="field w-full"
-              type="date"
-              value={dateTo}
-              onChange={(event) => setDateTo(event.target.value)}
-              aria-label="Filter to date"
-            />
-          </label>
-          <label className="text-sm text-slate-700">
-            <span className="mb-1 block">Type</span>
-            <select className="field w-full" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
-              <option value="">All types</option>
-              {initialTypes.map((type) => (
-                <option key={type.id} value={type.id}>
-                  {type.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm text-slate-700">
-            <span className="mb-1 block">Currency</span>
-            <select className="field w-full" value={currencyFilter} onChange={(event) => setCurrencyFilter(event.target.value)}>
-              <option value="">All currencies</option>
-              {currencies.map((currency) => (
-                <option key={currency} value={currency}>
-                  {currency}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm text-slate-700">
-            <span className="mb-1 block">Actor</span>
-            <select className="field w-full" value={actorFilter} onChange={(event) => setActorFilter(event.target.value)}>
-              <option value="">All actors</option>
-              {initialActors.map((actor) => (
-                <option key={actor.id} value={actor.id}>
-                  {actor.display_name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm text-slate-700">
-            <span className="mb-1 block">Cash Flow</span>
-            <select className="field w-full" value={directionFilter} onChange={(event) => setDirectionFilter(event.target.value)}>
-              <option value="">All directions</option>
-              <option value="spending">Out</option>
-              <option value="profit">In</option>
-            </select>
-          </label>
-        </div>
+        <form
+          className="mb-4 space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            applyFilters();
+          }}
+        >
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
+            <label className="text-sm text-slate-700 md:col-span-2 xl:col-span-2 2xl:col-span-2">
+              <span className="mb-1 block">Search</span>
+              <input
+                className="field w-full"
+                placeholder="Explanation, remark, type..."
+                value={draftQuery}
+                onChange={(event) => setDraftQuery(event.target.value)}
+              />
+            </label>
+            <label className="text-sm text-slate-700">
+              <span className="mb-1 block">Date From:</span>
+              <input
+                className="field w-full"
+                type="date"
+                value={draftDateFrom}
+                onChange={(event) => setDraftDateFrom(event.target.value)}
+                aria-label="Filter from date"
+              />
+            </label>
+            <label className="text-sm text-slate-700">
+              <span className="mb-1 block">Date To:</span>
+              <input
+                className="field w-full"
+                type="date"
+                value={draftDateTo}
+                onChange={(event) => setDraftDateTo(event.target.value)}
+                aria-label="Filter to date"
+              />
+            </label>
+            <div className="text-sm text-slate-700">
+              <span className="mb-1 block">Type</span>
+              <SearchableMultiSelect
+                label="Type"
+                selectedValues={draftTypeFilter}
+                options={typeOptions}
+                onChange={setDraftTypeFilter}
+                searchPlaceholder="Search type..."
+              />
+            </div>
+            <div className="text-sm text-slate-700">
+              <span className="mb-1 block">Currency</span>
+              <SearchableMultiSelect
+                label="Currency"
+                selectedValues={draftCurrencyFilter}
+                options={currencyOptions}
+                onChange={setDraftCurrencyFilter}
+                searchPlaceholder="Search currency..."
+              />
+            </div>
+            <div className="text-sm text-slate-700">
+              <span className="mb-1 block">Actor</span>
+              <SearchableMultiSelect
+                label="Actor"
+                selectedValues={draftActorFilter}
+                options={actorOptions}
+                onChange={setDraftActorFilter}
+                searchPlaceholder="Search actor..."
+              />
+            </div>
+            <div className="text-sm text-slate-700">
+              <span className="mb-1 block">Cash Flow</span>
+              <SearchableMultiSelect
+                label="Cash Flow"
+                selectedValues={draftDirectionFilter}
+                options={directionOptions}
+                onChange={setDraftDirectionFilter}
+                searchPlaceholder="Search direction..."
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {filtersDirty ? (
+              <span className="mr-auto text-xs text-amber-700">Filters changed — click Apply Filters to update results.</span>
+            ) : null}
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={resetFilters}
+              disabled={!draftFiltersActive && !filtersActive}
+            >
+              Reset
+            </button>
+            <button type="submit" className="btn" disabled={!filtersDirty}>
+              Apply Filters
+            </button>
+          </div>
+        </form>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1200px] text-sm">
             <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
@@ -732,7 +864,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
               </tr>
             </thead>
             <tbody>
-              {pagedLedgerRows.map((row) => (
+              {entries.map((row) => (
                 <tr key={row.id} className="border-b border-[rgb(var(--border))] align-top">
                   <td className="px-3 py-2">{formatDateDisplay(row.entry_date)}</td>
                   <td className="px-3 py-2">
@@ -811,10 +943,17 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
                   </td>
                 </tr>
               ))}
-              {!visibleEntries.length ? (
+              {!entries.length && !entriesLoading ? (
                 <tr>
                   <td className="px-3 py-4 text-center text-slate-600" colSpan={9}>
                     No records match the current filters.
+                  </td>
+                </tr>
+              ) : null}
+              {entriesLoading ? (
+                <tr>
+                  <td className="px-3 py-4 text-center text-slate-500" colSpan={9}>
+                    Loading...
                   </td>
                 </tr>
               ) : null}
@@ -822,7 +961,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
           </table>
         </div>
         <TablePaginationBar
-          totalCount={visibleEntries.length}
+          totalCount={totalCount}
           page={ledgerPagination.page}
           setPage={ledgerPagination.setPage}
           pageSize={ledgerPagination.pageSize}

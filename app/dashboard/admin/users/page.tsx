@@ -13,7 +13,7 @@ export default async function AdminUsersPage() {
       <section className="card">
         <h1 className="text-xl font-semibold">User Access and Role Administration</h1>
         <p className="text-sm text-muted">
-          Invite users, set access role, and assign the brands each user can interact with.
+          Invite users, set access role, assign brand access, and manage account status/password access.
         </p>
       </section>
       <AdminUsersPanel />

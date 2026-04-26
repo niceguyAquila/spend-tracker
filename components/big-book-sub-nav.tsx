@@ -14,6 +14,7 @@ function getButtonClassName(isActive: boolean) {
 export function BigBookSubNav() {
   const pathname = usePathname();
   const isDashboardPage = pathname === "/dashboard/big-book";
+  const isMasterDashboardPage = pathname === "/dashboard/big-book/master-dashboard";
   const isIndividualTypePage = pathname === "/dashboard/big-book/individual-type-ledger";
   const isSettingsPage = pathname === "/dashboard/big-book/settings";
   const isExchangeHelperPage = pathname === "/dashboard/big-book/exchange-helper";
@@ -24,6 +25,9 @@ export function BigBookSubNav() {
       <div className="mt-3 flex flex-wrap gap-2">
         <Link href="/dashboard/big-book" className={getButtonClassName(isDashboardPage)}>
           Dashboard
+        </Link>
+        <Link href="/dashboard/big-book/master-dashboard" className={getButtonClassName(isMasterDashboardPage)}>
+          Type Master Dashboard
         </Link>
         <Link
           href="/dashboard/big-book/individual-type-ledger"

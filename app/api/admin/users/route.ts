@@ -80,21 +80,30 @@ export async function PATCH(request: Request) {
   if (typeof parsed.data.is_active === "boolean") payload.is_active = parsed.data.is_active;
 
   const adminClient = createAdminClient();
-  const { error } = await adminClient.from("allowed_users").update(payload).eq("email", email);
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+  const { data: userRow, error: userRowError } = await adminClient
+    .from("allowed_users")
+    .select("id, auth_user_id, normalized_email")
+    .eq("normalized_email", email)
+    .maybeSingle();
+  if (userRowError) {
+    return NextResponse.json({ error: userRowError.message }, { status: 400 });
+  }
+  if (!userRow) {
+    return NextResponse.json({ error: "Allowed user not found." }, { status: 404 });
+  }
+
+  if (parsed.data.is_active === false && adminCheck.user.email?.toLowerCase() === email) {
+    return NextResponse.json({ error: "You cannot deactivate your own admin account." }, { status: 400 });
+  }
+
+  if (Object.keys(payload).length > 0) {
+    const { error } = await adminClient.from("allowed_users").update(payload).eq("id", userRow.id);
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
   }
 
   if (parsed.data.brand_roles) {
-    const { data: userRow, error: userRowError } = await adminClient
-      .from("allowed_users")
-      .select("id")
-      .eq("normalized_email", email)
-      .maybeSingle();
-    if (userRowError || !userRow) {
-      return NextResponse.json({ error: "Allowed user not found for brand assignment." }, { status: 400 });
-    }
-
     await adminClient.from("user_brand_roles").delete().eq("allowed_user_id", userRow.id);
     if (parsed.data.brand_roles.length > 0) {
       const { error: roleError } = await adminClient.from("user_brand_roles").insert(
@@ -112,32 +121,29 @@ export async function PATCH(request: Request) {
   }
 
   // Keep user_metadata role in sync for existing auth users.
-  if (parsed.data.role) {
-    const { data: listed } = await adminClient.auth.admin.listUsers();
-    const user = listed.users.find((item) => item.email?.toLowerCase() === email);
-    if (user) {
-      await adminClient.auth.admin.updateUserById(user.id, {
+  if (parsed.data.role || parsed.data.display_name !== undefined) {
+    const authUserId = userRow.auth_user_id;
+    if (authUserId) {
+      const { data: authUserData } = await adminClient.auth.admin.getUserById(authUserId);
+      await adminClient.auth.admin.updateUserById(authUserId, {
         user_metadata: {
-          ...(user.user_metadata ?? {}),
-          role: parsed.data.role,
-          ...(parsed.data.display_name !== undefined
-            ? { display_name: parsed.data.display_name }
-            : {})
+          ...(authUserData.user?.user_metadata ?? {}),
+          ...(parsed.data.role ? { role: parsed.data.role } : {}),
+          ...(parsed.data.display_name !== undefined ? { display_name: parsed.data.display_name } : {})
         }
       });
-    }
-  }
-
-  if (parsed.data.display_name !== undefined && !parsed.data.role) {
-    const { data: listed } = await adminClient.auth.admin.listUsers();
-    const user = listed.users.find((item) => item.email?.toLowerCase() === email);
-    if (user) {
-      await adminClient.auth.admin.updateUserById(user.id, {
-        user_metadata: {
-          ...(user.user_metadata ?? {}),
-          display_name: parsed.data.display_name
-        }
-      });
+    } else {
+      const { data: listed } = await adminClient.auth.admin.listUsers();
+      const user = listed.users.find((item) => item.email?.toLowerCase() === email);
+      if (user) {
+        await adminClient.auth.admin.updateUserById(user.id, {
+          user_metadata: {
+            ...(user.user_metadata ?? {}),
+            ...(parsed.data.role ? { role: parsed.data.role } : {}),
+            ...(parsed.data.display_name !== undefined ? { display_name: parsed.data.display_name } : {})
+          }
+        });
+      }
     }
   }
 

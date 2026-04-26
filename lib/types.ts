@@ -221,3 +221,27 @@ export type BigBookMonthlyCurrencyRow = {
     USDT: number;
   };
 };
+
+export type BigBookCashflowCurrency = "IDR" | "MYR" | "USDT" | "TRX";
+
+export type BigBookTypeCashflowRow = {
+  row_key: string;
+  actor_id: string;
+  actor_display_name: string;
+  type_id: string;
+  type_code: string;
+  type_name: string;
+  inflow: number;
+  outflow: number;
+  net: number;
+};
+
+export type BigBookTypeCashflowByCurrency = {
+  currency: BigBookCashflowCurrency;
+  rows: BigBookTypeCashflowRow[];
+  combined: {
+    inflow: number;
+    outflow: number;
+    net: number;
+  };
+};

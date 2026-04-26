@@ -43,6 +43,42 @@ export const bigBookEntryUpdateSchema = bigBookEntryInputSchema.extend({
   id: z.string().uuid()
 });
 
+const optionalString = z
+  .string()
+  .trim()
+  .min(1)
+  .optional()
+  .or(z.literal(""))
+  .transform((value) => (value && value.length ? value : undefined));
+
+function normalizeMultiSelect<T extends z.ZodTypeAny>(itemSchema: T) {
+  return z
+    .union([itemSchema, z.array(itemSchema), z.literal(""), z.array(z.literal(""))])
+    .optional()
+    .transform((value): z.infer<T>[] | undefined => {
+      if (value === undefined || value === "") return undefined;
+      const normalized = (Array.isArray(value) ? value : [value]).filter(
+        (item): item is z.infer<T> => item !== ""
+      );
+      if (!normalized.length) return undefined;
+      return [...new Set(normalized)];
+    });
+}
+
+export const bigBookEntriesQuerySchema = z.object({
+  typeId: normalizeMultiSelect(z.string().uuid()),
+  currencyCode: normalizeMultiSelect(bigBookCurrencySchema),
+  direction: normalizeMultiSelect(bigBookEntryDirectionSchema),
+  actorId: normalizeMultiSelect(z.string().uuid()),
+  dateFrom: optionalString,
+  dateTo: optionalString,
+  query: z.string().max(200).optional().or(z.literal("")).transform((v) => (v ? v : undefined)),
+  page: z.coerce.number().int().min(0).default(0),
+  pageSize: z.coerce.number().int().min(1).max(200).default(20)
+});
+
+export type BigBookEntriesQuery = z.infer<typeof bigBookEntriesQuerySchema>;
+
 export const bigBookAttachmentCreateSchema = z.object({
   ledger_entry_id: z.string().uuid(),
   storage_path: z.string().trim().min(5).max(512),

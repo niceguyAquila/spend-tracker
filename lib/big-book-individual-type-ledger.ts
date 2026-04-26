@@ -3,8 +3,8 @@ import type { BigBookEntry, BigBookMonthlyCurrencyRow } from "@/lib/types";
 export type IndividualTypeLedgerFilters = {
   dateFrom?: string;
   dateTo?: string;
-  currencyCode?: string;
-  direction?: "spending" | "profit" | "";
+  currencyCode?: string[];
+  direction?: Array<"spending" | "profit">;
 };
 
 const MONTH_LABELS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
@@ -17,8 +17,8 @@ export function filterIndividualTypeEntries(entries: BigBookEntry[], filters: In
   return entries.filter((entry) => {
     if (filters.dateFrom && entry.entry_date < filters.dateFrom) return false;
     if (filters.dateTo && entry.entry_date > filters.dateTo) return false;
-    if (filters.currencyCode && entry.currency_code !== filters.currencyCode) return false;
-    if (filters.direction && entry.entry_direction !== filters.direction) return false;
+    if (filters.currencyCode?.length && !filters.currencyCode.includes(entry.currency_code)) return false;
+    if (filters.direction?.length && !filters.direction.includes(entry.entry_direction)) return false;
     return true;
   });
 }

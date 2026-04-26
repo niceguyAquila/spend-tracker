@@ -7,6 +7,10 @@ import { AppRole, UserBrandRole } from "@/lib/types";
 export const ACTIVE_BRAND_COOKIE = "active_brand_id";
 export type { AppRole } from "@/lib/types";
 
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 export async function requireUser() {
   const supabase = await createClient();
   const {
@@ -102,7 +106,12 @@ export async function requireAllowedUser() {
     redirect("/login?error=no-brand-access");
   }
 
-  const brandIds = Array.from(new Set((brandRows ?? []).map((row) => row.brand_id)));
+  const normalizedBrandRows = (brandRows ?? []).filter((row) => typeof row.brand_id === "string" && isUuid(row.brand_id));
+  if (!normalizedBrandRows.length) {
+    redirect("/login?error=no-brand-access");
+  }
+
+  const brandIds = Array.from(new Set(normalizedBrandRows.map((row) => row.brand_id)));
   const { data: brands, error: brandsError } = await adminClient
     .from("brands")
     .select("id, code, name, is_active")
@@ -112,7 +121,7 @@ export async function requireAllowedUser() {
   }
 
   const brandById = new Map((brands ?? []).map((brand) => [brand.id, brand]));
-  const brandRoles: UserBrandRole[] = (brandRows ?? [])
+  const brandRoles: UserBrandRole[] = normalizedBrandRows
     .map((row) => {
       const brand =
         brandById.get(row.brand_id) ??

@@ -2,7 +2,43 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdminApi } from "@/lib/auth-api";
 import { hasTrustedOrigin } from "@/lib/security/origin";
-import { bigBookEntryInputSchema, bigBookEntryUpdateSchema } from "@/lib/validation/big-book";
+import {
+  bigBookEntriesQuerySchema,
+  bigBookEntryInputSchema,
+  bigBookEntryUpdateSchema
+} from "@/lib/validation/big-book";
+import { getBigBookEntriesPaged } from "@/lib/db/queries";
+
+export async function GET(request: Request) {
+  const authCheck = await requireAdminApi();
+  if (!authCheck.ok) {
+    return NextResponse.json({ error: authCheck.message }, { status: authCheck.status });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const parsed = bigBookEntriesQuerySchema.safeParse({
+    typeId: searchParams.getAll("typeId"),
+    currencyCode: searchParams.getAll("currencyCode"),
+    direction: searchParams.getAll("direction"),
+    actorId: searchParams.getAll("actorId"),
+    dateFrom: searchParams.get("dateFrom") ?? "",
+    dateTo: searchParams.get("dateTo") ?? "",
+    query: searchParams.get("query") ?? "",
+    page: searchParams.get("page") ?? undefined,
+    pageSize: searchParams.get("pageSize") ?? undefined
+  });
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  }
+
+  try {
+    const result = await getBigBookEntriesPaged(parsed.data);
+    return NextResponse.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to load ledger entries.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
 
 export async function POST(request: Request) {
   if (!hasTrustedOrigin(request)) {
@@ -97,13 +133,19 @@ export async function DELETE(request: Request) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("business_ledger_entries")
     .delete()
-    .eq("id", id);
+    .eq("id", id)
+    .eq("brand_id", authCheck.activeBrandId)
+    .select("id")
+    .maybeSingle();
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+  if (!data) {
+    return NextResponse.json({ error: "Entry not found." }, { status: 404 });
   }
   return NextResponse.json({ ok: true });
 }
