@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
+import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { Modal } from "@/components/ui/modal";
 import type { BigBookEntry, BigBookLedgerType } from "@/lib/types";
 import {
@@ -76,6 +78,26 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
     [monthlyRows]
   );
 
+  const entriesPagination = useTablePagination(visibleEntries.length);
+  const pagedVisibleEntries = useMemo(
+    () => sliceForPage(visibleEntries, entriesPagination.page, entriesPagination.pageSize),
+    [visibleEntries, entriesPagination.page, entriesPagination.pageSize]
+  );
+
+  const monthlyPagination = useTablePagination(monthlyRows.length);
+  const pagedMonthlyRows = useMemo(
+    () => sliceForPage(monthlyRows, monthlyPagination.page, monthlyPagination.pageSize),
+    [monthlyRows, monthlyPagination.page, monthlyPagination.pageSize]
+  );
+
+  useEffect(() => {
+    entriesPagination.setPage(0);
+  }, [dateFrom, dateTo, currencyFilter, directionFilter, selectedTypeId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    monthlyPagination.setPage(0);
+  }, [selectedYear, selectedTypeId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="space-y-6">
       <section className="card">
@@ -136,7 +158,7 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
               </tr>
             </thead>
             <tbody>
-              {visibleEntries.map((entry) => (
+              {pagedVisibleEntries.map((entry) => (
                 <tr key={entry.id} className="border-b">
                   <td className="px-3 py-2">{formatDateDisplay(entry.entry_date)}</td>
                   <td className="px-3 py-2">{entry.entry_direction === "profit" ? "In" : "Out"}</td>
@@ -160,6 +182,15 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
             </tbody>
           </table>
         </div>
+        <TablePaginationBar
+          totalCount={visibleEntries.length}
+          page={entriesPagination.page}
+          setPage={entriesPagination.setPage}
+          pageSize={entriesPagination.pageSize}
+          setPageSize={entriesPagination.setPageSize}
+          pageCount={entriesPagination.pageCount}
+          rangeLabel={entriesPagination.rangeLabel}
+        />
       </section>
 
       <section className="card">
@@ -203,7 +234,7 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
                   {formatSignedAmount(grandTotals.USDT, "USDT")}
                 </td>
               </tr>
-              {monthlyRows.map((row) => (
+              {pagedMonthlyRows.map((row) => (
                 <tr key={row.month_label} className="border-b">
                   <td className="px-3 py-2 font-medium">{row.month_label}</td>
                   <td className={`px-3 py-2 ${getAmountColorClass(row.totals.IDR)}`}>
@@ -220,6 +251,15 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
             </tbody>
           </table>
         </div>
+        <TablePaginationBar
+          totalCount={monthlyRows.length}
+          page={monthlyPagination.page}
+          setPage={monthlyPagination.setPage}
+          pageSize={monthlyPagination.pageSize}
+          setPageSize={monthlyPagination.setPageSize}
+          pageCount={monthlyPagination.pageCount}
+          rangeLabel={monthlyPagination.rangeLabel}
+        />
       </section>
 
       <Modal

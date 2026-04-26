@@ -1,6 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
+import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { handleUnauthorizedResponse } from "@/lib/client/auth-fetch";
 
 type Brand = {
@@ -16,6 +18,12 @@ export function AdminBrandsPanel() {
   const [code, setCode] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const brandPagination = useTablePagination(brands.length);
+  const pagedBrands = useMemo(
+    () => sliceForPage(brands, brandPagination.page, brandPagination.pageSize),
+    [brands, brandPagination.page, brandPagination.pageSize]
+  );
 
   async function loadBrands() {
     setLoading(true);
@@ -116,7 +124,7 @@ export function AdminBrandsPanel() {
                 </tr>
               </thead>
               <tbody>
-                {brands.map((brand) => (
+                {pagedBrands.map((brand) => (
                   <tr key={brand.id} className="border-b border-[rgb(var(--border))]">
                     <td className="px-3 py-2">{brand.code}</td>
                     <td className="px-3 py-2">{brand.name}</td>
@@ -134,6 +142,15 @@ export function AdminBrandsPanel() {
                 ))}
               </tbody>
             </table>
+            <TablePaginationBar
+              totalCount={brands.length}
+              page={brandPagination.page}
+              setPage={brandPagination.setPage}
+              pageSize={brandPagination.pageSize}
+              setPageSize={brandPagination.setPageSize}
+              pageCount={brandPagination.pageCount}
+              rangeLabel={brandPagination.rangeLabel}
+            />
           </div>
         )}
       </section>

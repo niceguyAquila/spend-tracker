@@ -9,6 +9,8 @@ import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
 import { Modal } from "@/components/ui/modal";
 import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
+import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
+import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 
 type Props = {
   initialTypes: BigBookLedgerType[];
@@ -160,6 +162,16 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
       return [row.explanation, row.remark ?? "", row.type_name, row.actor_display_name].join(" ").toLowerCase().includes(normalized);
     });
   }, [entries, query, dateFrom, dateTo, typeFilter, currencyFilter, actorFilter, directionFilter]);
+
+  const ledgerPagination = useTablePagination(visibleEntries.length);
+  const pagedLedgerRows = useMemo(
+    () => sliceForPage(visibleEntries, ledgerPagination.page, ledgerPagination.pageSize),
+    [visibleEntries, ledgerPagination.page, ledgerPagination.pageSize]
+  );
+
+  useEffect(() => {
+    ledgerPagination.setPage(0);
+  }, [query, dateFrom, dateTo, typeFilter, currencyFilter, actorFilter, directionFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const actorCurrencyMetrics = useMemo(() => {
     const totalsByActor = new Map<string, BigBookActorCurrencyMetrics>();
@@ -717,7 +729,7 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
               </tr>
             </thead>
             <tbody>
-              {visibleEntries.map((row) => (
+              {pagedLedgerRows.map((row) => (
                 <tr key={row.id} className="border-b border-[rgb(var(--border))] align-top">
                   <td className="px-3 py-2">{formatDateDisplay(row.entry_date)}</td>
                   <td className="px-3 py-2">
@@ -806,6 +818,15 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
             </tbody>
           </table>
         </div>
+        <TablePaginationBar
+          totalCount={visibleEntries.length}
+          page={ledgerPagination.page}
+          setPage={ledgerPagination.setPage}
+          pageSize={ledgerPagination.pageSize}
+          setPageSize={ledgerPagination.setPageSize}
+          pageCount={ledgerPagination.pageCount}
+          rangeLabel={ledgerPagination.rangeLabel}
+        />
       </section>
 
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}

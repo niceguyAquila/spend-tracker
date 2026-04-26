@@ -1,6 +1,8 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
+import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { handleUnauthorizedResponse } from "@/lib/client/auth-fetch";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Modal } from "@/components/ui/modal";
@@ -46,6 +48,12 @@ export function AdminUsersPanel() {
   const [editRole, setEditRole] = useState<AllowedUser["role"]>("viewer");
   const [editBrandRoles, setEditBrandRoles] = useState<Record<string, "admin" | "finance" | "viewer" | "none">>({});
   const [editSubmitting, setEditSubmitting] = useState(false);
+
+  const userPagination = useTablePagination(users.length);
+  const pagedUsers = useMemo(
+    () => sliceForPage(users, userPagination.page, userPagination.pageSize),
+    [users, userPagination.page, userPagination.pageSize]
+  );
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -286,7 +294,7 @@ export function AdminUsersPanel() {
                 </tr>
               </thead>
               <tbody>
-                {users.map((user) => (
+                {pagedUsers.map((user) => (
                   <tr key={user.id} className="border-b border-[rgb(var(--border))]">
                     <td className="px-3 py-2">{user.email}</td>
                     <td className="px-3 py-2">{user.display_name ?? "-"}</td>
@@ -313,6 +321,15 @@ export function AdminUsersPanel() {
                 ))}
               </tbody>
             </table>
+            <TablePaginationBar
+              totalCount={users.length}
+              page={userPagination.page}
+              setPage={userPagination.setPage}
+              pageSize={userPagination.pageSize}
+              setPageSize={userPagination.setPageSize}
+              pageCount={userPagination.pageCount}
+              rangeLabel={userPagination.rangeLabel}
+            />
           </div>
         )}
       </section>

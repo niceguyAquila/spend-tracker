@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
-import { Fragment } from "react";
 import { requireAllowedUser } from "@/lib/auth";
 import { DashboardReportTable } from "@/components/dashboard-report-table";
-import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
+import { MasterDashboardBigBookEntriesTable, MasterDashboardCashflowTable } from "@/components/master-dashboard-tables";
+import { formatAmount, getAmountColorClass } from "@/lib/display-format";
 import { getBigBookEntries, getBigBookLedgerTypeByCode, getDashboardReportRows } from "@/lib/db/queries";
 
 type SearchParamValue = string | string[] | undefined;
@@ -251,71 +251,7 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
             ))}
           </div>
 
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[980px] text-sm">
-              <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
-                <tr>
-                  <th className="px-3 py-2">Currency</th>
-                  <th className="px-3 py-2">Source</th>
-                  <th className="px-3 py-2">Inflow</th>
-                  <th className="px-3 py-2">Outflow</th>
-                  <th className="px-3 py-2">Net</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sourceRowsByCurrency.map((row, index) => (
-                  <Fragment key={row.currency}>
-                    <tr className="border-b border-[rgb(var(--border))]">
-                      <td className="px-3 py-2">{row.currency}</td>
-                      <td className="px-3 py-2">Web Spending</td>
-                      <td className={`px-3 py-2 ${getAmountColorClass(row.webSpending.inflow)}`}>
-                        {row.currency} {formatAmount(row.webSpending.inflow)}
-                      </td>
-                      <td className={`px-3 py-2 ${getAmountColorClass(-row.webSpending.outflow)}`}>
-                        {row.currency} {formatAmount(row.webSpending.outflow)}
-                      </td>
-                      <td className={`px-3 py-2 ${getAmountColorClass(row.webSpending.net)}`}>
-                        {row.currency} {formatAmount(row.webSpending.net)}
-                      </td>
-                    </tr>
-                    <tr className="border-b border-[rgb(var(--border))]">
-                      <td className="px-3 py-2">{row.currency}</td>
-                      <td className="px-3 py-2">Big Book</td>
-                      <td className={`px-3 py-2 ${getAmountColorClass(row.bigBook.inflow)}`}>
-                        {row.currency} {formatAmount(row.bigBook.inflow)}
-                      </td>
-                      <td className={`px-3 py-2 ${getAmountColorClass(-row.bigBook.outflow)}`}>
-                        {row.currency} {formatAmount(row.bigBook.outflow)}
-                      </td>
-                      <td className={`px-3 py-2 ${getAmountColorClass(row.bigBook.net)}`}>
-                        {row.currency} {formatAmount(row.bigBook.net)}
-                      </td>
-                    </tr>
-                    <tr className="border-b border-[rgb(var(--border))] bg-slate-50 text-slate-900">
-                      <td className="px-3 py-2">{row.currency}</td>
-                      <td className="px-3 py-2 font-semibold">Combined</td>
-                      <td className={`px-3 py-2 font-semibold ${getAmountColorClass(row.combined.inflow)}`}>
-                        {row.currency} {formatAmount(row.combined.inflow)}
-                      </td>
-                      <td className={`px-3 py-2 font-semibold ${getAmountColorClass(-row.combined.outflow)}`}>
-                        {row.currency} {formatAmount(row.combined.outflow)}
-                      </td>
-                      <td className={`px-3 py-2 font-semibold ${getAmountColorClass(row.combined.net)}`}>
-                        {row.currency} {formatAmount(row.combined.net)}
-                      </td>
-                    </tr>
-                    {index < sourceRowsByCurrency.length - 1 ? (
-                      <tr aria-hidden="true">
-                        <td className="p-0" colSpan={5}>
-                          <div className="h-4" />
-                        </td>
-                      </tr>
-                    ) : null}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <MasterDashboardCashflowTable sourceRowsByCurrency={sourceRowsByCurrency} />
         </section>
 
         <section className="card">
@@ -347,43 +283,7 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
             </p>
           )}
 
-          {ledgerType ? (
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[980px] text-sm">
-                <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
-                  <tr>
-                    <th className="px-3 py-2">Date</th>
-                    <th className="px-3 py-2">Cash Flow</th>
-                    <th className="px-3 py-2">Type</th>
-                    <th className="px-3 py-2">Explanation</th>
-                    <th className="px-3 py-2">Amount</th>
-                    <th className="px-3 py-2">Actor</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bigBookEntries.map((entry) => (
-                    <tr key={entry.id} className="border-b border-[rgb(var(--border))]">
-                      <td className="px-3 py-2">{formatDateDisplay(entry.entry_date)}</td>
-                      <td className="px-3 py-2">{entry.entry_direction === "profit" ? "In" : "Out"}</td>
-                      <td className="px-3 py-2">{entry.type_name}</td>
-                      <td className="px-3 py-2">{entry.explanation}</td>
-                      <td className={`px-3 py-2 ${getAmountColorClass(entry.entry_direction === "spending" ? -entry.amount : entry.amount)}`}>
-                        {entry.currency_code} {formatAmount(entry.amount, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
-                      </td>
-                      <td className="px-3 py-2">{entry.actor_display_name}</td>
-                    </tr>
-                  ))}
-                  {!bigBookEntries.length ? (
-                    <tr>
-                      <td className="px-3 py-4 text-center text-muted" colSpan={6}>
-                        No Big Book entries found for this brand type mapping.
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-          ) : null}
+          {ledgerType ? <MasterDashboardBigBookEntriesTable entries={bigBookEntries} /> : null}
         </section>
       </div>
     );

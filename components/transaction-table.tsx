@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
+import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ExpenseCategory, ExpenseSubcategory, ExpenseWithNames } from "@/lib/types";
 import { handleUnauthorizedResponse } from "@/lib/client/auth-fetch";
@@ -154,6 +156,16 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
       return sortDirection === "asc" ? compared : -compared;
     });
   }, [query, rows, dateFrom, dateTo, categoryFilter, subcategoryFilter, sortKey, sortDirection]);
+
+  const pagination = useTablePagination(filteredRows.length);
+  const pagedRows = useMemo(
+    () => sliceForPage(filteredRows, pagination.page, pagination.pageSize),
+    [filteredRows, pagination.page, pagination.pageSize]
+  );
+
+  useEffect(() => {
+    pagination.setPage(0);
+  }, [query, dateFrom, dateTo, categoryFilter, subcategoryFilter, sortKey, sortDirection]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function updateMonth(monthKey: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -418,7 +430,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
             </tr>
           </thead>
           <tbody>
-            {filteredRows.map((row) => {
+            {pagedRows.map((row) => {
               const isEditing = editingId === row.id;
               const allowedSubs = subcategories.filter((item) => item.category_id === draft.category_id);
               return (
@@ -596,6 +608,15 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
           </tbody>
         </table>
       </div>
+      <TablePaginationBar
+        totalCount={filteredRows.length}
+        page={pagination.page}
+        setPage={pagination.setPage}
+        pageSize={pagination.pageSize}
+        setPageSize={pagination.setPageSize}
+        pageCount={pagination.pageCount}
+        rangeLabel={pagination.rangeLabel}
+      />
       {message ? (
         <p className="mt-3 text-sm text-slate-700" role="status" aria-live="polite">
           {message}

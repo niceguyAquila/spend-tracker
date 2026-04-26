@@ -2,6 +2,7 @@ import { getWebTransactionComparison } from "@/lib/db/queries";
 import { requireAllowedUser } from "@/lib/auth";
 import type { WebTransactionComparisonOutcome } from "@/lib/types";
 import { WebTransactionsComparisonFilters } from "@/components/web-transactions-comparison-filters";
+import { WebTransactionComparisonTable } from "@/components/web-transaction-comparison-table";
 import { formatAmount, getAmountColorClass } from "@/lib/display-format";
 
 type SearchParamValue = string | string[] | undefined;
@@ -22,19 +23,6 @@ function normalizeSingleParam(param: SearchParamValue): string | null {
   if (Array.isArray(param)) return param[0]?.trim() || null;
   const normalized = param.trim();
   return normalized.length ? normalized : null;
-}
-
-function getComparisonOutcomeLabel(outcome: WebTransactionComparisonOutcome) {
-  if (outcome === "matched") return "Matched";
-  if (outcome === "mismatched") return "Mismatch";
-  if (outcome === "missing_in_backoffice") return "Missing Backoffice";
-  return "Missing Payment Gateway";
-}
-
-function getComparisonOutcomeClassName(outcome: WebTransactionComparisonOutcome) {
-  if (outcome === "matched") return "bg-emerald-100 text-emerald-800";
-  if (outcome === "mismatched") return "bg-amber-100 text-amber-800";
-  return "bg-slate-100 text-slate-700";
 }
 
 export default async function TransactionsComparisonPage({ searchParams }: ComparisonPageProps) {
@@ -134,55 +122,9 @@ export default async function TransactionsComparisonPage({ searchParams }: Compa
         </article>
       </section>
 
-      <section className="card overflow-x-auto">
+      <section className="card">
         <h3 className="mb-3 text-lg font-semibold">Reconciliation Rows ({comparison.rows.length.toLocaleString("id-ID")})</h3>
-        <table className="min-w-[1100px] text-sm">
-          <thead className="border-b bg-slate-50 text-left">
-            <tr>
-              <th className="px-3 py-2">Transaction No</th>
-              <th className="px-3 py-2">Type</th>
-              <th className="px-3 py-2">Backoffice Status</th>
-              <th className="px-3 py-2">Gateway Status</th>
-              <th className="px-3 py-2">Backoffice Amount</th>
-              <th className="px-3 py-2">Gateway Amount</th>
-              <th className="px-3 py-2">Result</th>
-            </tr>
-          </thead>
-          <tbody>
-            {comparison.rows.map((row) => (
-              <tr key={row.comparison_key} className="border-b">
-                <td className="px-3 py-2 font-mono text-xs">{row.transaction_no}</td>
-                <td className="px-3 py-2">{row.canonical_type}</td>
-                <td className="px-3 py-2">{row.backoffice?.canonical_status ?? "-"}</td>
-                <td className="px-3 py-2">{row.payment_gateway?.canonical_status ?? "-"}</td>
-                <td className={`px-3 py-2 ${row.backoffice ? getAmountColorClass(row.backoffice.amount) : ""}`}>
-                  {row.backoffice ? formatAmount(row.backoffice.amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : "-"}
-                </td>
-                <td className={`px-3 py-2 ${row.payment_gateway ? getAmountColorClass(row.payment_gateway.amount) : ""}`}>
-                  {row.payment_gateway
-                    ? formatAmount(row.payment_gateway.amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })
-                    : "-"}
-                </td>
-                <td className="px-3 py-2">
-                  <span
-                    className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${getComparisonOutcomeClassName(
-                      row.outcome
-                    )}`}
-                  >
-                    {getComparisonOutcomeLabel(row.outcome)}
-                  </span>
-                </td>
-              </tr>
-            ))}
-            {!comparison.rows.length ? (
-              <tr>
-                <td className="px-3 py-4 text-center text-slate-600" colSpan={7}>
-                  No comparison rows for the selected filters.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
+        <WebTransactionComparisonTable rows={comparison.rows} />
       </section>
     </div>
   );

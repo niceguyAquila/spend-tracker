@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
+import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { useRouter } from "next/navigation";
 import type { ExpenseCategory, ExpenseSubcategory } from "@/lib/types";
 import { handleUnauthorizedResponse } from "@/lib/client/auth-fetch";
@@ -35,6 +37,22 @@ export function CategoryManager({
     () => subcategories.filter((item) => item.category_id === selectedCategory),
     [selectedCategory, subcategories]
   );
+
+  const categoryPagination = useTablePagination(categories.length);
+  const pagedCategories = useMemo(
+    () => sliceForPage(categories, categoryPagination.page, categoryPagination.pageSize),
+    [categories, categoryPagination.page, categoryPagination.pageSize]
+  );
+
+  const subcategoryPagination = useTablePagination(currentRows.length);
+  const pagedSubcategoryRows = useMemo(
+    () => sliceForPage(currentRows, subcategoryPagination.page, subcategoryPagination.pageSize),
+    [currentRows, subcategoryPagination.page, subcategoryPagination.pageSize]
+  );
+
+  useEffect(() => {
+    subcategoryPagination.setPage(0);
+  }, [selectedCategory]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function createSubcategory() {
     if (!selectedCategory || newName.trim().length < 2 || creating) return;
@@ -258,7 +276,7 @@ export function CategoryManager({
               </tr>
             </thead>
             <tbody>
-              {categories.map((item) => (
+              {pagedCategories.map((item) => (
                 <tr key={item.id} className="border-b">
                   <td className="px-3 py-2">{item.code}</td>
                   <td className="px-3 py-2">{item.name}</td>
@@ -290,6 +308,15 @@ export function CategoryManager({
             </tbody>
           </table>
         </div>
+        <TablePaginationBar
+          totalCount={categories.length}
+          page={categoryPagination.page}
+          setPage={categoryPagination.setPage}
+          pageSize={categoryPagination.pageSize}
+          setPageSize={categoryPagination.setPageSize}
+          pageCount={categoryPagination.pageCount}
+          rangeLabel={categoryPagination.rangeLabel}
+        />
       </section>
 
       <section className="card">
@@ -333,7 +360,7 @@ export function CategoryManager({
               </tr>
             </thead>
             <tbody>
-              {currentRows.map((row) => (
+              {pagedSubcategoryRows.map((row) => (
                 <tr key={row.id} className="border-b">
                   <td className="px-3 py-2">{row.name}</td>
                   <td className="px-3 py-2">{row.is_active ? "Active" : "Disabled"}</td>
@@ -370,6 +397,15 @@ export function CategoryManager({
             </tbody>
           </table>
         </div>
+        <TablePaginationBar
+          totalCount={currentRows.length}
+          page={subcategoryPagination.page}
+          setPage={subcategoryPagination.setPage}
+          pageSize={subcategoryPagination.pageSize}
+          setPageSize={subcategoryPagination.setPageSize}
+          pageCount={subcategoryPagination.pageCount}
+          rangeLabel={subcategoryPagination.rangeLabel}
+        />
       </section>
 
       <section className="card">
