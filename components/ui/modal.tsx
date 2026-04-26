@@ -18,6 +18,35 @@ type Props = {
   initialFocusRef?: React.RefObject<HTMLElement | null>;
 };
 
+// Reference-counted body scroll lock shared across all Modal instances.
+// Using a simple "save/restore prev value" pattern per modal breaks when
+// multiple modals close in the same render: cleanups run in mount order, so
+// a later modal restores its stale captured value ("hidden") and leaves the
+// page unscrollable. The counter ensures only the first lock saves the
+// original overflow and only the last release restores it, regardless of
+// which modal cleans up first.
+let bodyScrollLockCount = 0;
+let bodyScrollLockPrevOverflow = "";
+
+function lockBodyScroll() {
+  if (typeof document === "undefined") return;
+  if (bodyScrollLockCount === 0) {
+    bodyScrollLockPrevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+  }
+  bodyScrollLockCount += 1;
+}
+
+function unlockBodyScroll() {
+  if (typeof document === "undefined") return;
+  if (bodyScrollLockCount === 0) return;
+  bodyScrollLockCount -= 1;
+  if (bodyScrollLockCount === 0) {
+    document.body.style.overflow = bodyScrollLockPrevOverflow;
+    bodyScrollLockPrevOverflow = "";
+  }
+}
+
 export function Modal({
   open,
   onOpenChange,
@@ -43,8 +72,7 @@ export function Modal({
 
   useEffect(() => {
     if (!open) return;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    lockBodyScroll();
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && dismissibleRef.current) {
@@ -62,7 +90,7 @@ export function Modal({
     return () => {
       cancelAnimationFrame(id);
       document.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = prevOverflow;
+      unlockBodyScroll();
     };
   }, [open, initialFocusRef]);
 
