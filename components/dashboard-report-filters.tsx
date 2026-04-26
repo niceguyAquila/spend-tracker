@@ -87,7 +87,7 @@ function SearchableDropdown({ label, options, selected, onChange, disabled = fal
       <summary className="field mt-1 list-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">
         {label} ({selected.length || "All"})
       </summary>
-      <div className="absolute z-10 mt-2 w-full min-w-64 rounded-md border bg-white p-2 shadow-lg">
+      <div className="absolute z-10 mt-2 w-full min-w-64 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2 shadow-lg">
         <div className="mb-2 flex items-center gap-2 text-xs">
           <button className="btn-secondary btn-sm" type="button" onClick={selectAll} disabled={disabled}>
             All
@@ -115,7 +115,7 @@ function SearchableDropdown({ label, options, selected, onChange, disabled = fal
               <span>{option.label}</span>
             </label>
           ))}
-          {!filteredOptions.length ? <p className="px-1 py-1 text-slate-500">No options found.</p> : null}
+          {!filteredOptions.length ? <p className="px-1 py-1 text-[rgb(var(--text-muted))]">No options found.</p> : null}
         </div>
       </div>
     </details>
@@ -189,7 +189,7 @@ function SearchableSingleMonthPicker({
       <summary className="field mt-1 cursor-pointer list-none">
         {label}: {selectedLabel ?? placeholder}
       </summary>
-      <div className="absolute z-10 mt-2 w-full min-w-64 rounded-md border bg-white p-2 shadow-lg">
+      <div className="absolute z-10 mt-2 w-full min-w-64 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2 shadow-lg">
         <div className="mb-2 flex items-center gap-2 text-xs">
           <button className="btn-secondary btn-sm" type="button" onClick={clearSelection} disabled={disabled}>
             Clear
@@ -207,8 +207,8 @@ function SearchableSingleMonthPicker({
             <button
               key={option.value}
               type="button"
-              className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-slate-100 ${
-                value === option.value ? "bg-slate-100 font-medium" : ""
+              className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-[rgb(var(--surface-muted))] ${
+                value === option.value ? "bg-[rgb(var(--surface-muted))] font-medium" : ""
               }`}
               disabled={disabled}
               onClick={() => pick(option.value)}
@@ -216,7 +216,7 @@ function SearchableSingleMonthPicker({
               {option.label}
             </button>
           ))}
-          {!filteredOptions.length ? <p className="px-1 py-1 text-slate-500">No options found.</p> : null}
+          {!filteredOptions.length ? <p className="px-1 py-1 text-[rgb(var(--text-muted))]">No options found.</p> : null}
         </div>
       </div>
     </details>
@@ -322,7 +322,7 @@ export function DashboardReportFilters({
           }}
         />
       </div>
-      <p className="mt-2 text-xs text-slate-500">
+      <p className="mt-2 text-xs text-[rgb(var(--text-muted))]">
         Leave From and To unset to include every month in the current category filters. Set one or both ends to limit
         columns.
       </p>

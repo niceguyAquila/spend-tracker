@@ -187,7 +187,7 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
         <section className="card">
           <h1 className="text-xl font-semibold">Master Dashboard</h1>
           <p className="mt-1 text-sm text-slate-600">
-            Unified admin view for Web Spending and Big Book Type Ledger by selected brand.
+            Dashboard to view combined financial statistics of a brand.
           </p>
           <form className="mt-4 flex flex-wrap items-end gap-3" method="get">
             <label className="text-sm text-slate-700">
@@ -254,14 +254,9 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
           <MasterDashboardCashflowTable sourceRowsByCurrency={sourceRowsByCurrency} />
         </section>
 
-        <section className="card">
-          <h2 className="text-lg font-semibold">Web Spending Metrics ({selectedBrand.name})</h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Data source: expense entries grouped by category and sub-category across available months.
-          </p>
-        </section>
-
         <DashboardReportTable
+          title={`Web Spending Metrics (${selectedBrand.name})`}
+          description="Data source: expense entries grouped by category and sub-category across available months."
           monthColumns={spendingPivot.monthColumns}
           rows={spendingPivot.pivotRows}
           categorySubtotals={spendingPivot.categorySubtotals}

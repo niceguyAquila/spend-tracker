@@ -238,10 +238,10 @@ export function TransactionForm({
         </label>
         <label className="text-sm">
           Amount *
-          <div className="mt-1 flex items-center rounded-md border border-slate-200 bg-white">
-            <span className="px-3 text-sm text-slate-600">Rp</span>
+          <div className="mt-1 flex items-center rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))]">
+            <span className="px-3 text-sm text-[rgb(var(--text-muted))]">IDR</span>
             <input
-              className="w-full rounded-r-md py-2 pr-3 text-sm outline-none"
+              className="w-full rounded-r-md bg-transparent py-2 pr-3 text-sm text-[rgb(var(--text))] outline-none"
               inputMode="numeric"
               required
               disabled={saving}

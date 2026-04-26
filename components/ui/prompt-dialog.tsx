@@ -77,7 +77,7 @@ export function PromptDialog({
         </>
       }
     >
-      <label htmlFor={fieldId} className="mb-1 block font-medium text-slate-800">
+      <label htmlFor={fieldId} className="mb-1 block font-medium text-[rgb(var(--text))]">
         {label}
       </label>
       <input

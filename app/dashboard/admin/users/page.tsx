@@ -11,7 +11,7 @@ export default async function AdminUsersPage() {
   return (
     <div className="space-y-6">
       <section className="card">
-        <h1 className="text-xl font-semibold">Admin User Management</h1>
+        <h1 className="text-xl font-semibold">User Access and Role Administration</h1>
         <p className="text-sm text-muted">
           Invite users, set access role, and assign the brands each user can interact with.
         </p>

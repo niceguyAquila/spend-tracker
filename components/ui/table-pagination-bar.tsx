@@ -38,9 +38,9 @@ export function TablePaginationBar({
     <div
       className={`mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between ${className}`}
     >
-      <p className="text-sm text-slate-600">{rangeLabel}</p>
+      <p className="text-sm text-[rgb(var(--text-muted))]">{rangeLabel}</p>
       <div className="flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-2 text-sm text-slate-700">
+        <label className="flex items-center gap-2 text-sm text-[rgb(var(--text))]">
           <span>Rows</span>
           <select
             className="field w-auto min-w-[4.5rem] py-1.5 text-sm"
@@ -63,19 +63,19 @@ export function TablePaginationBar({
         <div className="flex items-center gap-1">
           <button
             type="button"
-            className="rounded border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-2.5 py-1.5 text-sm font-medium text-slate-800 enabled:hover:bg-[rgb(var(--surface-muted))] disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-2.5 py-1.5 text-sm font-medium text-[rgb(var(--text))] enabled:hover:bg-[rgb(var(--surface-muted))] disabled:cursor-not-allowed disabled:opacity-50"
             disabled={!canGoPrev}
             onClick={() => setPage(page - 1)}
             aria-label="Previous page"
           >
             Previous
           </button>
-          <span className="px-1 text-sm text-slate-600" aria-live="polite">
+          <span className="px-1 text-sm text-[rgb(var(--text-muted))]" aria-live="polite">
             Page {pageCount ? page + 1 : 0} of {pageCount}
           </span>
           <button
             type="button"
-            className="rounded border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-2.5 py-1.5 text-sm font-medium text-slate-800 enabled:hover:bg-[rgb(var(--surface-muted))] disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-2.5 py-1.5 text-sm font-medium text-[rgb(var(--text))] enabled:hover:bg-[rgb(var(--surface-muted))] disabled:cursor-not-allowed disabled:opacity-50"
             disabled={!canGoNext}
             onClick={() => setPage(page + 1)}
             aria-label="Next page"

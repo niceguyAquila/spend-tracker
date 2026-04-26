@@ -58,7 +58,7 @@ export function WebTransactionsComparisonFilters({
 
   return (
     <form action={applyFilters} className="card grid grid-cols-1 gap-3 xl:grid-cols-6" aria-busy={isPending}>
-      <label className="text-sm text-slate-700">
+      <label className="text-sm text-[rgb(var(--text-muted))]">
         <span className="mb-1 block">Transaction No</span>
         <input
           name="transactionNo"
@@ -69,7 +69,7 @@ export function WebTransactionsComparisonFilters({
           disabled={isPending}
         />
       </label>
-      <label className="text-sm text-slate-700">
+      <label className="text-sm text-[rgb(var(--text-muted))]">
         <span className="mb-1 block">Status</span>
         <input
           name="status"
@@ -80,7 +80,7 @@ export function WebTransactionsComparisonFilters({
           disabled={isPending}
         />
       </label>
-      <label className="text-sm text-slate-700">
+      <label className="text-sm text-[rgb(var(--text-muted))]">
         <span className="mb-1 block">Type</span>
         <select name="canonicalType" defaultValue={selectedCanonicalType ?? ""} className="field" disabled={isPending}>
           <option value="">All types</option>
@@ -89,7 +89,7 @@ export function WebTransactionsComparisonFilters({
           <option value="Other">Other</option>
         </select>
       </label>
-      <label className="text-sm text-slate-700">
+      <label className="text-sm text-[rgb(var(--text-muted))]">
         <span className="mb-1 block">Result</span>
         <select name="outcome" defaultValue={selectedOutcome ?? ""} className="field" disabled={isPending}>
           <option value="">All results</option>
@@ -100,11 +100,11 @@ export function WebTransactionsComparisonFilters({
           ))}
         </select>
       </label>
-      <label className="text-sm text-slate-700">
+      <label className="text-sm text-[rgb(var(--text-muted))]">
         <span className="mb-1 block">Date From</span>
         <input name="dateFrom" type="date" defaultValue={selectedDateFrom ?? ""} className="field" disabled={isPending} />
       </label>
-      <label className="text-sm text-slate-700">
+      <label className="text-sm text-[rgb(var(--text-muted))]">
         <span className="mb-1 block">Date To</span>
         <input name="dateTo" type="date" defaultValue={selectedDateTo ?? ""} className="field" disabled={isPending} />
       </label>

@@ -328,7 +328,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
         />
       </div>
       <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-5">
-        <label className="text-sm text-slate-700">
+        <label className="text-sm text-[rgb(var(--text-muted))]">
           <span className="mb-1 block">Month</span>
           <select
             className="field"
@@ -343,7 +343,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
             ))}
           </select>
         </label>
-        <label className="text-sm text-slate-700">
+        <label className="text-sm text-[rgb(var(--text-muted))]">
           <span className="mb-1 block">Date from</span>
           <input
             className="field"
@@ -353,7 +353,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
             onChange={(event) => setDateFrom(event.target.value)}
           />
         </label>
-        <label className="text-sm text-slate-700">
+        <label className="text-sm text-[rgb(var(--text-muted))]">
           <span className="mb-1 block">Date to</span>
           <input
             className="field"
@@ -363,7 +363,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
             onChange={(event) => setDateTo(event.target.value)}
           />
         </label>
-        <label className="text-sm text-slate-700">
+        <label className="text-sm text-[rgb(var(--text-muted))]">
           <span className="mb-1 block">Category</span>
           <select
             className="field"
@@ -382,7 +382,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
             ))}
           </select>
         </label>
-        <label className="text-sm text-slate-700">
+        <label className="text-sm text-[rgb(var(--text-muted))]">
           <span className="mb-1 block">Sub-category</span>
           <select
             className="field"
@@ -400,8 +400,8 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
         </label>
       </div>
       <div className="overflow-x-auto">
-        <table className="min-w-[1040px] text-sm">
-          <thead className="border-b bg-slate-50 text-left">
+        <table className="w-full min-w-[1040px] text-sm">
+          <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
             <tr>
               <th className="px-3 py-2">
                 <button className="font-medium" disabled={criticalPending} onClick={() => toggleSort("expense_date")}>
@@ -497,8 +497,8 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
                   </td>
                   <td className="px-3 py-2">
                     {isEditing ? (
-                      <div className="flex items-center rounded-md border border-slate-200 bg-white">
-                        <span className="px-2 text-xs text-slate-600">Rp</span>
+                      <div className="flex items-center rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))]">
+                        <span className="px-2 text-xs text-[rgb(var(--text-muted))]">IDR</span>
                         <input
                           className="w-28 py-2 pr-2 text-sm outline-none"
                           inputMode="numeric"
@@ -510,7 +510,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
                         />
                       </div>
                     ) : (
-                      `Rp ${formatAmount(row.amount, { locale: "id-ID", minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                      `IDR ${formatAmount(row.amount, { locale: "id-ID", minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
                     )}
                   </td>
                   <td className="px-3 py-2">
@@ -574,17 +574,17 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
                         {openActionMenuId === row.id ? (
                           <div
                             role="menu"
-                            className="absolute right-0 z-10 mt-1 w-28 rounded-md border border-slate-200 bg-white p-1 shadow-sm"
+                            className="absolute right-0 z-10 mt-1 w-28 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-1 shadow-sm"
                           >
                             <button
-                              className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-slate-100"
+                              className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
                               role="menuitem"
                               onClick={() => startEdit(row)}
                             >
                               Edit
                             </button>
                             <button
-                              className="block w-full rounded px-2 py-1 text-left text-sm text-red-600 hover:bg-slate-100"
+                              className="block w-full rounded px-2 py-1 text-left text-sm text-rose-600 hover:bg-[rgb(var(--surface-muted))]"
                               role="menuitem"
                               onClick={() => openDeleteDialog(row)}
                             >
@@ -600,7 +600,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
             })}
             {!filteredRows.length ? (
               <tr>
-                <td className="px-3 py-4 text-center text-slate-600" colSpan={8}>
+                <td className="px-3 py-4 text-center text-[rgb(var(--text-muted))]" colSpan={8}>
                   No transactions found for the selected month and filters.
                 </td>
               </tr>
@@ -618,7 +618,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
         rangeLabel={pagination.rangeLabel}
       />
       {message ? (
-        <p className="mt-3 text-sm text-slate-700" role="status" aria-live="polite">
+        <p className="mt-3 text-sm text-[rgb(var(--text-muted))]" role="status" aria-live="polite">
           {message}
         </p>
       ) : null}
@@ -636,10 +636,10 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
         onConfirm={confirmDeleteExpense}
         description={
           pendingDelete ? (
-            <ul className="list-inside list-disc space-y-1 text-slate-700">
+            <ul className="list-inside list-disc space-y-1 text-[rgb(var(--text-muted))]">
               <li>Date: {formatDateDisplay(pendingDelete.expense_date)}</li>
               <li>
-                Amount: Rp {formatAmount(pendingDelete.amount, { locale: "id-ID", minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                Amount: IDR {formatAmount(pendingDelete.amount, { locale: "id-ID", minimumFractionDigits: 0, maximumFractionDigits: 0 })}
               </li>
               <li>
                 {pendingDelete.category_name} — {pendingDelete.subcategory_name}

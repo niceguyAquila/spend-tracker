@@ -20,7 +20,7 @@ export default async function BigBookPage() {
       <div className="space-y-6">
         <section className="card">
           <div>
-            <h1 className="text-xl font-semibold">Big Book of Accounting</h1>
+            <h1 className="text-xl font-semibold">Big Book Ledger Management</h1>
             <p className="text-sm text-slate-600">
               Manage operational spendings and business profits.
             </p>

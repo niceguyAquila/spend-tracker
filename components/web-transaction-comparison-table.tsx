@@ -18,9 +18,9 @@ function getComparisonOutcomeLabel(outcome: WebTransactionComparisonOutcome) {
 }
 
 function getComparisonOutcomeClassName(outcome: WebTransactionComparisonOutcome) {
-  if (outcome === "matched") return "bg-emerald-100 text-emerald-800";
-  if (outcome === "mismatched") return "bg-amber-100 text-amber-800";
-  return "bg-slate-100 text-slate-700";
+  if (outcome === "matched") return "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300";
+  if (outcome === "mismatched") return "bg-amber-500/20 text-amber-700 dark:text-amber-300";
+  return "bg-[rgb(var(--surface-muted))] text-[rgb(var(--text-muted))]";
 }
 
 export function WebTransactionComparisonTable({ rows }: Props) {
@@ -33,8 +33,8 @@ export function WebTransactionComparisonTable({ rows }: Props) {
   return (
     <>
       <div className="overflow-x-auto">
-        <table className="min-w-[1100px] text-sm">
-          <thead className="border-b bg-slate-50 text-left">
+        <table className="w-full min-w-[1100px] text-sm">
+          <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
             <tr>
               <th className="px-3 py-2">Transaction No</th>
               <th className="px-3 py-2">Type</th>
@@ -73,7 +73,7 @@ export function WebTransactionComparisonTable({ rows }: Props) {
             ))}
             {!rows.length ? (
               <tr>
-                <td className="px-3 py-4 text-center text-slate-600" colSpan={7}>
+                <td className="px-3 py-4 text-center text-[rgb(var(--text-muted))]" colSpan={7}>
                   No comparison rows for the selected filters.
                 </td>
               </tr>

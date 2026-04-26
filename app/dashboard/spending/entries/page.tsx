@@ -56,7 +56,7 @@ export default async function SpendingEntriesPage({ searchParams }: SpendingEntr
     return (
       <div className="space-y-6">
         {(role === "finance" || role === "admin") ? (
-          <TransactionForm categories={categories} subcategories={subcategories} />
+          <TransactionForm categories={categories} subcategories={subcategories} submitLabel="Add Spending" />
         ) : (
           <section className="card">
             <h2 className="text-lg font-semibold">Quick Add Transaction</h2>

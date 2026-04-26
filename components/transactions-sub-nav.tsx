@@ -7,7 +7,7 @@ function getButtonClassName(isActive: boolean) {
   return `btn-secondary ${
     isActive
       ? "!border-blue-600 !bg-blue-600 !text-white hover:!bg-blue-600"
-      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+      : "border-[rgb(var(--border))] bg-[rgb(var(--surface))] text-[rgb(var(--text))] hover:bg-[rgb(var(--surface-muted))]"
   }`;
 }
 

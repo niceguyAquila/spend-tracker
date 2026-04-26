@@ -139,7 +139,7 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
 
         <section className="card">
           <h2 className="mb-3 text-lg font-semibold">Web Transaction Records ({sourceLabel})</h2>
-          <WebTransactionsTable rows={rows} />
+          <WebTransactionsTable rows={rows} sourceSystem={sourceSystem} canManage={hasFinanceAccess} />
         </section>
 
       </div>

@@ -1,4 +1,5 @@
 import { DashboardNav } from "@/components/dashboard-nav";
+import { DashboardHeaderTitle } from "@/components/dashboard-header-title";
 import { requireAllowedUser } from "@/lib/auth";
 import { LogoutButton } from "@/components/logout-button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -14,9 +15,9 @@ export default async function DashboardLayout({
     <main className="mx-auto min-h-screen w-full max-w-screen-2xl px-4 py-6 lg:px-8 lg:py-8 xl:px-10">
       <header className="mb-6 flex flex-wrap items-start justify-between gap-4 lg:gap-6">
         <div className="max-w-3xl space-y-1">
-          <h1 className="text-2xl font-semibold">{activeBrand.name} Web Finance Tracker</h1>
+          <DashboardHeaderTitle activeBrandName={activeBrand.name} />
           <p className="text-sm text-muted">
-            Separate workspaces for Web Spending analytics and Web Transaction imports.
+            Unified workspace for spending, transactions, big book ledgers, and admin controls.
           </p>
         </div>
         <div className="flex flex-col items-end text-right">

@@ -6,8 +6,7 @@ import { BrandSwitcher } from "@/components/brand-switcher";
 
 const links = [
   { href: "/dashboard/spending", label: "Web Spending" },
-  { href: "/dashboard/transactions", label: "Web Transaction" },
-  { href: "/dashboard/settings/categories", label: "Categories" }
+  { href: "/dashboard/transactions", label: "Web Transaction" }
 ];
 
 type Props = {
@@ -34,7 +33,6 @@ export function DashboardNav({ isAdmin, activeBrandId, brandOptions }: Props) {
   function isActiveLink(href: string) {
     if (href === "/dashboard/spending") return pathname.startsWith("/dashboard/spending");
     if (href === "/dashboard/transactions") return pathname.startsWith("/dashboard/transactions");
-    if (href === "/dashboard/settings/categories") return pathname.startsWith("/dashboard/settings/categories");
     if (href === "/dashboard/master-dashboard") return pathname.startsWith("/dashboard/master-dashboard");
     if (href === "/dashboard/big-book") return pathname.startsWith("/dashboard/big-book");
     if (href === "/dashboard/admin/users") return pathname.startsWith("/dashboard/admin/users");

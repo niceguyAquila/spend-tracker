@@ -11,7 +11,7 @@ export default async function AdminBrandsPage() {
   return (
     <div className="space-y-6">
       <section className="card">
-        <h1 className="text-xl font-semibold">Admin Brand Management</h1>
+        <h1 className="text-xl font-semibold">Brand Configuration Administration</h1>
         <p className="text-sm text-muted">Only admins can create and manage brands.</p>
       </section>
       <AdminBrandsPanel />

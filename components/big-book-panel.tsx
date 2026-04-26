@@ -590,37 +590,40 @@ export function BigBookPanel({ initialTypes, initialActors, initialEntries, init
         </p>
         <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
           {actorCurrencyMetrics.map((metric) => (
-            <article key={metric.actor_id} className="rounded-md border border-slate-200 p-4">
+            <article
+              key={metric.actor_id}
+              className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-4"
+            >
               <p className="font-semibold">
                 Actor {metric.actor_display_name}
               </p>
               <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                <div className="rounded-md bg-slate-50 p-2 text-slate-900">
-                  <p className="text-xs uppercase text-slate-500">IDR</p>
+                <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2">
+                  <p className="text-xs uppercase text-[rgb(var(--text-muted))]">IDR</p>
                   <p
                     className={`font-medium ${getAmountColorClass(metric.totals.IDR)}`}
                   >
                     {formatAmount(metric.totals.IDR, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
                   </p>
                 </div>
-                <div className="rounded-md bg-slate-50 p-2 text-slate-900">
-                  <p className="text-xs uppercase text-slate-500">MYR</p>
+                <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2">
+                  <p className="text-xs uppercase text-[rgb(var(--text-muted))]">MYR</p>
                   <p
                     className={`font-medium ${getAmountColorClass(metric.totals.MYR)}`}
                   >
                     {formatAmount(metric.totals.MYR, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
                   </p>
                 </div>
-                <div className="rounded-md bg-slate-50 p-2 text-slate-900">
-                  <p className="text-xs uppercase text-slate-500">USDT</p>
+                <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2">
+                  <p className="text-xs uppercase text-[rgb(var(--text-muted))]">USDT</p>
                   <p
                     className={`font-medium ${getAmountColorClass(metric.totals.USDT)}`}
                   >
                     {formatAmount(metric.totals.USDT, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
                   </p>
                 </div>
-                <div className="rounded-md bg-slate-50 p-2 text-slate-900">
-                  <p className="text-xs uppercase text-slate-500">TRX</p>
+                <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2">
+                  <p className="text-xs uppercase text-[rgb(var(--text-muted))]">TRX</p>
                   <p
                     className={`font-medium ${getAmountColorClass(metric.totals.TRX)}`}
                   >

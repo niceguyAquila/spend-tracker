@@ -72,7 +72,7 @@ export function MasterDashboardCashflowTable({ sourceRowsByCurrency }: MasterDas
                     {row.currency} {formatAmount(row.bigBook.net)}
                   </td>
                 </tr>
-                <tr className="border-b border-[rgb(var(--border))] bg-slate-50 text-slate-900">
+                <tr className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-[rgb(var(--text))]">
                   <td className="px-3 py-2">{row.currency}</td>
                   <td className="px-3 py-2 font-semibold">Combined</td>
                   <td className={`px-3 py-2 font-semibold ${getAmountColorClass(row.combined.inflow)}`}>
