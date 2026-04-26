@@ -5,7 +5,6 @@ import {
   getBigBookLedgerTypes
 } from "@/lib/db/queries";
 import { BigBookPanel } from "@/components/big-book-panel";
-import { BigBookSubNav } from "@/components/big-book-sub-nav";
 
 export default async function BigBookPage() {
   try {
@@ -26,7 +25,6 @@ export default async function BigBookPage() {
             </p>
           </div>
         </section>
-        <BigBookSubNav />
         <BigBookPanel
           initialTypes={types}
           initialActors={actors}

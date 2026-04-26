@@ -1,5 +1,4 @@
 import { BigBookIndividualTypeLedgerPanel } from "@/components/big-book-individual-type-ledger-panel";
-import { BigBookSubNav } from "@/components/big-book-sub-nav";
 import { getBigBookEntries, getBigBookLedgerTypes } from "@/lib/db/queries";
 
 export default async function IndividualTypeLedgerPage() {
@@ -19,7 +18,6 @@ export default async function IndividualTypeLedgerPage() {
             </p>
           </div>
         </section>
-        <BigBookSubNav />
         <BigBookIndividualTypeLedgerPanel types={types} entries={entries} />
       </div>
     );

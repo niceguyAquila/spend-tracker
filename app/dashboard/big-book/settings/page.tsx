@@ -1,6 +1,5 @@
 import { getBigBookActors, getBigBookAllowedUsers, getBigBookLedgerTypes } from "@/lib/db/queries";
 import { BigBookSettingsPanel } from "@/components/big-book-settings-panel";
-import { BigBookSubNav } from "@/components/big-book-sub-nav";
 
 export default async function BigBookSettingsPage() {
   const [types, actors, allowedUsers] = await Promise.all([
@@ -17,7 +16,6 @@ export default async function BigBookSettingsPage() {
           <p className="text-sm text-slate-600">Manage types and global Actor A/B mapping.</p>
         </div>
       </section>
-      <BigBookSubNav />
       <BigBookSettingsPanel initialTypes={types} initialActors={actors} allowedUsers={allowedUsers} />
     </div>
   );

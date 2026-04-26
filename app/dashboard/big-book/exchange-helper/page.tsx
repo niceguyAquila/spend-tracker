@@ -1,4 +1,3 @@
-import { BigBookSubNav } from "@/components/big-book-sub-nav";
 import { BigBookExchangeHelperPanel } from "@/components/big-book-exchange-helper-panel";
 
 export default async function BigBookExchangeHelperPage() {
@@ -12,7 +11,6 @@ export default async function BigBookExchangeHelperPage() {
           </p>
         </div>
       </section>
-      <BigBookSubNav />
       <BigBookExchangeHelperPanel />
     </div>
   );
