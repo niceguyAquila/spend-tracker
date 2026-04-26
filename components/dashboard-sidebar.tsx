@@ -181,11 +181,11 @@ export function DashboardSidebar({
   useEffect(() => {
     setOpenModules((previous) => {
       const next = { ...previous };
-      for (const module of modules) {
-        if (next[module.title] === undefined) {
-          next[module.title] = module.isModuleActive(pathname);
-        } else if (module.isModuleActive(pathname)) {
-          next[module.title] = true;
+      for (const navModule of modules) {
+        if (next[navModule.title] === undefined) {
+          next[navModule.title] = navModule.isModuleActive(pathname);
+        } else if (navModule.isModuleActive(pathname)) {
+          next[navModule.title] = true;
         }
       }
       return next;
@@ -228,19 +228,19 @@ export function DashboardSidebar({
       ) : null}
 
       <div className="space-y-3">
-        {modules.map((module) => {
-          const isOpen = openModules[module.title] ?? false;
-          const isActiveModule = module.isModuleActive(pathname);
-          const iconSrc = getModuleIconSrc(module.title);
+        {modules.map((navModule) => {
+          const isOpen = openModules[navModule.title] ?? false;
+          const isActiveModule = navModule.isModuleActive(pathname);
+          const iconSrc = getModuleIconSrc(navModule.title);
 
           return (
-            <section key={module.title} className={`rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] ${collapsed ? "p-1.5" : "p-2"}`}>
+            <section key={navModule.title} className={`rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] ${collapsed ? "p-1.5" : "p-2"}`}>
               <button
                 type="button"
                 onClick={() =>
                   setOpenModules((previous) => ({
                     ...previous,
-                    [module.title]: !isOpen
+                    [navModule.title]: !isOpen
                   }))
                 }
                 className={`flex w-full items-center ${collapsed ? "justify-center" : "justify-between gap-2"} rounded-md px-2 py-2 text-left text-sm font-semibold transition-colors duration-200 ease-out ${
@@ -248,9 +248,9 @@ export function DashboardSidebar({
                     ? "text-[rgb(var(--primary))]"
                     : "text-[rgb(var(--text))] hover:bg-[rgb(var(--surface-muted))]"
                 }`}
-                title={module.title}
+                title={navModule.title}
                 aria-expanded={isOpen}
-                aria-controls={`sidebar-module-${module.title.toLowerCase().replace(/\s+/g, "-")}`}
+                aria-controls={`sidebar-module-${navModule.title.toLowerCase().replace(/\s+/g, "-")}`}
               >
                 {collapsed ? (
                   <span
@@ -283,7 +283,7 @@ export function DashboardSidebar({
                           className="h-[22px] w-[22px] shrink-0 object-contain"
                         />
                       ) : null}
-                      <span className="truncate">{module.title}</span>
+                      <span className="truncate">{navModule.title}</span>
                     </span>
                     <span
                       aria-hidden="true"
@@ -296,10 +296,10 @@ export function DashboardSidebar({
               </button>
 
               <div
-                id={`sidebar-module-${module.title.toLowerCase().replace(/\s+/g, "-")}`}
+                id={`sidebar-module-${navModule.title.toLowerCase().replace(/\s+/g, "-")}`}
                 className={`${!collapsed && isOpen ? "mt-2 space-y-2" : "hidden"}`}
               >
-                {module.links.map((item) => (
+                {navModule.links.map((item) => (
                   <Link
                     key={item.href}
                     href={item.href}
