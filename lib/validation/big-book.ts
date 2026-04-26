@@ -57,8 +57,9 @@ function normalizeMultiSelect<T extends z.ZodTypeAny>(itemSchema: T) {
     .optional()
     .transform((value): z.infer<T>[] | undefined => {
       if (value === undefined || value === "") return undefined;
-      const normalized = (Array.isArray(value) ? value : [value]).filter(
-        (item): item is z.infer<T> => item !== ""
+      const list: unknown[] = Array.isArray(value) ? value : [value];
+      const normalized = list.filter(
+        (item): item is z.infer<T> => item !== "" && item !== undefined && item !== null
       );
       if (!normalized.length) return undefined;
       return [...new Set(normalized)];

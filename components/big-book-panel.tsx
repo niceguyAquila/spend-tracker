@@ -86,6 +86,8 @@ function arraysEqual(left: string[], right: string[]) {
   return left.every((value, index) => value === right[index]);
 }
 
+const SUPPORTED_CURRENCIES: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR", "USDT", "TRX"];
+
 export function BigBookPanel({
   initialTypes,
   initialActors,
@@ -158,13 +160,13 @@ export function BigBookPanel({
   const [entriesLoading, setEntriesLoading] = useState(false);
 
   const activeTypes = useMemo(() => initialTypes.filter((item) => item.is_active), [initialTypes]);
-  const currencies: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR", "USDT", "TRX"];
+  const currencies = SUPPORTED_CURRENCIES;
   const typeOptions = useMemo(
     () => initialTypes.map((type) => ({ value: type.id, label: type.name })),
     [initialTypes]
   );
   const currencyOptions = useMemo(
-    () => currencies.map((currency) => ({ value: currency, label: currency })),
+    () => SUPPORTED_CURRENCIES.map((currency) => ({ value: currency, label: currency })),
     []
   );
   const actorOptions = useMemo(
