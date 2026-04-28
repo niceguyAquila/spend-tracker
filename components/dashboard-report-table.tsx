@@ -61,8 +61,8 @@ export function DashboardReportTable({
         {description ? <p className="mt-1 text-sm text-slate-600">{description}</p> : null}
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-[980px] text-sm">
+      <div className="w-full overflow-x-auto">
+        <table className="w-full min-w-[980px] text-sm">
           <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
             <tr>
               <th className="px-3 py-2">Category</th>
