@@ -317,7 +317,57 @@ export function BigBookPanel({
 
   // Totals reflect ALL ledger rows in the database (computed server-side in
   // `getBigBookActorCurrencyMetrics`), not just the currently rendered page.
-  const actorCurrencyMetrics = initialActorMetrics;
+  // Held in local state so we can apply optimistic deltas on create/delete; the
+  // useEffect below re-syncs to the authoritative SSR prop on every refresh,
+  // so any drift heals automatically when `router.refresh()` completes.
+  const [actorCurrencyMetrics, setActorCurrencyMetrics] =
+    useState<BigBookActorCurrencyMetrics[]>(initialActorMetrics);
+
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log("[BigBook DEBUG] prop-sync useEffect, initialActorMetrics:", initialActorMetrics);
+    setActorCurrencyMetrics(initialActorMetrics);
+  }, [initialActorMetrics]);
+
+  const applyMetricDelta = useCallback(
+    (
+      actorId: string,
+      actorDisplayName: string,
+      currency: "IDR" | "MYR" | "USDT" | "TRX",
+      delta: number
+    ) => {
+      // eslint-disable-next-line no-console
+      console.log("[BigBook DEBUG] applyMetricDelta called", { actorId, actorDisplayName, currency, delta });
+      setActorCurrencyMetrics((prev) => {
+        const next = prev.map((row) => ({ ...row, totals: { ...row.totals } }));
+        const existing = next.find((row) => row.actor_id === actorId);
+        if (existing) {
+          // eslint-disable-next-line no-console
+          console.log("[BigBook DEBUG] applyMetricDelta updating existing actor", {
+            actorId,
+            currency,
+            before: existing.totals[currency],
+            delta,
+            after: existing.totals[currency] + delta
+          });
+          existing.totals[currency] += delta;
+          return next;
+        }
+        const actorMeta = initialActors.find((actor) => actor.id === actorId);
+        const inserted: BigBookActorCurrencyMetrics = {
+          actor_id: actorId,
+          actor_code: (actorMeta?.actor_code ?? "A") as "A" | "B",
+          actor_display_name: actorMeta?.display_name ?? actorDisplayName,
+          totals: { IDR: 0, MYR: 0, USDT: 0, TRX: 0 }
+        };
+        inserted.totals[currency] = delta;
+        // eslint-disable-next-line no-console
+        console.log("[BigBook DEBUG] applyMetricDelta inserting new actor", inserted);
+        return [...next, inserted].sort((a, b) => a.actor_code.localeCompare(b.actor_code));
+      });
+    },
+    [initialActors]
+  );
 
   const criticalPending =
     entrySubmitting ||
@@ -353,10 +403,6 @@ export function BigBookPanel({
     startTransition(() => {
       router.refresh();
     });
-  }
-
-  function refreshEntriesOnly() {
-    void loadEntries();
   }
 
   async function createEntry() {
@@ -412,6 +458,26 @@ export function BigBookPanel({
       setPendingEntryConfirm(false);
       setCreateModalOpen(keepModalOpen);
       setCreateAttachmentFiles([]);
+      // Optimistically update the Grand Total card so it reflects the new
+      // entry immediately. SSR via `triggerRefresh` will reconcile shortly
+      // and the prop-sync useEffect will overwrite this with the truth.
+      const createdActor = initialActors.find((actor) => actor.id === entryForm.responsible_actor_id);
+      const createdDelta =
+        entryForm.entry_direction === "spending" ? -amountValue : amountValue;
+      // eslint-disable-next-line no-console
+      console.log("[BigBook DEBUG] createEntry optimistic update", {
+        entry_direction: entryForm.entry_direction,
+        amountValue,
+        createdDelta,
+        responsible_actor_id: entryForm.responsible_actor_id,
+        currency_code: entryForm.currency_code
+      });
+      applyMetricDelta(
+        entryForm.responsible_actor_id,
+        createdActor?.display_name ?? "Unknown Actor",
+        entryForm.currency_code,
+        createdDelta
+      );
       setEntryForm((prev) => ({
         ...prev,
         explanation: "",
@@ -444,8 +510,29 @@ export function BigBookPanel({
       setMessage("Ledger entry deleted.");
       setEntries((prev) => prev.filter((row) => row.id !== deletingEntryId));
       setTotalCount((prev) => Math.max(0, prev - 1));
+      // Optimistically undo the deleted row's contribution to the Grand Total
+      // card. spending was -amount, so undoing it adds +amount; profit was
+      // +amount, so undoing it subtracts amount. SSR via `triggerRefresh`
+      // will reconcile shortly via the prop-sync useEffect.
+      const deletedAmount = Math.abs(Number(pendingDeleteEntry.amount));
+      const deletedDelta =
+        pendingDeleteEntry.entry_direction === "spending" ? deletedAmount : -deletedAmount;
+      // eslint-disable-next-line no-console
+      console.log("[BigBook DEBUG] deleteEntry optimistic update", {
+        entry_direction: pendingDeleteEntry.entry_direction,
+        deletedAmount,
+        deletedDelta,
+        responsible_actor_id: pendingDeleteEntry.responsible_actor_id,
+        currency_code: pendingDeleteEntry.currency_code
+      });
+      applyMetricDelta(
+        pendingDeleteEntry.responsible_actor_id,
+        pendingDeleteEntry.actor_display_name,
+        pendingDeleteEntry.currency_code,
+        deletedDelta
+      );
       setPendingDeleteEntry(null);
-      refreshEntriesOnly();
+      triggerRefresh();
     } catch {
       setError("Failed to delete ledger entry due to a network error.");
     } finally {
@@ -658,8 +745,8 @@ export function BigBookPanel({
     );
     setOpenActionMenu({
       id: rowId,
-      top: rect.bottom + 6,
-      left
+      top: rect.bottom + 6 + window.scrollY,
+      left: left + window.scrollX
     });
   }
 
@@ -992,7 +1079,7 @@ export function BigBookPanel({
         <div
           ref={actionMenuRef}
           role="menu"
-          className="fixed z-50 w-44 rounded-md border border-slate-200 bg-white p-1 text-slate-900 shadow-lg"
+          className="absolute z-50 w-44 rounded-md border border-slate-200 bg-white p-1 text-slate-900 shadow-lg"
           style={{ top: openActionMenu.top, left: openActionMenu.left }}
         >
           {(() => {
