@@ -26,10 +26,10 @@ export default async function CategorySettingsPage() {
     return (
       <section className="card">
         <h2 className="mb-2 text-lg font-semibold">Category setup required</h2>
-        <p className="text-sm text-slate-700">
+        <p className="text-sm text-muted">
           Category management is unavailable until migrations are applied and RLS policies are active.
         </p>
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-xs text-muted">
           Error: {errorText}
         </p>
       </section>

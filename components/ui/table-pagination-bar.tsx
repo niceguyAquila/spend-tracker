@@ -11,6 +11,8 @@ type TablePaginationBarProps = {
   pageCount: number;
   /** Right-side “Showing …” text; for non-tabular UIs the parent can override the label. */
   rangeLabel: string;
+  /** If true, hides the range label while keeping pagination controls visible. */
+  hideRangeLabel?: boolean;
   className?: string;
   /** If false, the bar is hidden. Defaults to `totalCount > 0` when not set. */
   show?: boolean;
@@ -24,6 +26,7 @@ export function TablePaginationBar({
   setPageSize,
   pageCount,
   rangeLabel,
+  hideRangeLabel = false,
   className = "",
   show
 }: TablePaginationBarProps) {
@@ -38,7 +41,7 @@ export function TablePaginationBar({
     <div
       className={`mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between ${className}`}
     >
-      <p className="text-sm text-[rgb(var(--text-muted))]">{rangeLabel}</p>
+      {!hideRangeLabel ? <p className="text-sm text-[rgb(var(--text-muted))]">{rangeLabel}</p> : <span aria-hidden="true" />}
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-2 text-sm text-[rgb(var(--text))]">
           <span>Rows</span>

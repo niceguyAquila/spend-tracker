@@ -5,6 +5,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { BrandSwitcher } from "@/components/brand-switcher";
+import { LogoutButton } from "@/components/logout-button";
+import { ThemeToggle } from "@/components/theme-toggle";
 import type { AppRole } from "@/lib/types";
 
 type NavLink = {
@@ -318,6 +320,33 @@ export function DashboardSidebar({
             </section>
           );
         })}
+      </div>
+
+      <div className={`mt-auto ${collapsed ? "pt-3" : "pt-5"}`}>
+        <div className="space-y-2">
+          <div
+            className={`rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] ${
+              collapsed ? "flex justify-center p-1.5" : "p-2"
+            }`}
+          >
+            <div className={`flex items-center ${collapsed ? "justify-center" : "justify-between gap-2"}`}>
+              {!collapsed ? (
+                <span className="px-2 text-sm font-semibold text-[rgb(var(--text))]">Theme</span>
+              ) : null}
+              <ThemeToggle compact={collapsed} />
+            </div>
+          </div>
+          <div
+            className={`rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] ${
+              collapsed ? "flex justify-center p-1.5" : "p-2"
+            }`}
+          >
+            <div className={`flex items-center ${collapsed ? "justify-center" : "justify-between gap-2"}`}>
+              {!collapsed ? <span className="px-2 text-sm font-semibold text-[rgb(var(--text))]">Logout</span> : null}
+              <LogoutButton />
+            </div>
+          </div>
+        </div>
       </div>
 
     </div>

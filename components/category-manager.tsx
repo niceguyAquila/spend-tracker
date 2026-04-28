@@ -243,7 +243,7 @@ export function CategoryManager({
     <div className="space-y-6">
       <section className="card">
         <h2 className="mb-3 text-lg font-semibold">Main Category Manager</h2>
-        <p className="mb-4 text-sm text-slate-600">
+        <p className="mb-4 text-sm text-muted">
           Categories are now brand-specific. You can create, rename, enable, or disable categories for the active brand.
         </p>
 
@@ -267,7 +267,7 @@ export function CategoryManager({
 
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-left">
+            <thead className="bg-[rgb(var(--surface-muted))] text-left">
               <tr>
                 <th className="px-3 py-2">Code</th>
                 <th className="px-3 py-2">Name</th>
@@ -352,7 +352,7 @@ export function CategoryManager({
 
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-left">
+            <thead className="bg-[rgb(var(--surface-muted))] text-left">
               <tr>
                 <th className="px-3 py-2">Name</th>
                 <th className="px-3 py-2">Status</th>
@@ -410,7 +410,7 @@ export function CategoryManager({
 
       <section className="card">
         <h2 className="mb-3 text-lg font-semibold">Guardrails</h2>
-        <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">
+        <ul className="list-disc space-y-1 pl-5 text-sm text-muted">
           <li>Use disable instead of deleting sub-categories tied to historical transactions.</li>
           <li>Rename keeps historical rows intact while improving naming consistency.</li>
           <li>RLS policies enforce least-privilege access for write operations.</li>
@@ -418,7 +418,7 @@ export function CategoryManager({
       </section>
 
       {message ? (
-        <p className="text-sm text-slate-700" role="status" aria-live="polite">
+        <p className="text-sm text-muted" role="status" aria-live="polite">
           {message}
         </p>
       ) : null}
@@ -437,7 +437,7 @@ export function CategoryManager({
           disableTarget ? (
             <div className="space-y-2">
               <p>
-                <span className="font-medium text-slate-900">{disableTarget.name}</span> will be hidden from category
+                <span className="font-medium text-[rgb(var(--text))]">{disableTarget.name}</span> will be hidden from category
                 pickers when adding or editing transactions. Existing transactions stay unchanged.
               </p>
             </div>

@@ -101,6 +101,7 @@ export function MasterDashboardCashflowTable({ sourceRowsByCurrency }: MasterDas
       <TablePaginationBar
         totalCount={sourceRowsByCurrency.length}
         show={sourceRowsByCurrency.length > 0}
+        hideRangeLabel
         page={pagination.page}
         setPage={pagination.setPage}
         pageSize={pagination.pageSize}

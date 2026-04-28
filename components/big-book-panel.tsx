@@ -87,6 +87,7 @@ function arraysEqual(left: string[], right: string[]) {
 }
 
 const SUPPORTED_CURRENCIES: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR", "USDT", "TRX"];
+const LEDGER_SKELETON_ROW_COUNT = 6;
 
 export function BigBookPanel({
   initialTypes,
@@ -866,96 +867,107 @@ export function BigBookPanel({
               </tr>
             </thead>
             <tbody>
-              {entries.map((row) => (
-                <tr key={row.id} className="border-b border-[rgb(var(--border))] align-top">
-                  <td className="px-3 py-2">{formatDateDisplay(row.entry_date)}</td>
-                  <td className="px-3 py-2">
-                    <span
-                      className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${
-                        row.entry_direction === "profit"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-amber-100 text-amber-700"
-                      }`}
+              {entriesLoading
+                ? Array.from({ length: LEDGER_SKELETON_ROW_COUNT }).map((_, index) => (
+                    <tr
+                      key={`ledger-skeleton-row-${index}`}
+                      className="border-b border-[rgb(var(--border))] align-top animate-pulse"
+                      aria-hidden="true"
                     >
-                      {row.entry_direction === "profit" ? "In" : "Out"}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2">{row.type_name}</td>
-                  <td className="px-3 py-2">{row.explanation}</td>
-                  <td className="px-3 py-2">
-                    <span className={getAmountColorClass(row.entry_direction === "spending" ? -row.amount : row.amount)}>
-                      {row.currency_code}{" "}
-                      {formatAmount(row.amount, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2">
-                    {row.actor_display_name}
-                  </td>
-                  <td className="px-3 py-2">
-                    {row.remark ? (
-                      <div className="flex max-w-[260px] items-start gap-2">
-                        <span className="truncate">{row.remark}</span>
-                        <button
-                          className="shrink-0 text-xs text-blue-700 underline"
-                          type="button"
-                          onClick={() => setViewingRemark({ entryId: row.id, text: row.remark ?? "" })}
+                      <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
+                      <td className="px-3 py-2"><div className="h-5 w-14 rounded-full bg-[rgb(var(--surface-muted))]" /></td>
+                      <td className="px-3 py-2"><div className="h-4 w-28 rounded bg-[rgb(var(--surface-muted))]" /></td>
+                      <td className="px-3 py-2"><div className="h-4 w-56 rounded bg-[rgb(var(--surface-muted))]" /></td>
+                      <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
+                      <td className="px-3 py-2"><div className="h-4 w-28 rounded bg-[rgb(var(--surface-muted))]" /></td>
+                      <td className="px-3 py-2"><div className="h-4 w-20 rounded bg-[rgb(var(--surface-muted))]" /></td>
+                      <td className="px-3 py-2"><div className="h-4 w-16 rounded bg-[rgb(var(--surface-muted))]" /></td>
+                      <td className="px-3 py-2"><div className="h-8 w-20 rounded bg-[rgb(var(--surface-muted))]" /></td>
+                    </tr>
+                  ))
+                : entries.map((row) => (
+                    <tr key={row.id} className="border-b border-[rgb(var(--border))] align-top">
+                      <td className="px-3 py-2">{formatDateDisplay(row.entry_date)}</td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${
+                            row.entry_direction === "profit"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-amber-100 text-amber-700"
+                          }`}
                         >
-                          View
-                        </button>
-                      </div>
-                    ) : (
-                      "-"
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    {row.attachments.length ? (
-                      <div className="space-y-1">
-                        <p className="text-xs text-slate-600">{row.attachments.length} file(s)</p>
-                        <ul className="space-y-1">
-                          {row.attachments.map((attachment) => (
-                            <li key={attachment.id}>
-                              <button
-                                className="text-xs text-blue-700 underline"
-                                onClick={() => void viewAttachment(attachment.id)}
-                                disabled={attachmentViewingId === attachment.id}
-                              >
-                                {attachmentViewingId === attachment.id ? "Loading..." : attachment.file_name}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-slate-500">No files</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="relative">
-                      <button
-                        className="btn-secondary btn-sm"
-                        aria-label="Open actions menu"
-                        aria-expanded={openActionMenu?.id === row.id}
-                        aria-haspopup="menu"
-                        onClick={(event) => toggleActionMenu(row.id, event.currentTarget)}
-                        disabled={criticalPending}
-                      >
-                        Actions
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                          {row.entry_direction === "profit" ? "In" : "Out"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">{row.type_name}</td>
+                      <td className="px-3 py-2">{row.explanation}</td>
+                      <td className="px-3 py-2">
+                        <span className={getAmountColorClass(row.entry_direction === "spending" ? -row.amount : row.amount)}>
+                          {row.currency_code}{" "}
+                          {formatAmount(row.amount, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        {row.actor_display_name}
+                      </td>
+                      <td className="px-3 py-2">
+                        {row.remark ? (
+                          <div className="flex max-w-[260px] items-start gap-2">
+                            <span className="truncate">{row.remark}</span>
+                            <button
+                              className="shrink-0 text-xs text-blue-700 underline"
+                              type="button"
+                              onClick={() => setViewingRemark({ entryId: row.id, text: row.remark ?? "" })}
+                            >
+                              View
+                            </button>
+                          </div>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {row.attachments.length ? (
+                          <div className="space-y-1">
+                            <p className="text-xs text-slate-600">{row.attachments.length} file(s)</p>
+                            <ul className="space-y-1">
+                              {row.attachments.map((attachment) => (
+                                <li key={attachment.id}>
+                                  <button
+                                    className="text-xs text-blue-700 underline"
+                                    onClick={() => void viewAttachment(attachment.id)}
+                                    disabled={attachmentViewingId === attachment.id}
+                                  >
+                                    {attachmentViewingId === attachment.id ? "Loading..." : attachment.file_name}
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-500">No files</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="relative">
+                          <button
+                            className="btn-secondary btn-sm"
+                            aria-label="Open actions menu"
+                            aria-expanded={openActionMenu?.id === row.id}
+                            aria-haspopup="menu"
+                            onClick={(event) => toggleActionMenu(row.id, event.currentTarget)}
+                            disabled={criticalPending}
+                          >
+                            Actions
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
               {!entries.length && !entriesLoading ? (
                 <tr>
                   <td className="px-3 py-4 text-center text-slate-600" colSpan={9}>
                     No records match the current filters.
-                  </td>
-                </tr>
-              ) : null}
-              {entriesLoading ? (
-                <tr>
-                  <td className="px-3 py-4 text-center text-slate-500" colSpan={9}>
-                    Loading...
                   </td>
                 </tr>
               ) : null}

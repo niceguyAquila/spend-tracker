@@ -1,8 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 
 type Theme = "light" | "dark";
+type ThemeToggleProps = {
+  compact?: boolean;
+};
 
 function resolveInitialTheme(): Theme {
   if (typeof window === "undefined") {
@@ -17,7 +21,7 @@ function resolveInitialTheme(): Theme {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-export function ThemeToggle() {
+export function ThemeToggle({ compact = false }: ThemeToggleProps) {
   const [theme, setTheme] = useState<Theme>("light");
 
   useEffect(() => {
@@ -39,11 +43,23 @@ export function ThemeToggle() {
     <button
       type="button"
       onClick={toggleTheme}
-      className="inline-flex h-8 items-center justify-center rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-2.5 text-xs font-medium text-[rgb(var(--text))] transition hover:bg-[rgb(var(--surface-muted))]"
+      className={`group inline-flex items-center rounded-full border border-[rgb(var(--border))] bg-[rgb(var(--surface))] text-xs font-medium text-[rgb(var(--text))] shadow-sm transition-all duration-200 hover:-translate-y-[1px] hover:bg-[rgb(var(--surface-muted))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--primary))] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(var(--surface))] ${
+        compact ? "h-9 w-9 justify-center p-0" : "h-9 gap-2 px-2 py-1"
+      }`}
       aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
       title={theme === "dark" ? "Light mode" : "Dark mode"}
     >
-      {theme === "dark" ? "Light" : "Dark"}
+      <span className="inline-flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]">
+        <Image
+          src={theme === "dark" ? "/asset/light-mode.png" : "/asset/night-mode.png"}
+          alt=""
+          width={18}
+          height={18}
+          className="h-[18px] w-[18px] object-contain"
+          aria-hidden="true"
+        />
+      </span>
+      {!compact ? <span className="pr-1 text-xs font-semibold">{theme === "dark" ? "Light mode" : "Dark mode"}</span> : null}
     </button>
   );
 }

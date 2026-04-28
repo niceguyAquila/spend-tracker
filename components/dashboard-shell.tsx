@@ -3,8 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { DashboardHeaderTitle } from "@/components/dashboard-header-title";
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
-import { LogoutButton } from "@/components/logout-button";
-import { ThemeToggle } from "@/components/theme-toggle";
 import type { AppRole } from "@/lib/types";
 
 type DashboardShellProps = {
@@ -139,10 +137,6 @@ export function DashboardShell({
                   <div>
                     <p className="text-sm text-muted">{userEmail}</p>
                     <p className="mt-1 text-xs uppercase text-muted">{role}</p>
-                  </div>
-                  <ThemeToggle />
-                  <div className="pt-0.5">
-                    <LogoutButton />
                   </div>
                 </div>
               </div>
