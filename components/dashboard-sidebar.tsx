@@ -212,7 +212,7 @@ export function DashboardSidebar({
           <button
             type="button"
             onClick={onToggleCollapsed}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] text-[rgb(var(--text))] transition-colors duration-200 ease-out hover:bg-[rgb(var(--surface-muted))]"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[rgb(var(--border))] bg-[rgb(var(--surface))] text-[rgb(var(--text))] transition-colors duration-200 ease-out hover:bg-[rgb(var(--surface-muted))]"
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-expanded={!collapsed}
@@ -241,7 +241,14 @@ export function DashboardSidebar({
           const iconSrc = getModuleIconSrc(navModule.title);
 
           return (
-            <section key={navModule.title} className={`rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] ${collapsed ? "p-1.5" : "p-2"}`}>
+            <section
+              key={navModule.title}
+              className={
+                collapsed
+                  ? "border-0 bg-transparent p-0"
+                  : "rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2"
+              }
+            >
               <button
                 type="button"
                 onClick={() =>
@@ -250,7 +257,11 @@ export function DashboardSidebar({
                     [navModule.title]: !isOpen
                   }))
                 }
-                className={`flex w-full items-center ${collapsed ? "justify-center" : "justify-between gap-2"} rounded-md px-2 py-2 text-left text-sm font-semibold transition-colors duration-200 ease-out ${
+                className={`flex items-center text-left text-sm font-semibold transition-colors duration-200 ease-out ${
+                  collapsed
+                    ? "mx-auto h-10 w-10 justify-center rounded-full p-0"
+                    : "w-full justify-between gap-2 rounded-md px-2 py-2"
+                } ${
                   isActiveModule
                     ? "text-[rgb(var(--primary))]"
                     : "text-[rgb(var(--text))] hover:bg-[rgb(var(--surface-muted))]"
@@ -261,7 +272,7 @@ export function DashboardSidebar({
               >
                 {collapsed ? (
                   <span
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-md border ${
+                    className={`inline-flex h-9 w-9 items-center justify-center rounded-full border ${
                       isActiveModule
                         ? "border-[rgb(var(--primary))] bg-[rgb(var(--primary))]"
                         : "border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]"
@@ -272,9 +283,9 @@ export function DashboardSidebar({
                       <Image
                         src={iconSrc}
                         alt=""
-                        width={20}
-                        height={20}
-                        className="h-5 w-5 object-contain"
+                        width={22}
+                        height={22}
+                        className="h-[22px] w-[22px] object-contain"
                       />
                     ) : null}
                   </span>
