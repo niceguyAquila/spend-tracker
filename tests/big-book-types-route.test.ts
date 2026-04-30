@@ -2,10 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const insertMock = vi.fn();
 const requireAdminApiMock = vi.fn();
-const hasTrustedOriginMock = vi.fn();
+const assertCsrfAndOriginMock = vi.fn();
 
 vi.mock("@/lib/security/origin", () => ({
-  hasTrustedOrigin: hasTrustedOriginMock
+  assertCsrfAndOrigin: assertCsrfAndOriginMock,
+  hasTrustedOrigin: vi.fn(() => true)
 }));
 
 vi.mock("@/lib/auth-api", () => ({
@@ -23,7 +24,7 @@ vi.mock("@/lib/supabase/server", () => ({
 describe("big book types route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    hasTrustedOriginMock.mockReturnValue(true);
+    assertCsrfAndOriginMock.mockResolvedValue(true);
     requireAdminApiMock.mockResolvedValue({
       ok: true,
       user: { id: "admin-1" },

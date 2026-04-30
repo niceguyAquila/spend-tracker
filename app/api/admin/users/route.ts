@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdminApi } from "@/lib/auth-api";
-import { hasTrustedOrigin } from "@/lib/security/origin";
+import { assertCsrfAndOrigin } from "@/lib/security/origin";
 
 const updateSchema = z.object({
   email: z.string().email(),
@@ -58,8 +58,8 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
-  if (!hasTrustedOrigin(request)) {
-    return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
+  if (!(await assertCsrfAndOrigin(request))) {
+    return NextResponse.json({ error: "Invalid request origin or CSRF token." }, { status: 403 });
   }
 
   const adminCheck = await requireAdminApi();

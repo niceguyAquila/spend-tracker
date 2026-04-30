@@ -3,15 +3,18 @@ import { z } from "zod";
 import { requireAllowedApi } from "@/lib/auth-api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ACTIVE_BRAND_COOKIE } from "@/lib/auth";
-import { hasTrustedOrigin } from "@/lib/security/origin";
+import { assertCsrfAndOrigin } from "@/lib/security/origin";
+import { appCookieOptions } from "@/lib/security/cookies";
 
 const schema = z.object({
   brand_id: z.string().uuid()
 });
 
+const ACTIVE_BRAND_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 days
+
 export async function POST(request: Request) {
-  if (!hasTrustedOrigin(request)) {
-    return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
+  if (!(await assertCsrfAndOrigin(request))) {
+    return NextResponse.json({ error: "Invalid request origin or CSRF token." }, { status: 403 });
   }
 
   const authCheck = await requireAllowedApi();
@@ -38,11 +41,10 @@ export async function POST(request: Request) {
   }
 
   const response = NextResponse.json({ ok: true, brand_id: parsed.data.brand_id });
-  response.cookies.set({
-    name: ACTIVE_BRAND_COOKIE,
-    value: parsed.data.brand_id,
-    sameSite: "lax",
-    path: "/"
-  });
+  response.cookies.set(
+    ACTIVE_BRAND_COOKIE,
+    parsed.data.brand_id,
+    appCookieOptions({ maxAge: ACTIVE_BRAND_MAX_AGE_SECONDS })
+  );
   return response;
 }

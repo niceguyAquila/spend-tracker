@@ -2,6 +2,8 @@ import { createServerClient, type SetAllCookies } from "@supabase/ssr";
 import type { User } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 
+import { authCookieOverrides } from "@/lib/security/cookies";
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -27,7 +29,13 @@ export const updateSession = async (request: NextRequest) => {
         supabaseResponse = NextResponse.next({
           request
         });
-        cookiesToSet.forEach(({ name, value, options }) => supabaseResponse.cookies.set(name, value, options));
+        const overrides = authCookieOverrides();
+        cookiesToSet.forEach(({ name, value, options }) =>
+          supabaseResponse.cookies.set(name, value, {
+            ...options,
+            ...overrides
+          })
+        );
       }
     }
   });

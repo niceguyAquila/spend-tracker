@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const requireAdminApiMock = vi.fn();
-const hasTrustedOriginMock = vi.fn();
+const assertCsrfAndOriginMock = vi.fn();
 const uploadMock = vi.fn();
 const removeMock = vi.fn();
 const createSignedUrlMock = vi.fn();
@@ -13,7 +13,8 @@ vi.mock("@/lib/auth-api", () => ({
 }));
 
 vi.mock("@/lib/security/origin", () => ({
-  hasTrustedOrigin: hasTrustedOriginMock
+  assertCsrfAndOrigin: assertCsrfAndOriginMock,
+  hasTrustedOrigin: vi.fn(() => true)
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -51,7 +52,7 @@ vi.mock("@/lib/supabase/server", () => ({
 describe("big book attachments routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    hasTrustedOriginMock.mockReturnValue(true);
+    assertCsrfAndOriginMock.mockResolvedValue(true);
     requireAdminApiMock.mockResolvedValue({
       ok: true,
       user: { id: "admin-1" },

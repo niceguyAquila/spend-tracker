@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { secureFetch } from "@/lib/client/auth-fetch";
 
 type BrandOption = {
   id: string;
@@ -21,7 +22,7 @@ export function BrandSwitcher({
   const router = useRouter();
 
   async function onBrandChange(nextBrandId: string) {
-    const response = await fetch("/api/brands/active", {
+    const response = await secureFetch("/api/brands/active", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ brand_id: nextBrandId })

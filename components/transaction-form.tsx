@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ExpenseCategory, ExpenseSubcategory } from "@/lib/types";
-import { handleUnauthorizedResponse } from "@/lib/client/auth-fetch";
+import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 
 type Props = {
@@ -114,7 +114,7 @@ export function TransactionForm({
     setSuccess(null);
 
     try {
-      const response = await fetch("/api/expenses", {
+      const response = await secureFetch("/api/expenses", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -151,7 +151,7 @@ export function TransactionForm({
     setCreatingSubcategory(true);
     setError(null);
 
-    const response = await fetch("/api/subcategories", {
+    const response = await secureFetch("/api/subcategories", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

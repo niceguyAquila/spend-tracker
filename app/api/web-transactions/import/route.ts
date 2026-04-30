@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireFinanceApi } from "@/lib/auth-api";
-import { hasTrustedOrigin } from "@/lib/security/origin";
+import { assertCsrfAndOrigin } from "@/lib/security/origin";
 import { parseWebTransactionsCsv, type WebTransactionSourceSystem } from "@/lib/web-transactions/csv";
 
 const UPSERT_CHUNK_SIZE = 500;
 
 export async function POST(request: Request) {
-  if (!hasTrustedOrigin(request)) {
-    return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
+  if (!(await assertCsrfAndOrigin(request))) {
+    return NextResponse.json({ error: "Invalid request origin or CSRF token." }, { status: 403 });
   }
 
   const authCheck = await requireFinanceApi();

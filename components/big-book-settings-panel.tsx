@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { BigBookActor, BigBookAllowedUserOption, BigBookLedgerType } from "@/lib/types";
-import { handleUnauthorizedResponse } from "@/lib/client/auth-fetch";
+import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 
@@ -72,7 +72,7 @@ export function BigBookSettingsPanel({ initialTypes, initialActors, allowedUsers
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch("/api/big-book/types", {
+      const response = await secureFetch("/api/big-book/types", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -104,7 +104,7 @@ export function BigBookSettingsPanel({ initialTypes, initialActors, allowedUsers
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch("/api/big-book/types", {
+      const response = await secureFetch("/api/big-book/types", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -136,7 +136,7 @@ export function BigBookSettingsPanel({ initialTypes, initialActors, allowedUsers
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch("/api/big-book/actors", {
+      const response = await secureFetch("/api/big-book/actors", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

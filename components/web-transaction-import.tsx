@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { handleUnauthorizedResponse } from "@/lib/client/auth-fetch";
+import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 
 type Props = {
@@ -42,7 +42,7 @@ export function WebTransactionImport({ canImport, sourceSystem, sourceLabel }: P
     formData.append("sourceSystem", sourceSystem);
 
     try {
-      const response = await fetch("/api/web-transactions/import", {
+      const response = await secureFetch("/api/web-transactions/import", {
         method: "POST",
         body: formData
       });

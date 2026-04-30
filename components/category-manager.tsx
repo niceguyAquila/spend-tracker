@@ -5,7 +5,7 @@ import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { useRouter } from "next/navigation";
 import type { ExpenseCategory, ExpenseSubcategory } from "@/lib/types";
-import { handleUnauthorizedResponse } from "@/lib/client/auth-fetch";
+import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PromptDialog } from "@/components/ui/prompt-dialog";
 
@@ -58,7 +58,7 @@ export function CategoryManager({
     if (!selectedCategory || newName.trim().length < 2 || creating) return;
     setCreating(true);
     setMessage(null);
-    const response = await fetch("/api/subcategories", {
+    const response = await secureFetch("/api/subcategories", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -90,7 +90,7 @@ export function CategoryManager({
 
     setCreatingCategory(true);
     setMessage(null);
-    const response = await fetch("/api/categories", {
+    const response = await secureFetch("/api/categories", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, code })
@@ -116,7 +116,7 @@ export function CategoryManager({
     if (!renameTarget) return;
     setRenameSubmitting(true);
     setMessage(null);
-    const response = await fetch("/api/subcategories", {
+    const response = await secureFetch("/api/subcategories", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: renameTarget.id, name: next })
@@ -142,7 +142,7 @@ export function CategoryManager({
     if (!disableTarget || !disableTarget.is_active) return;
     setDisableSubmitting(true);
     setMessage(null);
-    const response = await fetch("/api/subcategories", {
+    const response = await secureFetch("/api/subcategories", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: disableTarget.id, is_active: false })
@@ -169,7 +169,7 @@ export function CategoryManager({
     if (toggleSubmittingId) return;
     setToggleSubmittingId(id);
     setMessage(null);
-    const response = await fetch("/api/subcategories", {
+    const response = await secureFetch("/api/subcategories", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, is_active: !isActive })
@@ -193,7 +193,7 @@ export function CategoryManager({
     if (!categoryRenameTarget) return;
     setCategoryRenameSubmitting(true);
     setMessage(null);
-    const response = await fetch("/api/categories", {
+    const response = await secureFetch("/api/categories", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: categoryRenameTarget.id, name: next })
@@ -219,7 +219,7 @@ export function CategoryManager({
     if (categoryToggleSubmittingId) return;
     setCategoryToggleSubmittingId(id);
     setMessage(null);
-    const response = await fetch("/api/categories", {
+    const response = await secureFetch("/api/categories", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, is_active: !isActive })

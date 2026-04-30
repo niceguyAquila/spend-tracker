@@ -1,6 +1,8 @@
 import { cookies } from "next/headers";
 import { createServerClient, type SetAllCookies } from "@supabase/ssr";
 
+import { authCookieOverrides } from "@/lib/security/cookies";
+
 export async function createClient() {
   const cookieStore = await cookies();
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -21,8 +23,12 @@ export async function createClient() {
       },
       setAll(items: Parameters<SetAllCookies>[0]) {
         try {
+          const overrides = authCookieOverrides();
           items.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options);
+            cookieStore.set(name, value, {
+              ...options,
+              ...overrides
+            });
           });
         } catch {
           // Server Components may not allow mutating cookies directly.

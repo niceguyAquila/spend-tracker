@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
-import { handleUnauthorizedResponse } from "@/lib/client/auth-fetch";
+import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Modal } from "@/components/ui/modal";
 
@@ -134,7 +134,7 @@ export function AdminUsersPanel() {
       return;
     }
     setInviteSubmitting(true);
-    const response = await fetch("/api/admin/invite", {
+    const response = await secureFetch("/api/admin/invite", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -179,7 +179,7 @@ export function AdminUsersPanel() {
       brand_roles?: Array<{ brand_id: string; role: "admin" | "finance" | "viewer"; is_active: boolean }>;
     }
   ) {
-    const response = await fetch("/api/admin/users", {
+    const response = await secureFetch("/api/admin/users", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: emailToUpdate, ...payload })
@@ -212,7 +212,7 @@ export function AdminUsersPanel() {
       return;
     }
     setResetSubmitting(true);
-    const response = await fetch("/api/admin/users/reset-password", {
+    const response = await secureFetch("/api/admin/users/reset-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

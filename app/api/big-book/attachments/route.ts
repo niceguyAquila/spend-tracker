@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdminApi } from "@/lib/auth-api";
-import { hasTrustedOrigin } from "@/lib/security/origin";
+import { assertCsrfAndOrigin } from "@/lib/security/origin";
 import { bigBookAttachmentCreateSchema, bigBookAttachmentDeleteSchema } from "@/lib/validation/big-book";
 
 const BUCKET = "big-book-attachments";
@@ -13,8 +13,8 @@ function sanitizeFileName(name: string) {
 }
 
 export async function POST(request: Request) {
-  if (!hasTrustedOrigin(request)) {
-    return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
+  if (!(await assertCsrfAndOrigin(request))) {
+    return NextResponse.json({ error: "Invalid request origin or CSRF token." }, { status: 403 });
   }
 
   const authCheck = await requireAdminApi();
@@ -79,8 +79,8 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  if (!hasTrustedOrigin(request)) {
-    return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
+  if (!(await assertCsrfAndOrigin(request))) {
+    return NextResponse.json({ error: "Invalid request origin or CSRF token." }, { status: 403 });
   }
 
   const authCheck = await requireAdminApi();

@@ -8,7 +8,7 @@ import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { Modal } from "@/components/ui/modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { handleUnauthorizedResponse } from "@/lib/client/auth-fetch";
+import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 
 type Props = {
   rows: WebTransaction[];
@@ -123,7 +123,7 @@ export function WebTransactionsTable({ rows, sourceSystem, canManage }: Props) {
     setDeleteSubmitting(true);
     setMessage(null);
     try {
-      const response = await fetch(`/api/web-transactions?id=${pendingDelete.id}`, { method: "DELETE" });
+      const response = await secureFetch(`/api/web-transactions?id=${pendingDelete.id}`, { method: "DELETE" });
       if (handleUnauthorizedResponse(response)) {
         setPendingDelete(null);
         return;
@@ -167,7 +167,7 @@ export function WebTransactionsTable({ rows, sourceSystem, canManage }: Props) {
     setCreateSubmitting(true);
     setMessage(null);
     try {
-      const response = await fetch("/api/web-transactions", {
+      const response = await secureFetch("/api/web-transactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

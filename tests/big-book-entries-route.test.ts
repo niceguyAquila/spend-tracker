@@ -9,11 +9,12 @@ const deleteEqIdMock = vi.fn(() => ({ eq: deleteEqBrandMock }));
 const updateEqIdMock = vi.fn(() => ({ eq: vi.fn().mockResolvedValue({ error: null }) }));
 const insertSelectSingleMock = vi.fn();
 const requireAdminApiMock = vi.fn();
-const hasTrustedOriginMock = vi.fn();
+const assertCsrfAndOriginMock = vi.fn();
 const getBigBookEntriesPagedMock = vi.fn();
 
 vi.mock("@/lib/security/origin", () => ({
-  hasTrustedOrigin: hasTrustedOriginMock
+  assertCsrfAndOrigin: assertCsrfAndOriginMock,
+  hasTrustedOrigin: vi.fn(() => true)
 }));
 
 vi.mock("@/lib/auth-api", () => ({
@@ -42,7 +43,7 @@ vi.mock("@/lib/db/queries", () => ({
 describe("big book entries route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    hasTrustedOriginMock.mockReturnValue(true);
+    assertCsrfAndOriginMock.mockResolvedValue(true);
     requireAdminApiMock.mockResolvedValue({
       ok: true,
       activeBrandId: "brand-1",

@@ -2,18 +2,25 @@
 
 import { useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { readCsrfCookie } from "@/lib/client/auth-fetch";
 
 export function LogoutButton() {
   const [open, setOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const tokenRef = useRef<HTMLInputElement>(null);
 
   function handleConfirm() {
+    if (tokenRef.current) {
+      tokenRef.current.value = readCsrfCookie() ?? "";
+    }
     formRef.current?.requestSubmit();
   }
 
   return (
     <>
-      <form ref={formRef} action="/auth/logout" method="post" className="hidden" />
+      <form ref={formRef} action="/auth/logout" method="post" className="hidden">
+        <input ref={tokenRef} type="hidden" name="csrf_token" defaultValue="" />
+      </form>
       <button
         type="button"
         onClick={() => setOpen(true)}
@@ -30,7 +37,7 @@ export function LogoutButton() {
         open={open}
         onOpenChange={setOpen}
         title="Sign out?"
-        description="You are about to sign out of this workspace."
+        description="You are about to sign out of this workspace on every device."
         confirmLabel="Sign out"
         cancelLabel="Stay signed in"
         variant="danger"

@@ -5,7 +5,7 @@ import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ExpenseCategory, ExpenseSubcategory, ExpenseWithNames } from "@/lib/types";
-import { handleUnauthorizedResponse } from "@/lib/client/auth-fetch";
+import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { formatAmount, formatDateDisplay } from "@/lib/display-format";
@@ -241,7 +241,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
     setSaving(true);
     setMessage(null);
     try {
-      const response = await fetch("/api/expenses", {
+      const response = await secureFetch("/api/expenses", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -292,7 +292,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
     setDeleteSubmitting(true);
     setMessage(null);
     try {
-      const response = await fetch(`/api/expenses?id=${pendingDelete.id}`, { method: "DELETE" });
+      const response = await secureFetch(`/api/expenses?id=${pendingDelete.id}`, { method: "DELETE" });
       if (handleUnauthorizedResponse(response)) {
         setPendingDelete(null);
         return;

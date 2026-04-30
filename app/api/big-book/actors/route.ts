@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdminApi } from "@/lib/auth-api";
-import { hasTrustedOrigin } from "@/lib/security/origin";
+import { assertCsrfAndOrigin } from "@/lib/security/origin";
 import { bigBookActorUpdateSchema } from "@/lib/validation/big-book";
 
 export async function GET() {
@@ -36,8 +36,8 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
-  if (!hasTrustedOrigin(request)) {
-    return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
+  if (!(await assertCsrfAndOrigin(request))) {
+    return NextResponse.json({ error: "Invalid request origin or CSRF token." }, { status: 403 });
   }
 
   const authCheck = await requireAdminApi();

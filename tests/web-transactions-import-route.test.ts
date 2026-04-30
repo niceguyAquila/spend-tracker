@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const upsertMock = vi.fn();
 const requireFinanceApiMock = vi.fn();
-const hasTrustedOriginMock = vi.fn();
+const assertCsrfAndOriginMock = vi.fn();
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
@@ -17,13 +17,14 @@ vi.mock("@/lib/auth-api", () => ({
 }));
 
 vi.mock("@/lib/security/origin", () => ({
-  hasTrustedOrigin: hasTrustedOriginMock
+  assertCsrfAndOrigin: assertCsrfAndOriginMock,
+  hasTrustedOrigin: vi.fn(() => true)
 }));
 
 describe("POST /api/web-transactions/import", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    hasTrustedOriginMock.mockReturnValue(true);
+    assertCsrfAndOriginMock.mockResolvedValue(true);
     requireFinanceApiMock.mockResolvedValue({
       ok: true,
       activeBrandId: "brand-1",

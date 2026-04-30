@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
-import { handleUnauthorizedResponse } from "@/lib/client/auth-fetch";
+import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 
 type Brand = {
   id: string;
@@ -47,7 +47,7 @@ export function AdminBrandsPanel() {
 
   async function createBrand(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const response = await fetch("/api/admin/brands", {
+    const response = await secureFetch("/api/admin/brands", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code, name })
@@ -67,7 +67,7 @@ export function AdminBrandsPanel() {
   }
 
   async function setBrandActive(brand: Brand, active: boolean) {
-    const response = await fetch("/api/admin/brands", {
+    const response = await secureFetch("/api/admin/brands", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: brand.id, is_active: active })

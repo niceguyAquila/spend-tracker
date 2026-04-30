@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { BigBookActor, BigBookActorCurrencyMetrics, BigBookEntry, BigBookLedgerType } from "@/lib/types";
-import { handleUnauthorizedResponse } from "@/lib/client/auth-fetch";
+import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
@@ -416,7 +416,7 @@ export function BigBookPanel({
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch("/api/big-book/entries", {
+      const response = await secureFetch("/api/big-book/entries", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -437,7 +437,7 @@ export function BigBookPanel({
           const formData = new FormData();
           formData.append("ledger_entry_id", createdEntryId);
           formData.append("file", file);
-          const uploadResponse = await fetch("/api/big-book/attachments", {
+          const uploadResponse = await secureFetch("/api/big-book/attachments", {
             method: "POST",
             body: formData
           });
@@ -500,7 +500,7 @@ export function BigBookPanel({
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch(`/api/big-book/entries?id=${pendingDeleteEntry.id}`, { method: "DELETE" });
+      const response = await secureFetch(`/api/big-book/entries?id=${pendingDeleteEntry.id}`, { method: "DELETE" });
       if (handleUnauthorizedResponse(response)) return;
       const data = await response.json();
       if (!response.ok) {
@@ -553,7 +553,7 @@ export function BigBookPanel({
     try {
       const formData = new FormData();
       formData.append("file", importFile);
-      const response = await fetch("/api/big-book/import", {
+      const response = await secureFetch("/api/big-book/import", {
         method: "POST",
         body: formData
       });
@@ -615,7 +615,7 @@ export function BigBookPanel({
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch("/api/big-book/entries", {
+      const response = await secureFetch("/api/big-book/entries", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -657,7 +657,7 @@ export function BigBookPanel({
         const formData = new FormData();
         formData.append("ledger_entry_id", pendingUploadEntryId);
         formData.append("file", file);
-        const response = await fetch("/api/big-book/attachments", {
+        const response = await secureFetch("/api/big-book/attachments", {
           method: "POST",
           body: formData
         });
@@ -703,7 +703,7 @@ export function BigBookPanel({
     setAttachmentDeleting(true);
     setError(null);
     try {
-      const response = await fetch(`/api/big-book/attachments?id=${pendingDeleteAttachmentId}`, {
+      const response = await secureFetch(`/api/big-book/attachments?id=${pendingDeleteAttachmentId}`, {
         method: "DELETE"
       });
       if (handleUnauthorizedResponse(response)) return;
