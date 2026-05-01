@@ -7,6 +7,9 @@ import type { CreditBookEntry } from "@/lib/types";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
 
+type CreditCurrency = "IDR" | "MYR" | "USDT" | "TRX";
+const CURRENCY_OPTIONS: CreditCurrency[] = ["IDR", "MYR", "USDT", "TRX"];
+
 type Props = {
   entry: CreditBookEntry | null;
   open: boolean;
@@ -40,6 +43,17 @@ function formatAmountInput(value: string) {
   return decimalPart.length > 0 ? `${formattedInteger}.${decimalPart}` : formattedInteger;
 }
 
+function formatRateInput(value: string) {
+  const cleaned = value.replace(/[^\d.]/g, "");
+  if (!cleaned) return "";
+  const [integerPart, ...decimalParts] = cleaned.split(".");
+  const decimalPart = decimalParts.join("").slice(0, 8);
+  if (cleaned.includes(".")) {
+    return `${integerPart}.${decimalPart}`;
+  }
+  return integerPart;
+}
+
 function extractApiErrorMessage(error: unknown, fallback: string) {
   if (typeof error === "string" && error.trim().length > 0) return error;
   if (error && typeof error === "object") {
@@ -69,6 +83,7 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
   const isCredit = entry?.entry_direction === "credit";
   const directionLabel = isCredit ? "credit" : "debt";
   const titleVerb = isCredit ? "Settle Credit" : "Settle Debt";
+  const entryCurrency = (entry?.currency_code ?? "IDR") as CreditCurrency;
 
   const outstandingFormatted = useMemo(() => {
     if (!entry) return "";
@@ -77,6 +92,8 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
 
   const [settlementDate, setSettlementDate] = useState(today);
   const [amount, setAmount] = useState(outstandingFormatted);
+  const [settlementCurrency, setSettlementCurrency] = useState<CreditCurrency>(entryCurrency);
+  const [conversionRate, setConversionRate] = useState("");
   const [note, setNote] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -87,6 +104,8 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
     if (open && entry) {
       setSettlementDate(today);
       setAmount(formatAmountInput(String(entry.outstanding)));
+      setSettlementCurrency(entry.currency_code as CreditCurrency);
+      setConversionRate("");
       setNote("");
       setFiles([]);
       setError(null);
@@ -95,13 +114,32 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
 
   if (!entry) return null;
 
+  const sameCurrency = settlementCurrency === entryCurrency;
   const amountValue = Number(parseAmountInput(amount));
-  const isAmountValid =
-    Number.isFinite(amountValue) && amountValue > 0 && amountValue <= entry.outstanding + 0.0001;
+  const rateValue = sameCurrency ? 1 : Number(conversionRate);
+  const isAmountFinite = Number.isFinite(amountValue) && amountValue > 0;
+  const isRateFinite = Number.isFinite(rateValue) && rateValue > 0;
+  const amountInEntryCurrency =
+    isAmountFinite && isRateFinite
+      ? Math.round(amountValue * rateValue * 10000) / 10000
+      : 0;
+  const isWithinOutstanding = amountInEntryCurrency <= entry.outstanding + 0.0001;
+  const isAmountValid = isAmountFinite && isRateFinite && isWithinOutstanding;
   const canSubmit = !submitting && isAmountValid && Boolean(settlementDate);
 
   function setSettleInFull() {
-    setAmount(formatAmountInput(String(entry?.outstanding ?? 0)));
+    if (!entry) return;
+    if (sameCurrency) {
+      setAmount(formatAmountInput(String(entry.outstanding)));
+      return;
+    }
+    const rate = Number(conversionRate);
+    if (!Number.isFinite(rate) || rate <= 0) {
+      setError(`Enter the conversion rate first to compute the full settlement in ${settlementCurrency}.`);
+      return;
+    }
+    const fullSettlementAmount = entry.outstanding / rate;
+    setAmount(formatAmountInput(String(fullSettlementAmount.toFixed(4))));
   }
 
   function removeFileAt(index: number) {
@@ -110,12 +148,23 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
 
   async function submitSettlement() {
     if (!entry) return;
-    if (!isAmountValid) {
+    if (!isAmountFinite || !isRateFinite) {
       setError(
-        `Settlement amount must be greater than 0 and at most outstanding (${formatAmount(
-          entry.outstanding,
-          { minimumFractionDigits: 2, maximumFractionDigits: 4 }
-        )}).`
+        sameCurrency
+          ? "Settlement amount must be greater than 0."
+          : "Settlement amount and conversion rate must be greater than 0."
+      );
+      return;
+    }
+    if (!isWithinOutstanding) {
+      setError(
+        `Equivalent amount in ${entryCurrency} (${formatAmount(amountInEntryCurrency, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 4
+        })}) exceeds outstanding (${formatAmount(entry.outstanding, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 4
+        })}).`
       );
       return;
     }
@@ -130,6 +179,8 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
           entry_id: entry.id,
           settlement_date: settlementDate,
           amount: amountValue,
+          settlement_currency_code: settlementCurrency,
+          conversion_rate: rateValue,
           note: note.trim() ? note.trim() : ""
         })
       });
@@ -140,6 +191,10 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
         return;
       }
       const settlementId = data.id as string;
+      const settledAmountInEntryCurrency =
+        typeof data.amount_in_entry_currency === "number"
+          ? Number(data.amount_in_entry_currency)
+          : amountInEntryCurrency;
 
       if (files.length > 0) {
         for (const file of files) {
@@ -159,7 +214,7 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
                 `Settlement saved, but failed to upload ${file.name}.`
               )
             );
-            onSuccess({ entry, amount: amountValue, settlementId });
+            onSuccess({ entry, amount: settledAmountInEntryCurrency, settlementId });
             setConfirmOpen(false);
             onOpenChange(false);
             return;
@@ -167,7 +222,7 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
         }
       }
 
-      onSuccess({ entry, amount: amountValue, settlementId });
+      onSuccess({ entry, amount: settledAmountInEntryCurrency, settlementId });
       setConfirmOpen(false);
       onOpenChange(false);
     } catch {
@@ -269,6 +324,44 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
           </label>
 
           <label className="block text-sm text-[rgb(var(--text))]">
+            Settlement Currency *
+            <select
+              className="field mt-1 w-full"
+              value={settlementCurrency}
+              onChange={(event) => {
+                const next = event.target.value as CreditCurrency;
+                setSettlementCurrency(next);
+                if (next === entryCurrency) {
+                  setConversionRate("");
+                }
+              }}
+            >
+              {CURRENCY_OPTIONS.map((currency) => (
+                <option key={currency} value={currency}>
+                  {currency}
+                  {currency === entryCurrency ? " (entry currency)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {!sameCurrency ? (
+            <label className="block text-sm text-[rgb(var(--text))]">
+              Conversion Rate *
+              <input
+                className="field mt-1 w-full"
+                inputMode="decimal"
+                placeholder="0"
+                value={conversionRate}
+                onChange={(event) => setConversionRate(formatRateInput(event.target.value))}
+              />
+              <p className="mt-1 text-xs text-[rgb(var(--text-muted))]">
+                1 {settlementCurrency} = ? {entryCurrency}
+              </p>
+            </label>
+          ) : null}
+
+          <label className="block text-sm text-[rgb(var(--text))]">
             <div className="flex items-center justify-between">
               <span>Settlement Amount *</span>
               <button
@@ -294,6 +387,17 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
               })}{" "}
               outstanding.
             </p>
+            {!sameCurrency ? (
+              <p className="mt-1 text-xs text-[rgb(var(--text-muted))]">
+                Equivalent: {entryCurrency}{" "}
+                {isAmountFinite && isRateFinite
+                  ? formatAmount(amountInEntryCurrency, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 4
+                    })
+                  : "--"}
+              </p>
+            ) : null}
           </label>
 
           <label className="block text-sm text-[rgb(var(--text))]">
@@ -347,10 +451,20 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         title={`Record ${directionLabel} settlement?`}
-        description={`This will record a ${entry.currency_code} ${formatAmount(amountValue, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 4
-        })} settlement against the selected ${directionLabel} record.`}
+        description={
+          sameCurrency
+            ? `This will record a ${settlementCurrency} ${formatAmount(amountValue, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 4
+              })} settlement against the selected ${directionLabel} record.`
+            : `This will record a ${settlementCurrency} ${formatAmount(amountValue, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 4
+              })} settlement (~ ${entryCurrency} ${formatAmount(amountInEntryCurrency, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 4
+              })} at 1 ${settlementCurrency} = ${rateValue} ${entryCurrency}) against the selected ${directionLabel} record.`
+        }
         confirmLabel="Record Settlement"
         confirming={submitting}
         closeOnBackdrop={false}

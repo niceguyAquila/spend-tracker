@@ -9,7 +9,7 @@ type EntryRow = {
   credit_book_actors: { actor_code: "A" | "B"; display_name: string };
 };
 
-type SettlementRow = { entry_id: string; amount: number };
+type SettlementRow = { entry_id: string; amount_in_entry_currency: number };
 
 const entryRowsRef: { rows: EntryRow[] } = { rows: [] };
 const settlementRowsRef: { rows: SettlementRow[] } = { rows: [] };
@@ -84,8 +84,8 @@ describe("getCreditBookActorOutstandingMetrics", () => {
       }
     ];
     settlementRowsRef.rows = [
-      { entry_id: "entry-1", amount: 400 },
-      { entry_id: "entry-3", amount: 200 }
+      { entry_id: "entry-1", amount_in_entry_currency: 400 },
+      { entry_id: "entry-3", amount_in_entry_currency: 200 }
     ];
 
     const { getCreditBookActorOutstandingMetrics } = await import("@/lib/db/queries");
@@ -114,12 +114,33 @@ describe("getCreditBookActorOutstandingMetrics", () => {
         credit_book_actors: { actor_code: "A", display_name: "Actor A" }
       }
     ];
-    settlementRowsRef.rows = [{ entry_id: "entry-1", amount: 300 }];
+    settlementRowsRef.rows = [{ entry_id: "entry-1", amount_in_entry_currency: 300 }];
 
     const { getCreditBookActorOutstandingMetrics } = await import("@/lib/db/queries");
     const result = await getCreditBookActorOutstandingMetrics();
     expect(result).toHaveLength(1);
     expect(result[0].totals.MYR).toBe(0);
+  });
+
+  it("uses amount_in_entry_currency (not raw settlement amount) when subtracting outstanding", async () => {
+    entryRowsRef.rows = [
+      {
+        id: "entry-1",
+        responsible_actor_id: "actor-a",
+        entry_direction: "credit",
+        currency_code: "MYR",
+        amount: 1000,
+        credit_book_actors: { actor_code: "A", display_name: "Actor A" }
+      }
+    ];
+    settlementRowsRef.rows = [
+      { entry_id: "entry-1", amount_in_entry_currency: 470 }
+    ];
+
+    const { getCreditBookActorOutstandingMetrics } = await import("@/lib/db/queries");
+    const result = await getCreditBookActorOutstandingMetrics();
+    expect(result).toHaveLength(1);
+    expect(result[0].totals.MYR).toBe(530);
   });
 
   it("sorts actors by actor_code", async () => {

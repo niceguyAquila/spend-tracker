@@ -315,6 +315,9 @@ export type CreditBookSettlement = {
   entry_id: string;
   settlement_date: string;
   amount: number;
+  settlement_currency_code: "IDR" | "MYR" | "USDT" | "TRX";
+  conversion_rate: number;
+  amount_in_entry_currency: number;
   note: string | null;
   created_by: string | null;
   updated_by: string | null;

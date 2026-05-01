@@ -1246,6 +1246,9 @@ type RawCreditBookSettlementRow = {
   entry_id: string;
   settlement_date: string;
   amount: number;
+  settlement_currency_code: "IDR" | "MYR" | "USDT" | "TRX";
+  conversion_rate: number;
+  amount_in_entry_currency: number;
   note: string | null;
   created_by: string | null;
   updated_by: string | null;
@@ -1286,7 +1289,7 @@ async function fetchCreditBookSettlementsForEntries(
     .from("credit_ledger_settlements")
     .select(
       `
-      id, entry_id, settlement_date, amount, note, created_by, updated_by, created_at, updated_at,
+      id, entry_id, settlement_date, amount, settlement_currency_code, conversion_rate, amount_in_entry_currency, note, created_by, updated_by, created_at, updated_at,
       credit_ledger_settlement_attachments(id, settlement_id, storage_path, file_name, mime_type, file_size, uploaded_by, created_at)
     `
     )
@@ -1318,6 +1321,9 @@ function mapCreditBookSettlementRow(
     entry_id: row.entry_id,
     settlement_date: row.settlement_date,
     amount: Number(row.amount),
+    settlement_currency_code: row.settlement_currency_code,
+    conversion_rate: Number(row.conversion_rate),
+    amount_in_entry_currency: Number(row.amount_in_entry_currency),
     note: row.note,
     created_by: row.created_by,
     updated_by: row.updated_by,
@@ -1423,7 +1429,7 @@ export async function getCreditBookEntries(
       mapCreditBookSettlementRow(s, actorMap)
     );
     const amount = Number(row.amount);
-    const totalSettled = settlements.reduce((sum, s) => sum + s.amount, 0);
+    const totalSettled = settlements.reduce((sum, s) => sum + s.amount_in_entry_currency, 0);
     const outstanding = Math.max(0, amount - totalSettled);
     const status = computeCreditBookEntryStatus(amount, totalSettled);
 
@@ -1592,7 +1598,7 @@ export async function getCreditBookEntriesPaged(
       mapCreditBookSettlementRow(s, actorMap)
     );
     const amount = Number(row.amount);
-    const totalSettled = settlements.reduce((sum, s) => sum + s.amount, 0);
+    const totalSettled = settlements.reduce((sum, s) => sum + s.amount_in_entry_currency, 0);
     const outstanding = Math.max(0, amount - totalSettled);
     const status = computeCreditBookEntryStatus(amount, totalSettled);
 
@@ -1828,15 +1834,18 @@ export async function getCreditBookActorOutstandingMetrics(): Promise<CreditBook
   if (rows.length) {
     const { data: settlementRows, error: settlementError } = await supabase
       .from("credit_ledger_settlements")
-      .select("entry_id, amount")
+      .select("entry_id, amount_in_entry_currency")
       .in(
         "entry_id",
         rows.map((row) => row.id)
       );
     if (settlementError) throw settlementError;
-    for (const s of (settlementRows ?? []) as Array<{ entry_id: string; amount: number }>) {
+    for (const s of (settlementRows ?? []) as Array<{
+      entry_id: string;
+      amount_in_entry_currency: number;
+    }>) {
       const prev = settledByEntry.get(s.entry_id) ?? 0;
-      settledByEntry.set(s.entry_id, prev + Number(s.amount));
+      settledByEntry.set(s.entry_id, prev + Number(s.amount_in_entry_currency));
     }
   }
 
@@ -1876,7 +1885,7 @@ export async function getCreditBookSettlementsForEntry(
     .from("credit_ledger_settlements")
     .select(
       `
-      id, entry_id, settlement_date, amount, note, created_by, updated_by, created_at, updated_at,
+      id, entry_id, settlement_date, amount, settlement_currency_code, conversion_rate, amount_in_entry_currency, note, created_by, updated_by, created_at, updated_at,
       credit_ledger_settlement_attachments(id, settlement_id, storage_path, file_name, mime_type, file_size, uploaded_by, created_at)
     `
     )

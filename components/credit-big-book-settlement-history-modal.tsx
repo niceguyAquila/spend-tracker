@@ -163,15 +163,34 @@ export function CreditBigBookSettlementHistoryModal({ entry, open, onOpenChange,
                     </td>
                   </tr>
                 ) : settlements.length ? (
-                  settlements.map((s) => (
+                  settlements.map((s) => {
+                    const crossCurrency = s.settlement_currency_code !== entry.currency_code;
+                    return (
                     <tr key={s.id} className="border-b border-[rgb(var(--border))] align-top">
                       <td className="px-3 py-2">{formatDateDisplay(s.settlement_date)}</td>
                       <td className="px-3 py-2">
-                        {entry.currency_code}{" "}
-                        {formatAmount(s.amount, {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 4
-                        })}
+                        <div>
+                          {s.settlement_currency_code}{" "}
+                          {formatAmount(s.amount, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 4
+                          })}
+                        </div>
+                        {crossCurrency ? (
+                          <div className="mt-1 text-xs text-[rgb(var(--text-muted))]">
+                            ~ {entry.currency_code}{" "}
+                            {formatAmount(s.amount_in_entry_currency, {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 4
+                            })}{" "}
+                            (1 {s.settlement_currency_code} ={" "}
+                            {formatAmount(s.conversion_rate, {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 8
+                            })}{" "}
+                            {entry.currency_code})
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-3 py-2">
                         {s.note ? (
@@ -214,7 +233,8 @@ export function CreditBigBookSettlementHistoryModal({ entry, open, onOpenChange,
                         </button>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 ) : (
                   <tr>
                     <td className="px-3 py-3 text-center text-slate-600" colSpan={6}>

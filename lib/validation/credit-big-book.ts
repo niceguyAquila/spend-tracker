@@ -135,6 +135,8 @@ export const creditBookSettlementCreateSchema = z.object({
   entry_id: z.string().uuid("Entry is required"),
   settlement_date: z.string().min(1, "Settlement date is required"),
   amount: z.coerce.number().positive("Settlement amount must be greater than 0"),
+  settlement_currency_code: creditBookCurrencySchema,
+  conversion_rate: z.coerce.number().positive("Conversion rate must be greater than 0"),
   note: z.string().max(1000).optional().or(z.literal(""))
 });
 
@@ -142,6 +144,8 @@ export const creditBookSettlementUpdateSchema = z.object({
   id: z.string().uuid(),
   settlement_date: z.string().min(1).optional(),
   amount: z.coerce.number().positive("Settlement amount must be greater than 0").optional(),
+  settlement_currency_code: creditBookCurrencySchema.optional(),
+  conversion_rate: z.coerce.number().positive("Conversion rate must be greater than 0").optional(),
   note: z.string().max(1000).optional().or(z.literal(""))
 });
 
