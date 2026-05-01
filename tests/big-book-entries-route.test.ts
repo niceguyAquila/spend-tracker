@@ -76,6 +76,7 @@ describe("big book entries route", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         entry_date: "2026-04-23",
+        entry_direction: "spending",
         entry_type_id: "11111111-1111-4111-8111-111111111111",
         explanation: "Operational cloud cost",
         amount: 1240.5,
@@ -91,6 +92,61 @@ describe("big book entries route", () => {
     expect(response.status).toBe(200);
     expect(data.id).toBe("entry-1");
     expect(insertMock).toHaveBeenCalledTimes(1);
+    expect(insertMock.mock.calls[0][0]).toMatchObject({
+      entry_sub_type_id: null
+    });
+  });
+
+  it("persists entry_sub_type_id on create when provided", async () => {
+    const { POST } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_date: "2026-04-23",
+        entry_direction: "spending",
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        entry_sub_type_id: "44444444-4444-4444-8444-444444444444",
+        explanation: "Operational cloud cost",
+        amount: 1240.5,
+        currency_code: "USDT",
+        remark: "",
+        responsible_actor_id: "22222222-2222-4222-8222-222222222222"
+      })
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    expect(insertMock.mock.calls[0][0]).toMatchObject({
+      entry_sub_type_id: "44444444-4444-4444-8444-444444444444"
+    });
+  });
+
+  it("persists entry_sub_type_id on patch when provided", async () => {
+    const { PATCH } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: "55555555-5555-4555-8555-555555555555",
+        entry_date: "2026-04-23",
+        entry_direction: "spending",
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        entry_sub_type_id: "44444444-4444-4444-8444-444444444444",
+        explanation: "Operational cloud cost",
+        amount: 1240.5,
+        currency_code: "USDT",
+        remark: "",
+        responsible_actor_id: "22222222-2222-4222-8222-222222222222"
+      })
+    });
+
+    const response = await PATCH(request);
+    expect(response.status).toBe(200);
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(updateMock.mock.calls[0][0]).toMatchObject({
+      entry_sub_type_id: "44444444-4444-4444-8444-444444444444"
+    });
   });
 
   it("returns 403 when non-admin tries to create entry", async () => {
@@ -148,7 +204,7 @@ describe("big book entries route", () => {
 
     const response = await DELETE(request);
     expect(response.status).toBe(200);
-    expect(deleteEqIdMock).toHaveBeenCalledWith("entry-1");
-    expect(deleteEqBrandMock).toHaveBeenCalledWith("brand-1");
+    expect(deleteEqIdMock).toHaveBeenCalledWith("id", "entry-1");
+    expect(deleteEqBrandMock).toHaveBeenCalledWith("brand_id", "brand-1");
   });
 });

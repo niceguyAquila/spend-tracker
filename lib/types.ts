@@ -153,6 +153,17 @@ export type BigBookLedgerType = {
   updated_at: string;
 };
 
+export type BigBookLedgerSubType = {
+  id: string;
+  entry_type_id: string;
+  code: string;
+  name: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type BigBookActor = {
   id: string;
   actor_code: "A" | "B";
@@ -176,6 +187,7 @@ export type BigBookEntry = {
   entry_date: string;
   entry_direction: "spending" | "profit";
   entry_type_id: string;
+  entry_sub_type_id: string | null;
   explanation: string;
   amount: number;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
@@ -187,6 +199,8 @@ export type BigBookEntry = {
   updated_at: string;
   type_name: string;
   type_code: string;
+  sub_type_name: string | null;
+  sub_type_code: string | null;
   actor_code: "A" | "B";
   actor_display_name: string;
   creator_display_name: string;
@@ -239,6 +253,113 @@ export type BigBookTypeCashflowRow = {
 export type BigBookTypeCashflowByCurrency = {
   currency: BigBookCashflowCurrency;
   rows: BigBookTypeCashflowRow[];
+  combined: {
+    inflow: number;
+    outflow: number;
+    net: number;
+  };
+};
+
+export type CreditBookLedgerType = {
+  id: string;
+  code: string;
+  name: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreditBookLedgerSubType = {
+  id: string;
+  entry_type_id: string;
+  code: string;
+  name: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreditBookActor = {
+  id: string;
+  actor_code: "A" | "B";
+  display_name: string;
+  user_id: string | null;
+};
+
+export type CreditBookAttachment = {
+  id: string;
+  ledger_entry_id: string;
+  storage_path: string;
+  file_name: string;
+  mime_type: string;
+  file_size: number;
+  uploaded_by: string | null;
+  created_at: string;
+};
+
+export type CreditBookEntry = {
+  id: string;
+  entry_date: string;
+  entry_direction: "credit" | "debt";
+  entry_type_id: string;
+  entry_sub_type_id: string | null;
+  explanation: string;
+  amount: number;
+  currency_code: "IDR" | "MYR" | "USDT" | "TRX";
+  remark: string | null;
+  responsible_actor_id: string;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  type_name: string;
+  type_code: string;
+  sub_type_name: string | null;
+  sub_type_code: string | null;
+  actor_code: "A" | "B";
+  actor_display_name: string;
+  creator_display_name: string;
+  updater_display_name: string;
+  attachments: CreditBookAttachment[];
+};
+
+export type CreditBookAllowedUserOption = {
+  id: string;
+  display_name: string;
+  email: string;
+};
+
+export type CreditBookActorCurrencyMetrics = {
+  actor_id: string;
+  actor_code: "A" | "B";
+  actor_display_name: string;
+  totals: {
+    IDR: number;
+    MYR: number;
+    USDT: number;
+    TRX: number;
+  };
+};
+
+export type CreditBookCashflowCurrency = "IDR" | "MYR" | "USDT" | "TRX";
+
+export type CreditBookTypeCashflowRow = {
+  row_key: string;
+  actor_id: string;
+  actor_display_name: string;
+  type_id: string;
+  type_code: string;
+  type_name: string;
+  inflow: number;
+  outflow: number;
+  net: number;
+};
+
+export type CreditBookTypeCashflowByCurrency = {
+  currency: CreditBookCashflowCurrency;
+  rows: CreditBookTypeCashflowRow[];
   combined: {
     inflow: number;
     outflow: number;

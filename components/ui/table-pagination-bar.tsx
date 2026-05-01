@@ -1,6 +1,6 @@
 "use client";
 
-import { PAGE_SIZE_OPTIONS, type PageSize } from "@/lib/table-pagination";
+import { isPageSize, PAGE_SIZE_OPTIONS, type PageSize } from "@/lib/table-pagination";
 
 type TablePaginationBarProps = {
   totalCount: number;
@@ -50,7 +50,7 @@ export function TablePaginationBar({
             value={pageSize}
             onChange={(e) => {
               const n = Number(e.target.value);
-              if (n === 20 || n === 50 || n === 100 || n === 200) {
+              if (isPageSize(n)) {
                 setPageSize(n);
               }
             }}

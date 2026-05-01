@@ -22,6 +22,25 @@ export const bigBookTypeUpdateSchema = z.object({
   sort_order: z.coerce.number().int().min(0).max(9999).optional()
 });
 
+export const bigBookSubTypeCreateSchema = z.object({
+  entry_type_id: z.string().uuid("Type is required"),
+  code: z
+    .string()
+    .trim()
+    .min(2)
+    .max(64)
+    .regex(/^[A-Z0-9_]+$/, "Code must use uppercase letters, numbers, and underscores."),
+  name: z.string().trim().min(2).max(100),
+  sort_order: z.coerce.number().int().min(0).max(9999).optional()
+});
+
+export const bigBookSubTypeUpdateSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().trim().min(2).max(100).optional(),
+  is_active: z.boolean().optional(),
+  sort_order: z.coerce.number().int().min(0).max(9999).optional()
+});
+
 export const bigBookActorUpdateSchema = z.object({
   id: z.string().uuid(),
   display_name: z.string().trim().min(2).max(100).optional(),
@@ -32,6 +51,13 @@ export const bigBookEntryInputSchema = z.object({
   entry_date: z.string().min(1, "Date is required"),
   entry_direction: bigBookEntryDirectionSchema,
   entry_type_id: z.string().uuid("Type is required"),
+  entry_sub_type_id: z
+    .string()
+    .uuid("Sub-Type must be a valid id")
+    .nullable()
+    .optional()
+    .or(z.literal(""))
+    .transform((value) => (value && value.length ? value : null)),
   explanation: z.string().trim().min(2).max(500),
   amount: z.coerce.number().positive("Amount must be greater than 0"),
   currency_code: bigBookCurrencySchema,

@@ -58,7 +58,7 @@ export default async function BigBookMasterDashboardPage({ searchParams }: BigBo
       <div className="space-y-6">
         <section className="card">
           <div>
-            <h1 className="text-xl font-semibold">Big Book Type Master Dashboard</h1>
+            <h1 className="text-xl font-semibold">Master Dashboard</h1>
             <p className="text-sm text-slate-600">
               Cashflow summary by ledger type across each currency.
             </p>

@@ -9,6 +9,7 @@ type Props = {
 const GLOBAL_ADMIN_PREFIX_ROUTES = [
   "/dashboard/master-dashboard",
   "/dashboard/big-book",
+  "/dashboard/credit-big-book",
   "/dashboard/admin/users",
   "/dashboard/admin/brands"
 ];

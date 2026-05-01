@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { BigBookActor, BigBookActorCurrencyMetrics, BigBookEntry, BigBookLedgerType } from "@/lib/types";
+import type {
+  BigBookActor,
+  BigBookActorCurrencyMetrics,
+  BigBookEntry,
+  BigBookLedgerSubType,
+  BigBookLedgerType
+} from "@/lib/types";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
@@ -15,6 +21,7 @@ import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
 
 type Props = {
   initialTypes: BigBookLedgerType[];
+  initialSubTypes: BigBookLedgerSubType[];
   initialActors: BigBookActor[];
   initialEntries: BigBookEntry[];
   initialTotalCount: number;
@@ -25,6 +32,7 @@ type EntryFormState = {
   entry_date: string;
   entry_direction: "spending" | "profit";
   entry_type_id: string;
+  entry_sub_type_id: string;
   explanation: string;
   amount: string;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
@@ -91,6 +99,7 @@ const LEDGER_SKELETON_ROW_COUNT = 6;
 
 export function BigBookPanel({
   initialTypes,
+  initialSubTypes,
   initialActors,
   initialEntries,
   initialTotalCount,
@@ -134,6 +143,7 @@ export function BigBookPanel({
     entry_date: "",
     entry_direction: "spending",
     entry_type_id: "",
+    entry_sub_type_id: "",
     explanation: "",
     amount: "",
     currency_code: "IDR",
@@ -146,6 +156,7 @@ export function BigBookPanel({
   const [importSubmitting, setImportSubmitting] = useState(false);
   const [importErrors, setImportErrors] = useState<string[]>([]);
   const [importSuccessCount, setImportSuccessCount] = useState<number | null>(null);
+  const [exportSubmitting, setExportSubmitting] = useState(false);
   const [manageAttachmentsEntry, setManageAttachmentsEntry] = useState<BigBookEntry | null>(null);
   const [manageAttachmentFiles, setManageAttachmentFiles] = useState<File[]>([]);
   const [pendingUploadEntryId, setPendingUploadEntryId] = useState<string | null>(null);
@@ -187,12 +198,23 @@ export function BigBookPanel({
     entry_date: today,
     entry_direction: "spending",
     entry_type_id: activeTypes[0]?.id ?? initialTypes[0]?.id ?? "",
+    entry_sub_type_id: "",
     explanation: "",
     amount: "",
     currency_code: "IDR",
     remark: "",
     responsible_actor_id: initialActors[0]?.id ?? ""
   });
+
+  const activeSubTypes = useMemo(() => initialSubTypes.filter((row) => row.is_active), [initialSubTypes]);
+  const subTypesForCreateForm = useMemo(
+    () => activeSubTypes.filter((row) => row.entry_type_id === entryForm.entry_type_id),
+    [activeSubTypes, entryForm.entry_type_id]
+  );
+  const subTypesForEditForm = useMemo(
+    () => activeSubTypes.filter((row) => row.entry_type_id === editForm.entry_type_id),
+    [activeSubTypes, editForm.entry_type_id]
+  );
 
   const ledgerPagination = useTablePagination(totalCount);
 
@@ -373,6 +395,7 @@ export function BigBookPanel({
     entrySubmitting ||
     entryDeleting ||
     importSubmitting ||
+    exportSubmitting ||
     uploadSubmitting ||
     attachmentDeleting;
 
@@ -421,6 +444,7 @@ export function BigBookPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...entryForm,
+          entry_sub_type_id: entryForm.entry_sub_type_id || null,
           amount: amountValue
         })
       });
@@ -483,7 +507,7 @@ export function BigBookPanel({
         explanation: "",
         amount: "",
         remark: "",
-        ...(keepModalOpen ? {} : { currency_code: "IDR" })
+        ...(keepModalOpen ? {} : { currency_code: "IDR", entry_sub_type_id: "" })
       }));
       triggerRefresh();
     } catch {
@@ -587,6 +611,53 @@ export function BigBookPanel({
     }
   }
 
+  async function exportEntries() {
+    setExportSubmitting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const params = new URLSearchParams();
+      if (query) params.set("query", query);
+      if (dateFrom) params.set("dateFrom", dateFrom);
+      if (dateTo) params.set("dateTo", dateTo);
+      for (const typeId of typeFilter) params.append("typeId", typeId);
+      for (const currencyCode of currencyFilter) params.append("currencyCode", currencyCode);
+      for (const actorId of actorFilter) params.append("actorId", actorId);
+      for (const direction of directionFilter) params.append("direction", direction);
+
+      const url = `/api/big-book/export${params.toString() ? `?${params.toString()}` : ""}`;
+      const response = await fetch(url);
+      if (handleUnauthorizedResponse(response)) return;
+      if (!response.ok) {
+        let errorMessage = "Failed to export ledger entries.";
+        try {
+          const data = await response.json();
+          errorMessage = extractApiError(data?.error, errorMessage);
+        } catch {
+          // ignore JSON parse errors; keep default message
+        }
+        setError(errorMessage);
+        return;
+      }
+      const blob = await response.blob();
+      const today = new Date().toISOString().slice(0, 10);
+      const filename = `big-book-export-${today}.csv`;
+      const downloadUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = downloadUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(downloadUrl);
+      setMessage("Exported ledger entries to CSV.");
+    } catch {
+      setError("Failed to export ledger entries due to a network error.");
+    } finally {
+      setExportSubmitting(false);
+    }
+  }
+
   function startEditEntry(row: BigBookEntry) {
     setOpenActionMenu(null);
     setEditingEntryId(row.id);
@@ -594,6 +665,7 @@ export function BigBookPanel({
       entry_date: row.entry_date,
       entry_direction: row.entry_direction,
       entry_type_id: row.entry_type_id,
+      entry_sub_type_id: row.entry_sub_type_id ?? "",
       explanation: row.explanation,
       amount: formatAmountInput(String(row.amount)),
       currency_code: row.currency_code,
@@ -621,6 +693,7 @@ export function BigBookPanel({
         body: JSON.stringify({
           id: editingEntryId,
           ...editForm,
+          entry_sub_type_id: editForm.entry_sub_type_id || null,
           amount: amountValue
         })
       });
@@ -772,6 +845,13 @@ export function BigBookPanel({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              className="btn-secondary"
+              onClick={() => void exportEntries()}
+              disabled={criticalPending || exportSubmitting}
+            >
+              {exportSubmitting ? "Exporting..." : "Export CSV"}
+            </button>
             <button className="btn-secondary" onClick={() => setImportModalOpen(true)} disabled={criticalPending}>
               Import CSV
             </button>
@@ -939,12 +1019,13 @@ export function BigBookPanel({
           </div>
         </form>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1200px] text-sm">
+          <table className="w-full min-w-[1320px] text-sm">
             <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
               <tr>
                 <th className="px-3 py-2">Date</th>
                 <th className="px-3 py-2">Cash Flow</th>
                 <th className="px-3 py-2">Type</th>
+                <th className="px-3 py-2">Sub-Type</th>
                 <th className="px-3 py-2">Explanation</th>
                 <th className="px-3 py-2">Amount</th>
                 <th className="px-3 py-2">Actor</th>
@@ -964,6 +1045,7 @@ export function BigBookPanel({
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-5 w-14 rounded-full bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-28 rounded bg-[rgb(var(--surface-muted))]" /></td>
+                      <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-56 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-28 rounded bg-[rgb(var(--surface-muted))]" /></td>
@@ -987,6 +1069,13 @@ export function BigBookPanel({
                         </span>
                       </td>
                       <td className="px-3 py-2">{row.type_name}</td>
+                      <td className="px-3 py-2">
+                        {row.sub_type_name ? (
+                          row.sub_type_name
+                        ) : (
+                          <span className="text-xs text-slate-500">-</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2">{row.explanation}</td>
                       <td className="px-3 py-2">
                         <span className={getAmountColorClass(row.entry_direction === "spending" ? -row.amount : row.amount)}>
@@ -1053,7 +1142,7 @@ export function BigBookPanel({
                   ))}
               {!entries.length && !entriesLoading ? (
                 <tr>
-                  <td className="px-3 py-4 text-center text-slate-600" colSpan={9}>
+                  <td className="px-3 py-4 text-center text-slate-600" colSpan={10}>
                     No records match the current filters.
                   </td>
                 </tr>
@@ -1253,11 +1342,35 @@ export function BigBookPanel({
             <select
               className="field mt-1"
               value={entryForm.entry_type_id}
-              onChange={(event) => setEntryForm((prev) => ({ ...prev, entry_type_id: event.target.value }))}
+              onChange={(event) =>
+                setEntryForm((prev) => ({
+                  ...prev,
+                  entry_type_id: event.target.value,
+                  entry_sub_type_id: ""
+                }))
+              }
             >
               {activeTypes.map((type) => (
                 <option key={type.id} value={type.id}>
                   {type.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm">
+            Sub-Type
+            <select
+              className="field mt-1"
+              value={entryForm.entry_sub_type_id}
+              onChange={(event) =>
+                setEntryForm((prev) => ({ ...prev, entry_sub_type_id: event.target.value }))
+              }
+              disabled={!subTypesForCreateForm.length}
+            >
+              <option value="">(none)</option>
+              {subTypesForCreateForm.map((subType) => (
+                <option key={subType.id} value={subType.id}>
+                  {subType.name}
                 </option>
               ))}
             </select>
@@ -1436,11 +1549,35 @@ export function BigBookPanel({
             <select
               className="field mt-1"
               value={editForm.entry_type_id}
-              onChange={(event) => setEditForm((prev) => ({ ...prev, entry_type_id: event.target.value }))}
+              onChange={(event) =>
+                setEditForm((prev) => ({
+                  ...prev,
+                  entry_type_id: event.target.value,
+                  entry_sub_type_id: ""
+                }))
+              }
             >
               {activeTypes.map((type) => (
                 <option key={type.id} value={type.id}>
                   {type.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm">
+            Sub-Type
+            <select
+              className="field mt-1"
+              value={editForm.entry_sub_type_id}
+              onChange={(event) =>
+                setEditForm((prev) => ({ ...prev, entry_sub_type_id: event.target.value }))
+              }
+              disabled={!subTypesForEditForm.length}
+            >
+              <option value="">(none)</option>
+              {subTypesForEditForm.map((subType) => (
+                <option key={subType.id} value={subType.id}>
+                  {subType.name}
                 </option>
               ))}
             </select>

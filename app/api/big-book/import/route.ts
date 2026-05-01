@@ -46,26 +46,64 @@ export async function POST(request: Request) {
 
   const supabase = await createClient();
 
-  const [{ data: types, error: typesError }, { data: actors, error: actorsError }] = await Promise.all([
+  const [
+    { data: types, error: typesError },
+    { data: actors, error: actorsError },
+    { data: subTypes, error: subTypesError }
+  ] = await Promise.all([
     supabase.from("business_ledger_types").select("id,name").eq("is_active", true),
-    supabase.from("big_book_actors").select("id,display_name")
+    supabase.from("big_book_actors").select("id,display_name"),
+    supabase
+      .from("business_ledger_sub_types")
+      .select("id,name,entry_type_id")
+      .eq("is_active", true)
   ]);
 
-  if (typesError || actorsError) {
+  if (typesError || actorsError || subTypesError) {
     return NextResponse.json(
-      { error: typesError?.message ?? actorsError?.message ?? "Failed to load import references." },
+      {
+        error:
+          typesError?.message ??
+          actorsError?.message ??
+          subTypesError?.message ??
+          "Failed to load import references."
+      },
       { status: 400 }
     );
   }
 
   const typeNameToId: NameToIdMap = new Map((types ?? []).map((row) => [normalizeLookupKey(row.name), row.id]));
   const actorNameToId: NameToIdMap = new Map((actors ?? []).map((row) => [normalizeLookupKey(row.display_name), row.id]));
+  // sub-type lookup is keyed by `${entry_type_id}::${lower(sub_type_name)}`
+  // because sub-type names are unique only within a given parent type.
+  const subTypeKeyToId: NameToIdMap = new Map(
+    (subTypes ?? []).map((row) => [
+      `${row.entry_type_id}::${normalizeLookupKey(row.name)}`,
+      row.id
+    ])
+  );
 
   const validationErrors: string[] = [];
   const records = parsed.rows.map((row, index) => {
     const lineNumber = index + 2;
     const entryTypeId = typeNameToId.get(normalizeLookupKey(row.type_name));
     const actorId = actorNameToId.get(normalizeLookupKey(row.actor_name));
+    let entrySubTypeId: string | null = null;
+    if (row.sub_type_name) {
+      if (!entryTypeId) {
+        // skip — we'll already report the type_name error below
+      } else {
+        const subKey = `${entryTypeId}::${normalizeLookupKey(row.sub_type_name)}`;
+        const matchedId = subTypeKeyToId.get(subKey);
+        if (!matchedId) {
+          validationErrors.push(
+            `Row ${lineNumber}: sub_type_name '${row.sub_type_name}' is not available under type '${row.type_name}'.`
+          );
+        } else {
+          entrySubTypeId = matchedId;
+        }
+      }
+    }
 
     if (!entryTypeId) {
       validationErrors.push(`Row ${lineNumber}: type_name '${row.type_name}' is not available.`);
@@ -78,6 +116,7 @@ export async function POST(request: Request) {
       entry_date: row.entry_date,
       entry_direction: row.entry_direction,
       entry_type_id: entryTypeId ?? "",
+      entry_sub_type_id: entrySubTypeId,
       explanation: row.explanation,
       amount: row.amount,
       currency_code: row.currency_code,

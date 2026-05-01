@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 export const DEFAULT_PAGE_SIZE = 20;
 
-export const PAGE_SIZE_OPTIONS = [20, 50, 100, 200] as const;
+export const PAGE_SIZE_OPTIONS = [10, 20, 50, 100, 200] as const;
 
 export type PageSize = (typeof PAGE_SIZE_OPTIONS)[number];
 
@@ -31,10 +31,16 @@ type UseTablePaginationResult = {
 /**
  * Client-side table pagination. Clamps the current page when the total count shrinks
  * (e.g. after filtering). `setPageSize` resets the page to 0.
+ *
+ * Pass `initialPageSize` to override the default starting page size for a given
+ * table (must be one of `PAGE_SIZE_OPTIONS`).
  */
-export function useTablePagination(totalCount: number): UseTablePaginationResult {
+export function useTablePagination(
+  totalCount: number,
+  initialPageSize: PageSize = DEFAULT_PAGE_SIZE
+): UseTablePaginationResult {
   const [page, setPageState] = useState(0);
-  const [pageSize, setPageSizeState] = useState<PageSize>(DEFAULT_PAGE_SIZE);
+  const [pageSize, setPageSizeState] = useState<PageSize>(initialPageSize);
 
   const pageCount = useMemo(
     () => (totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize)),

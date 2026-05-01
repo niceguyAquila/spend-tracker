@@ -21,19 +21,19 @@ export function BigBookSubNav() {
 
   return (
     <section className="card">
-      <h2 className="text-lg font-semibold">Big Book Pages</h2>
+      <h2 className="text-lg font-semibold">Transaction Big Book Pages</h2>
       <div className="mt-3 flex flex-wrap gap-2">
-        <Link href="/dashboard/big-book" className={getButtonClassName(isDashboardPage)}>
-          Dashboard
-        </Link>
         <Link href="/dashboard/big-book/master-dashboard" className={getButtonClassName(isMasterDashboardPage)}>
-          Type Master Dashboard
+          Master Dashboard
+        </Link>
+        <Link href="/dashboard/big-book" className={getButtonClassName(isDashboardPage)}>
+          Transaction Dashboard
         </Link>
         <Link
           href="/dashboard/big-book/individual-type-ledger"
           className={getButtonClassName(isIndividualTypePage)}
         >
-          Individual Type Ledger
+          Transaction Type Dashboard
         </Link>
         <Link href="/dashboard/big-book/settings" className={getButtonClassName(isSettingsPage)}>
           Settings

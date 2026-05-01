@@ -34,7 +34,8 @@ type DashboardSidebarProps = {
 const MODULE_ICONS: Record<string, string> = {
   "Web Spending": "/asset/wallet.png",
   "Web Transaction": "/asset/transaction.png",
-  "Big Book": "/asset/accounting-book.png",
+  "Transaction Big Book": "/asset/accounting-book.png",
+  "Credit Big Book": "/asset/accounting-book.png",
   Admin: "/asset/admin.png"
 };
 
@@ -103,22 +104,22 @@ function createNavModules(globalRole: AppRole, role: AppRole): NavModule[] {
 
   if (globalRole === "admin") {
     modules.push({
-      title: "Big Book",
+      title: "Transaction Big Book",
       isModuleActive: (pathname) => pathname.startsWith("/dashboard/big-book"),
       links: [
         {
-          href: "/dashboard/big-book",
-          label: "Dashboard",
-          isActive: (pathname) => pathname === "/dashboard/big-book"
-        },
-        {
           href: "/dashboard/big-book/master-dashboard",
-          label: "Type Master Dashboard",
+          label: "Master Dashboard",
           isActive: (pathname) => pathname === "/dashboard/big-book/master-dashboard"
         },
         {
+          href: "/dashboard/big-book",
+          label: "Transaction Dashboard",
+          isActive: (pathname) => pathname === "/dashboard/big-book"
+        },
+        {
           href: "/dashboard/big-book/individual-type-ledger",
-          label: "Individual Type Ledger",
+          label: "Transaction Type Dashboard",
           isActive: (pathname) => pathname === "/dashboard/big-book/individual-type-ledger"
         },
         {
@@ -130,6 +131,37 @@ function createNavModules(globalRole: AppRole, role: AppRole): NavModule[] {
           href: "/dashboard/big-book/exchange-helper",
           label: "Exchange Helper",
           isActive: (pathname) => pathname === "/dashboard/big-book/exchange-helper"
+        }
+      ]
+    });
+    modules.push({
+      title: "Credit Big Book",
+      isModuleActive: (pathname) => pathname.startsWith("/dashboard/credit-big-book"),
+      links: [
+        {
+          href: "/dashboard/credit-big-book/master-dashboard",
+          label: "Master Dashboard",
+          isActive: (pathname) => pathname === "/dashboard/credit-big-book/master-dashboard"
+        },
+        {
+          href: "/dashboard/credit-big-book",
+          label: "Credit Dashboard",
+          isActive: (pathname) => pathname === "/dashboard/credit-big-book"
+        },
+        {
+          href: "/dashboard/credit-big-book/individual-type-ledger",
+          label: "Credit Type Dashboard",
+          isActive: (pathname) => pathname === "/dashboard/credit-big-book/individual-type-ledger"
+        },
+        {
+          href: "/dashboard/credit-big-book/settings",
+          label: "Settings",
+          isActive: (pathname) => pathname === "/dashboard/credit-big-book/settings"
+        },
+        {
+          href: "/dashboard/credit-big-book/exchange-helper",
+          label: "Exchange Helper",
+          isActive: (pathname) => pathname === "/dashboard/credit-big-book/exchange-helper"
         }
       ]
     });
@@ -182,7 +214,10 @@ export function DashboardSidebar({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const modules = useMemo(() => createNavModules(globalRole, role), [globalRole, role]);
-  const shouldHideBrandSwitcher = pathname.startsWith("/dashboard/master-dashboard") || pathname.startsWith("/dashboard/big-book");
+  const shouldHideBrandSwitcher =
+    pathname.startsWith("/dashboard/master-dashboard") ||
+    pathname.startsWith("/dashboard/big-book") ||
+    pathname.startsWith("/dashboard/credit-big-book");
   const [openModules, setOpenModules] = useState<Record<string, boolean>>({});
 
   useEffect(() => {

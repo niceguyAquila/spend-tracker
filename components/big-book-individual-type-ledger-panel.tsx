@@ -134,6 +134,75 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
       </section>
 
       <section className="card">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-base font-semibold text-[rgb(var(--text))]">Monthly Type Summary</h3>
+          <label className="text-sm text-muted">
+            <span className="mr-2">Year</span>
+            <select
+              className="field inline-block w-auto"
+              value={selectedYear}
+              onChange={(event) => setSelectedYear(Number(event.target.value))}
+            >
+              {availableYears.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[680px] text-sm">
+            <thead className="border-b text-left bg-[rgb(var(--surface-muted))] text-[rgb(var(--text))]">
+              <tr>
+                <th className="px-3 py-2">Month</th>
+                <th className="px-3 py-2">IDR</th>
+                <th className="px-3 py-2">MYR</th>
+                <th className="px-3 py-2">USDT</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-b font-semibold bg-[rgb(var(--surface-muted))/0.65] text-[rgb(var(--text))]">
+                <td className="px-3 py-2">Total ({selectedYear})</td>
+                <td className={`px-3 py-2 ${getAmountColorClass(grandTotals.IDR)}`}>
+                  {formatSignedAmount(grandTotals.IDR, "IDR")}
+                </td>
+                <td className={`px-3 py-2 ${getAmountColorClass(grandTotals.MYR)}`}>
+                  {formatSignedAmount(grandTotals.MYR, "MYR")}
+                </td>
+                <td className={`px-3 py-2 ${getAmountColorClass(grandTotals.USDT)}`}>
+                  {formatSignedAmount(grandTotals.USDT, "USDT")}
+                </td>
+              </tr>
+              {pagedMonthlyRows.map((row) => (
+                <tr key={row.month_label} className="border-b">
+                  <td className="px-3 py-2 font-medium">{row.month_label}</td>
+                  <td className={`px-3 py-2 ${getAmountColorClass(row.totals.IDR)}`}>
+                    {formatSignedAmount(row.totals.IDR, "IDR")}
+                  </td>
+                  <td className={`px-3 py-2 ${getAmountColorClass(row.totals.MYR)}`}>
+                    {formatSignedAmount(row.totals.MYR, "MYR")}
+                  </td>
+                  <td className={`px-3 py-2 ${getAmountColorClass(row.totals.USDT)}`}>
+                    {formatSignedAmount(row.totals.USDT, "USDT")}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <TablePaginationBar
+          totalCount={monthlyRows.length}
+          page={monthlyPagination.page}
+          setPage={monthlyPagination.setPage}
+          pageSize={monthlyPagination.pageSize}
+          setPageSize={monthlyPagination.setPageSize}
+          pageCount={monthlyPagination.pageCount}
+          rangeLabel={monthlyPagination.rangeLabel}
+        />
+      </section>
+
+      <section className="card">
         <h3 className="text-base font-semibold text-[rgb(var(--text))]">Type Records With Filters</h3>
         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
           <label className="text-sm text-muted">
@@ -211,75 +280,6 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
           setPageSize={entriesPagination.setPageSize}
           pageCount={entriesPagination.pageCount}
           rangeLabel={entriesPagination.rangeLabel}
-        />
-      </section>
-
-      <section className="card">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-base font-semibold text-[rgb(var(--text))]">Monthly Type Summary</h3>
-          <label className="text-sm text-muted">
-            <span className="mr-2">Year</span>
-            <select
-              className="field inline-block w-auto"
-              value={selectedYear}
-              onChange={(event) => setSelectedYear(Number(event.target.value))}
-            >
-              {availableYears.map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[680px] text-sm">
-            <thead className="border-b text-left bg-[rgb(var(--surface-muted))] text-[rgb(var(--text))]">
-              <tr>
-                <th className="px-3 py-2">Month</th>
-                <th className="px-3 py-2">IDR</th>
-                <th className="px-3 py-2">MYR</th>
-                <th className="px-3 py-2">USDT</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="border-b font-semibold bg-[rgb(var(--surface-muted))/0.65] text-[rgb(var(--text))]">
-                <td className="px-3 py-2">Total ({selectedYear})</td>
-                <td className={`px-3 py-2 ${getAmountColorClass(grandTotals.IDR)}`}>
-                  {formatSignedAmount(grandTotals.IDR, "IDR")}
-                </td>
-                <td className={`px-3 py-2 ${getAmountColorClass(grandTotals.MYR)}`}>
-                  {formatSignedAmount(grandTotals.MYR, "MYR")}
-                </td>
-                <td className={`px-3 py-2 ${getAmountColorClass(grandTotals.USDT)}`}>
-                  {formatSignedAmount(grandTotals.USDT, "USDT")}
-                </td>
-              </tr>
-              {pagedMonthlyRows.map((row) => (
-                <tr key={row.month_label} className="border-b">
-                  <td className="px-3 py-2 font-medium">{row.month_label}</td>
-                  <td className={`px-3 py-2 ${getAmountColorClass(row.totals.IDR)}`}>
-                    {formatSignedAmount(row.totals.IDR, "IDR")}
-                  </td>
-                  <td className={`px-3 py-2 ${getAmountColorClass(row.totals.MYR)}`}>
-                    {formatSignedAmount(row.totals.MYR, "MYR")}
-                  </td>
-                  <td className={`px-3 py-2 ${getAmountColorClass(row.totals.USDT)}`}>
-                    {formatSignedAmount(row.totals.USDT, "USDT")}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <TablePaginationBar
-          totalCount={monthlyRows.length}
-          page={monthlyPagination.page}
-          setPage={monthlyPagination.setPage}
-          pageSize={monthlyPagination.pageSize}
-          setPageSize={monthlyPagination.setPageSize}
-          pageCount={monthlyPagination.pageCount}
-          rangeLabel={monthlyPagination.rangeLabel}
         />
       </section>
 

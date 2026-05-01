@@ -12,7 +12,7 @@ export default async function IndividualTypeLedgerPage() {
       <div className="space-y-6">
         <section className="card">
           <div>
-            <h1 className="text-xl font-semibold">Individual Type Ledger</h1>
+            <h1 className="text-xl font-semibold">Transaction Type Dashboard</h1>
             <p className="text-sm text-slate-600">
               View records and monthly totals for one selected Big Book type.
             </p>
