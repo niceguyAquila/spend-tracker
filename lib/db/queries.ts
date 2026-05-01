@@ -13,10 +13,14 @@ import {
   CreditBookActor,
   CreditBookAllowedUserOption,
   CreditBookActorCurrencyMetrics,
+  CreditBookActorOutstandingMetrics,
   CreditBookAttachment,
   CreditBookEntry,
+  CreditBookEntryStatus,
   CreditBookLedgerSubType,
   CreditBookLedgerType,
+  CreditBookSettlement,
+  CreditBookSettlementAttachment,
   CreditBookTypeCashflowByCurrency,
   CreditBookTypeCashflowRow,
   DashboardReportRow,
@@ -1210,6 +1214,7 @@ export type CreditBookEntryFilters = {
   currencyCode?: string[];
   direction?: Array<"credit" | "debt">;
   actorId?: string[];
+  status?: CreditBookEntryStatus[];
   dateFrom?: string;
   dateTo?: string;
   query?: string;
@@ -1226,6 +1231,105 @@ function sanitizeCreditBookSearchQuery(value: string): string {
 function toCreditBookFilterArray<T>(value: T | T[] | undefined | null): T[] | undefined {
   if (value === undefined || value === null) return undefined;
   return Array.isArray(value) ? value : [value];
+}
+
+const CREDIT_BOOK_SETTLEMENT_EPSILON = 0.0001;
+
+function computeCreditBookEntryStatus(amount: number, totalSettled: number): CreditBookEntryStatus {
+  if (totalSettled <= CREDIT_BOOK_SETTLEMENT_EPSILON) return "open";
+  if (totalSettled + CREDIT_BOOK_SETTLEMENT_EPSILON >= amount) return "settled";
+  return "partial";
+}
+
+type RawCreditBookSettlementRow = {
+  id: string;
+  entry_id: string;
+  settlement_date: string;
+  amount: number;
+  note: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  credit_ledger_settlement_attachments?:
+    | Array<{
+        id: string;
+        settlement_id: string;
+        storage_path: string;
+        file_name: string;
+        mime_type: string;
+        file_size: number;
+        uploaded_by: string | null;
+        created_at: string;
+      }>
+    | {
+        id: string;
+        settlement_id: string;
+        storage_path: string;
+        file_name: string;
+        mime_type: string;
+        file_size: number;
+        uploaded_by: string | null;
+        created_at: string;
+      }
+    | null;
+};
+
+async function fetchCreditBookSettlementsForEntries(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  entryIds: string[]
+): Promise<Map<string, RawCreditBookSettlementRow[]>> {
+  const result = new Map<string, RawCreditBookSettlementRow[]>();
+  if (!entryIds.length) return result;
+
+  const { data, error } = await supabase
+    .from("credit_ledger_settlements")
+    .select(
+      `
+      id, entry_id, settlement_date, amount, note, created_by, updated_by, created_at, updated_at,
+      credit_ledger_settlement_attachments(id, settlement_id, storage_path, file_name, mime_type, file_size, uploaded_by, created_at)
+    `
+    )
+    .in("entry_id", entryIds)
+    .order("settlement_date", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+
+  for (const row of (data ?? []) as RawCreditBookSettlementRow[]) {
+    const existing = result.get(row.entry_id) ?? [];
+    existing.push(row);
+    result.set(row.entry_id, existing);
+  }
+  return result;
+}
+
+function mapCreditBookSettlementRow(
+  row: RawCreditBookSettlementRow,
+  actorMap: Map<string, string>
+): CreditBookSettlement {
+  const attachments = (Array.isArray(row.credit_ledger_settlement_attachments)
+    ? row.credit_ledger_settlement_attachments
+    : row.credit_ledger_settlement_attachments
+      ? [row.credit_ledger_settlement_attachments]
+      : []) as CreditBookSettlementAttachment[];
+  return {
+    id: row.id,
+    entry_id: row.entry_id,
+    settlement_date: row.settlement_date,
+    amount: Number(row.amount),
+    note: row.note,
+    created_by: row.created_by,
+    updated_by: row.updated_by,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    creator_display_name: row.created_by ? (actorMap.get(row.created_by) ?? row.created_by) : "-",
+    updater_display_name: row.updated_by ? (actorMap.get(row.updated_by) ?? row.updated_by) : "-",
+    attachments: attachments.map((attachment) => ({
+      ...attachment,
+      file_size: Number(attachment.file_size)
+    }))
+  };
 }
 
 export async function getCreditBookEntries(
@@ -1250,6 +1354,7 @@ export async function getCreditBookEntries(
   const filterCurrencyCodes = toCreditBookFilterArray(filters?.currencyCode);
   const filterDirections = toCreditBookFilterArray(filters?.direction);
   const filterActorIds = toCreditBookFilterArray(filters?.actorId);
+  const filterStatuses = toCreditBookFilterArray(filters?.status);
   if (filterTypeIds?.length) query = query.in("entry_type_id", filterTypeIds);
   if (filterCurrencyCodes?.length) query = query.in("currency_code", filterCurrencyCodes);
   if (filterDirections?.length) query = query.in("entry_direction", filterDirections);
@@ -1273,6 +1378,17 @@ export async function getCreditBookEntries(
     if (row.updated_by && isCreditBookUuid(row.updated_by)) actorIds.add(row.updated_by);
   }
 
+  const settlementsByEntry = await fetchCreditBookSettlementsForEntries(
+    supabase,
+    (data ?? []).map((row) => row.id as string)
+  );
+  for (const settlements of settlementsByEntry.values()) {
+    for (const s of settlements) {
+      if (s.created_by && isCreditBookUuid(s.created_by)) actorIds.add(s.created_by);
+      if (s.updated_by && isCreditBookUuid(s.updated_by)) actorIds.add(s.updated_by);
+    }
+  }
+
   const actorMap = new Map<string, string>();
   if (actorIds.size > 0) {
     const { data: actorRows, error: actorError } = await supabase
@@ -1286,7 +1402,7 @@ export async function getCreditBookEntries(
     }
   }
 
-  return (data ?? []).map((row) => {
+  const mapped = (data ?? []).map((row) => {
     const type = Array.isArray(row.credit_ledger_types)
       ? row.credit_ledger_types[0]
       : row.credit_ledger_types;
@@ -1302,6 +1418,15 @@ export async function getCreditBookEntries(
         ? [row.credit_ledger_attachments]
         : []) as CreditBookAttachment[];
 
+    const settlementsRaw = settlementsByEntry.get(row.id as string) ?? [];
+    const settlements: CreditBookSettlement[] = settlementsRaw.map((s) =>
+      mapCreditBookSettlementRow(s, actorMap)
+    );
+    const amount = Number(row.amount);
+    const totalSettled = settlements.reduce((sum, s) => sum + s.amount, 0);
+    const outstanding = Math.max(0, amount - totalSettled);
+    const status = computeCreditBookEntryStatus(amount, totalSettled);
+
     return {
       id: row.id,
       entry_date: row.entry_date,
@@ -1309,7 +1434,7 @@ export async function getCreditBookEntries(
       entry_type_id: row.entry_type_id,
       entry_sub_type_id: row.entry_sub_type_id ?? null,
       explanation: row.explanation,
-      amount: Number(row.amount),
+      amount,
       currency_code: row.currency_code,
       remark: row.remark,
       responsible_actor_id: row.responsible_actor_id,
@@ -1328,9 +1453,18 @@ export async function getCreditBookEntries(
       attachments: attachments.map((attachment) => ({
         ...attachment,
         file_size: Number(attachment.file_size)
-      }))
-    };
+      })),
+      total_settled: totalSettled,
+      outstanding,
+      status,
+      settlements
+    } as CreditBookEntry;
   });
+
+  if (filterStatuses?.length) {
+    return mapped.filter((entry) => filterStatuses.includes(entry.status));
+  }
+  return mapped;
 }
 
 export type CreditBookEntriesPagedResult = {
@@ -1341,9 +1475,30 @@ export type CreditBookEntriesPagedResult = {
 export async function getCreditBookEntriesPaged(
   filters: CreditBookEntryFilters & { page: number; pageSize: number }
 ): Promise<CreditBookEntriesPagedResult> {
-  const supabase = await createClient();
   const page = Math.max(0, Math.floor(filters.page));
   const pageSize = Math.max(1, Math.floor(filters.pageSize));
+
+  const filterStatuses = toCreditBookFilterArray(filters.status);
+
+  if (filterStatuses?.length) {
+    const all = await getCreditBookEntries({
+      typeId: filters.typeId,
+      currencyCode: filters.currencyCode,
+      direction: filters.direction,
+      actorId: filters.actorId,
+      status: filters.status,
+      dateFrom: filters.dateFrom,
+      dateTo: filters.dateTo,
+      query: filters.query,
+      limit: 5000
+    });
+    const totalCount = all.length;
+    const fromIndex = page * pageSize;
+    const rows = all.slice(fromIndex, fromIndex + pageSize);
+    return { rows, totalCount };
+  }
+
+  const supabase = await createClient();
   const fromIndex = page * pageSize;
   const toIndex = fromIndex + pageSize - 1;
 
@@ -1392,6 +1547,17 @@ export async function getCreditBookEntriesPaged(
     if (row.updated_by && isCreditBookUuid(row.updated_by)) actorIds.add(row.updated_by);
   }
 
+  const settlementsByEntry = await fetchCreditBookSettlementsForEntries(
+    supabase,
+    (data ?? []).map((row) => row.id as string)
+  );
+  for (const settlements of settlementsByEntry.values()) {
+    for (const s of settlements) {
+      if (s.created_by && isCreditBookUuid(s.created_by)) actorIds.add(s.created_by);
+      if (s.updated_by && isCreditBookUuid(s.updated_by)) actorIds.add(s.updated_by);
+    }
+  }
+
   const actorMap = new Map<string, string>();
   if (actorIds.size > 0) {
     const { data: actorRows, error: actorError } = await supabase
@@ -1421,6 +1587,15 @@ export async function getCreditBookEntriesPaged(
         ? [row.credit_ledger_attachments]
         : []) as CreditBookAttachment[];
 
+    const settlementsRaw = settlementsByEntry.get(row.id as string) ?? [];
+    const settlements: CreditBookSettlement[] = settlementsRaw.map((s) =>
+      mapCreditBookSettlementRow(s, actorMap)
+    );
+    const amount = Number(row.amount);
+    const totalSettled = settlements.reduce((sum, s) => sum + s.amount, 0);
+    const outstanding = Math.max(0, amount - totalSettled);
+    const status = computeCreditBookEntryStatus(amount, totalSettled);
+
     return {
       id: row.id,
       entry_date: row.entry_date,
@@ -1428,7 +1603,7 @@ export async function getCreditBookEntriesPaged(
       entry_type_id: row.entry_type_id,
       entry_sub_type_id: row.entry_sub_type_id ?? null,
       explanation: row.explanation,
-      amount: Number(row.amount),
+      amount,
       currency_code: row.currency_code,
       remark: row.remark,
       responsible_actor_id: row.responsible_actor_id,
@@ -1447,7 +1622,11 @@ export async function getCreditBookEntriesPaged(
       attachments: attachments.map((attachment) => ({
         ...attachment,
         file_size: Number(attachment.file_size)
-      }))
+      })),
+      total_settled: totalSettled,
+      outstanding,
+      status,
+      settlements
     };
   });
 
@@ -1527,18 +1706,25 @@ export async function getCreditBookTypeCashflowByCurrency(filters?: {
   });
   const typeMap = new Map(activeTypes.map((type) => [type.id, type]));
 
-  const totalsMap = new Map<string, { inflow: number; outflow: number; net: number }>();
+  const totalsMap = new Map<
+    string,
+    { inflow: number; outflow: number; net: number; outstanding: number }
+  >();
   for (const entry of entries) {
     const amount = Math.abs(Number(entry.amount));
+    const outstandingAmount = Math.abs(Number(entry.outstanding));
     const key = `${entry.currency_code}:${entry.responsible_actor_id}:${entry.entry_type_id}`;
-    const existing = totalsMap.get(key) ?? { inflow: 0, outflow: 0, net: 0 };
+    const existing =
+      totalsMap.get(key) ?? { inflow: 0, outflow: 0, net: 0, outstanding: 0 };
 
     if (entry.entry_direction === "credit") {
       existing.inflow += amount;
       existing.net += amount;
+      existing.outstanding += outstandingAmount;
     } else {
       existing.outflow += amount;
       existing.net -= amount;
+      existing.outstanding -= outstandingAmount;
     }
 
     totalsMap.set(key, existing);
@@ -1560,7 +1746,8 @@ export async function getCreditBookTypeCashflowByCurrency(filters?: {
           type_name: type?.name ?? entry.type_name,
           inflow: 0,
           outflow: 0,
-          net: 0
+          net: 0,
+          outstanding: 0
         });
         return acc;
       }, new Map<string, CreditBookTypeCashflowRow>());
@@ -1571,11 +1758,13 @@ export async function getCreditBookTypeCashflowByCurrency(filters?: {
         totalsMap.get(`${currency}:${row.actor_id}:${row.type_id}`) ?? {
           inflow: 0,
           outflow: 0,
-          net: 0
+          net: 0,
+          outstanding: 0
         };
       row.inflow = totals.inflow;
       row.outflow = totals.outflow;
       row.net = totals.net;
+      row.outstanding = totals.outstanding;
     }
 
     rows.sort((a, b) => {
@@ -1589,13 +1778,134 @@ export async function getCreditBookTypeCashflowByCurrency(filters?: {
       (acc, row) => ({
         inflow: acc.inflow + row.inflow,
         outflow: acc.outflow + row.outflow,
-        net: acc.net + row.net
+        net: acc.net + row.net,
+        outstanding: acc.outstanding + row.outstanding
       }),
-      { inflow: 0, outflow: 0, net: 0 }
+      { inflow: 0, outflow: 0, net: 0, outstanding: 0 }
     );
 
     return { currency, rows, combined };
   });
+}
+
+export async function getCreditBookActorOutstandingMetrics(): Promise<CreditBookActorOutstandingMetrics[]> {
+  const supabase = await createClient();
+  const pageSize = 1000;
+  let offset = 0;
+  type EntryRow = {
+    id: string;
+    responsible_actor_id: string;
+    entry_direction: "credit" | "debt";
+    currency_code: "IDR" | "MYR" | "USDT" | "TRX";
+    amount: number;
+    credit_book_actors:
+      | { actor_code: "A" | "B"; display_name: string }
+      | { actor_code: "A" | "B"; display_name: string }[]
+      | null;
+  };
+  const rows: EntryRow[] = [];
+
+  while (true) {
+    const { data, error } = await supabase
+      .from("credit_ledger_entries")
+      .select(
+        `
+        id, responsible_actor_id, entry_direction, currency_code, amount,
+        credit_book_actors(actor_code, display_name)
+      `
+      )
+      .order("created_at", { ascending: false })
+      .range(offset, offset + pageSize - 1);
+
+    if (error) throw error;
+    const batch = (data ?? []) as EntryRow[];
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  const settledByEntry = new Map<string, number>();
+  if (rows.length) {
+    const { data: settlementRows, error: settlementError } = await supabase
+      .from("credit_ledger_settlements")
+      .select("entry_id, amount")
+      .in(
+        "entry_id",
+        rows.map((row) => row.id)
+      );
+    if (settlementError) throw settlementError;
+    for (const s of (settlementRows ?? []) as Array<{ entry_id: string; amount: number }>) {
+      const prev = settledByEntry.get(s.entry_id) ?? 0;
+      settledByEntry.set(s.entry_id, prev + Number(s.amount));
+    }
+  }
+
+  const byActor = new Map<string, CreditBookActorOutstandingMetrics>();
+  for (const row of rows) {
+    const actor = Array.isArray(row.credit_book_actors)
+      ? row.credit_book_actors[0]
+      : row.credit_book_actors;
+    const actorId = row.responsible_actor_id;
+    const existing =
+      byActor.get(actorId) ??
+      ({
+        actor_id: actorId,
+        actor_code: (actor?.actor_code ?? "A") as "A" | "B",
+        actor_display_name: actor?.display_name ?? "Unknown Actor",
+        totals: { IDR: 0, MYR: 0, USDT: 0, TRX: 0 }
+      } as CreditBookActorOutstandingMetrics);
+    const amount = Math.abs(Number(row.amount));
+    const settled = settledByEntry.get(row.id) ?? 0;
+    const outstanding = Math.max(0, amount - settled);
+    if (outstanding > 0) {
+      const signed =
+        row.entry_direction === "debt" ? -outstanding : outstanding;
+      existing.totals[row.currency_code] += signed;
+    }
+    byActor.set(actorId, existing);
+  }
+
+  return [...byActor.values()].sort((a, b) => a.actor_code.localeCompare(b.actor_code));
+}
+
+export async function getCreditBookSettlementsForEntry(
+  entryId: string
+): Promise<CreditBookSettlement[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("credit_ledger_settlements")
+    .select(
+      `
+      id, entry_id, settlement_date, amount, note, created_by, updated_by, created_at, updated_at,
+      credit_ledger_settlement_attachments(id, settlement_id, storage_path, file_name, mime_type, file_size, uploaded_by, created_at)
+    `
+    )
+    .eq("entry_id", entryId)
+    .order("settlement_date", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+
+  const rawRows = (data ?? []) as RawCreditBookSettlementRow[];
+  const actorIds = new Set<string>();
+  for (const row of rawRows) {
+    if (row.created_by && isCreditBookUuid(row.created_by)) actorIds.add(row.created_by);
+    if (row.updated_by && isCreditBookUuid(row.updated_by)) actorIds.add(row.updated_by);
+  }
+
+  const actorMap = new Map<string, string>();
+  if (actorIds.size > 0) {
+    const { data: actorRows, error: actorError } = await supabase
+      .from("allowed_users")
+      .select("auth_user_id, display_name, email")
+      .in("auth_user_id", [...actorIds]);
+    if (actorError) throw actorError;
+    for (const actor of actorRows ?? []) {
+      if (!actor.auth_user_id) continue;
+      actorMap.set(actor.auth_user_id, actor.display_name?.trim() || actor.email || actor.auth_user_id);
+    }
+  }
+
+  return rawRows.map((row) => mapCreditBookSettlementRow(row, actorMap));
 }
 
 const CREDIT_BOOK_MONTH_LABELS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];

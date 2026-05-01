@@ -1,6 +1,7 @@
 import {
   getCreditBookActors,
   getCreditBookActorCurrencyMetrics,
+  getCreditBookActorOutstandingMetrics,
   getCreditBookEntriesPaged,
   getCreditBookLedgerSubTypes,
   getCreditBookLedgerTypes
@@ -10,12 +11,13 @@ import { DEFAULT_PAGE_SIZE } from "@/lib/table-pagination";
 
 export default async function CreditBigBookPage() {
   try {
-    const [types, subTypes, actors, entriesPage, actorMetrics] = await Promise.all([
+    const [types, subTypes, actors, entriesPage, actorMetrics, outstandingMetrics] = await Promise.all([
       getCreditBookLedgerTypes({ includeInactive: true }),
       getCreditBookLedgerSubTypes({ includeInactive: true }),
       getCreditBookActors(),
       getCreditBookEntriesPaged({ page: 0, pageSize: DEFAULT_PAGE_SIZE }),
-      getCreditBookActorCurrencyMetrics()
+      getCreditBookActorCurrencyMetrics(),
+      getCreditBookActorOutstandingMetrics()
     ]);
 
     return (
@@ -35,6 +37,7 @@ export default async function CreditBigBookPage() {
           initialEntries={entriesPage.rows}
           initialTotalCount={entriesPage.totalCount}
           initialActorMetrics={actorMetrics}
+          initialOutstandingMetrics={outstandingMetrics}
         />
       </div>
     );

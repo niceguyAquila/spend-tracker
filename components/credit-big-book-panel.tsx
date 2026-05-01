@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import type {
   CreditBookActor,
   CreditBookActorCurrencyMetrics,
+  CreditBookActorOutstandingMetrics,
   CreditBookEntry,
+  CreditBookEntryStatus,
   CreditBookLedgerSubType,
   CreditBookLedgerType
 } from "@/lib/types";
@@ -18,6 +20,8 @@ import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/disp
 import { useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
+import { CreditBigBookSettlementModal } from "@/components/credit-big-book-settlement-modal";
+import { CreditBigBookSettlementHistoryModal } from "@/components/credit-big-book-settlement-history-modal";
 
 type Props = {
   initialTypes: CreditBookLedgerType[];
@@ -26,6 +30,7 @@ type Props = {
   initialEntries: CreditBookEntry[];
   initialTotalCount: number;
   initialActorMetrics: CreditBookActorCurrencyMetrics[];
+  initialOutstandingMetrics: CreditBookActorOutstandingMetrics[];
 };
 
 type EntryFormState = {
@@ -97,13 +102,26 @@ function arraysEqual(left: string[], right: string[]) {
 const SUPPORTED_CURRENCIES: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR", "USDT", "TRX"];
 const LEDGER_SKELETON_ROW_COUNT = 6;
 
+function getStatusChipClass(status: CreditBookEntryStatus) {
+  if (status === "settled") return "bg-emerald-100 text-emerald-700";
+  if (status === "partial") return "bg-blue-100 text-blue-700";
+  return "bg-amber-100 text-amber-700";
+}
+
+function formatStatusLabel(status: CreditBookEntryStatus) {
+  if (status === "settled") return "Settled";
+  if (status === "partial") return "Partial";
+  return "Open";
+}
+
 export function CreditBigBookPanel({
   initialTypes,
   initialSubTypes,
   initialActors,
   initialEntries,
   initialTotalCount,
-  initialActorMetrics
+  initialActorMetrics,
+  initialOutstandingMetrics
 }: Props) {
   const router = useRouter();
   const [isRefreshing, startTransition] = useTransition();
@@ -116,6 +134,7 @@ export function CreditBigBookPanel({
   const [currencyFilter, setCurrencyFilter] = useState<string[]>([]);
   const [actorFilter, setActorFilter] = useState<string[]>([]);
   const [directionFilter, setDirectionFilter] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
   // Draft filter state: drives the inputs. Filters only run after "Apply Filters".
   const [draftQuery, setDraftQuery] = useState("");
   const [draftDateFrom, setDraftDateFrom] = useState("");
@@ -124,12 +143,21 @@ export function CreditBigBookPanel({
   const [draftCurrencyFilter, setDraftCurrencyFilter] = useState<string[]>([]);
   const [draftActorFilter, setDraftActorFilter] = useState<string[]>([]);
   const [draftDirectionFilter, setDraftDirectionFilter] = useState<string[]>([]);
+  const [draftStatusFilter, setDraftStatusFilter] = useState<string[]>([]);
+  const [settlementEntry, setSettlementEntry] = useState<CreditBookEntry | null>(null);
+  const [settlementHistoryEntry, setSettlementHistoryEntry] = useState<CreditBookEntry | null>(null);
   const [openActionMenu, setOpenActionMenu] = useState<{
     id: string;
     top: number;
     left: number;
   } | null>(null);
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
+  const [openSettlementMenu, setOpenSettlementMenu] = useState<{
+    id: string;
+    top: number;
+    left: number;
+  } | null>(null);
+  const settlementMenuRef = useRef<HTMLDivElement | null>(null);
   const [entrySubmitting, setEntrySubmitting] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -192,6 +220,14 @@ export function CreditBigBookPanel({
     ],
     []
   );
+  const statusOptions = useMemo(
+    () => [
+      { value: "open", label: "Open" },
+      { value: "partial", label: "Partial" },
+      { value: "settled", label: "Settled" }
+    ],
+    []
+  );
   const today = new Date().toISOString().slice(0, 10);
 
   const [entryForm, setEntryForm] = useState<EntryFormState>({
@@ -220,7 +256,7 @@ export function CreditBigBookPanel({
 
   useEffect(() => {
     ledgerPagination.setPage(0);
-  }, [query, dateFrom, dateTo, typeFilter, currencyFilter, actorFilter, directionFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [query, dateFrom, dateTo, typeFilter, currencyFilter, actorFilter, directionFilter, statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Race-safe request token: ignore stale fetch responses.
   const loadRequestIdRef = useRef(0);
@@ -244,6 +280,7 @@ export function CreditBigBookPanel({
       for (const currencyCode of currencyFilter) params.append("currencyCode", currencyCode);
       for (const actorId of actorFilter) params.append("actorId", actorId);
       for (const direction of directionFilter) params.append("direction", direction);
+      for (const status of statusFilter) params.append("status", status);
 
       const response = await fetch(`/api/credit-big-book/entries?${params.toString()}`);
       if (handleUnauthorizedResponse(response)) return;
@@ -272,7 +309,8 @@ export function CreditBigBookPanel({
     typeFilter,
     currencyFilter,
     actorFilter,
-    directionFilter
+    directionFilter,
+    statusFilter
   ]);
 
   useEffect(() => {
@@ -290,7 +328,8 @@ export function CreditBigBookPanel({
     !arraysEqual(draftTypeFilter, typeFilter) ||
     !arraysEqual(draftCurrencyFilter, currencyFilter) ||
     !arraysEqual(draftActorFilter, actorFilter) ||
-    !arraysEqual(draftDirectionFilter, directionFilter);
+    !arraysEqual(draftDirectionFilter, directionFilter) ||
+    !arraysEqual(draftStatusFilter, statusFilter);
 
   const filtersActive =
     Boolean(query) ||
@@ -299,7 +338,8 @@ export function CreditBigBookPanel({
     Boolean(typeFilter.length) ||
     Boolean(currencyFilter.length) ||
     Boolean(actorFilter.length) ||
-    Boolean(directionFilter.length);
+    Boolean(directionFilter.length) ||
+    Boolean(statusFilter.length);
 
   const draftFiltersActive =
     Boolean(draftQuery) ||
@@ -308,7 +348,8 @@ export function CreditBigBookPanel({
     Boolean(draftTypeFilter.length) ||
     Boolean(draftCurrencyFilter.length) ||
     Boolean(draftActorFilter.length) ||
-    Boolean(draftDirectionFilter.length);
+    Boolean(draftDirectionFilter.length) ||
+    Boolean(draftStatusFilter.length);
 
   function applyFilters() {
     setQuery(draftQuery);
@@ -318,6 +359,7 @@ export function CreditBigBookPanel({
     setCurrencyFilter(draftCurrencyFilter);
     setActorFilter(draftActorFilter);
     setDirectionFilter(draftDirectionFilter);
+    setStatusFilter(draftStatusFilter);
   }
 
   function resetFilters() {
@@ -328,6 +370,7 @@ export function CreditBigBookPanel({
     setDraftCurrencyFilter([]);
     setDraftActorFilter([]);
     setDraftDirectionFilter([]);
+    setDraftStatusFilter([]);
     setQuery("");
     setDateFrom("");
     setDateTo("");
@@ -335,6 +378,7 @@ export function CreditBigBookPanel({
     setCurrencyFilter([]);
     setActorFilter([]);
     setDirectionFilter([]);
+    setStatusFilter([]);
   }
 
   // Totals reflect ALL ledger rows in the database (computed server-side in
@@ -344,12 +388,18 @@ export function CreditBigBookPanel({
   // so any drift heals automatically when `router.refresh()` completes.
   const [actorCurrencyMetrics, setActorCurrencyMetrics] =
     useState<CreditBookActorCurrencyMetrics[]>(initialActorMetrics);
+  const [actorOutstandingMetrics, setActorOutstandingMetrics] =
+    useState<CreditBookActorOutstandingMetrics[]>(initialOutstandingMetrics);
 
   useEffect(() => {
     // eslint-disable-next-line no-console
     console.log("[CreditBigBook DEBUG] prop-sync useEffect, initialActorMetrics:", initialActorMetrics);
     setActorCurrencyMetrics(initialActorMetrics);
   }, [initialActorMetrics]);
+
+  useEffect(() => {
+    setActorOutstandingMetrics(initialOutstandingMetrics);
+  }, [initialOutstandingMetrics]);
 
   const applyMetricDelta = useCallback(
     (
@@ -391,6 +441,56 @@ export function CreditBigBookPanel({
     [initialActors]
   );
 
+  const applyOutstandingDelta = useCallback(
+    (
+      actorId: string,
+      actorDisplayName: string,
+      currency: "IDR" | "MYR" | "USDT" | "TRX",
+      delta: number
+    ) => {
+      setActorOutstandingMetrics((prev) => {
+        const next = prev.map((row) => ({ ...row, totals: { ...row.totals } }));
+        const existing = next.find((row) => row.actor_id === actorId);
+        if (existing) {
+          existing.totals[currency] += delta;
+          return next;
+        }
+        const actorMeta = initialActors.find((actor) => actor.id === actorId);
+        const inserted: CreditBookActorOutstandingMetrics = {
+          actor_id: actorId,
+          actor_code: (actorMeta?.actor_code ?? "A") as "A" | "B",
+          actor_display_name: actorMeta?.display_name ?? actorDisplayName,
+          totals: { IDR: 0, MYR: 0, USDT: 0, TRX: 0 }
+        };
+        inserted.totals[currency] = delta;
+        return [...next, inserted].sort((a, b) => a.actor_code.localeCompare(b.actor_code));
+      });
+    },
+    [initialActors]
+  );
+
+  const handleSettlementRecorded = useCallback(
+    (info: { entry: CreditBookEntry; amount: number; settlementId: string }) => {
+      const { entry, amount } = info;
+      const settledAbs = Math.abs(Number(amount));
+      const outstandingDelta = entry.entry_direction === "debt" ? settledAbs : -settledAbs;
+      applyOutstandingDelta(
+        entry.responsible_actor_id,
+        entry.actor_display_name,
+        entry.currency_code,
+        outstandingDelta
+      );
+      setMessage(
+        `Recorded ${entry.currency_code} ${formatAmount(settledAbs, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 4
+        })} settlement.`
+      );
+      triggerRefresh();
+    },
+    [applyOutstandingDelta] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   const criticalPending =
     entrySubmitting ||
     entryDeleting ||
@@ -401,15 +501,28 @@ export function CreditBigBookPanel({
 
   useEffect(() => {
     function handleOutsideClick(event: MouseEvent) {
-      if (!openActionMenu) return;
-      if (actionMenuRef.current && event.target instanceof Node && !actionMenuRef.current.contains(event.target)) {
+      if (
+        openActionMenu &&
+        actionMenuRef.current &&
+        event.target instanceof Node &&
+        !actionMenuRef.current.contains(event.target)
+      ) {
         setOpenActionMenu(null);
+      }
+      if (
+        openSettlementMenu &&
+        settlementMenuRef.current &&
+        event.target instanceof Node &&
+        !settlementMenuRef.current.contains(event.target)
+      ) {
+        setOpenSettlementMenu(null);
       }
     }
 
     function handleEscape(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setOpenActionMenu(null);
+        setOpenSettlementMenu(null);
       }
     }
 
@@ -419,7 +532,7 @@ export function CreditBigBookPanel({
       document.removeEventListener("mousedown", handleOutsideClick);
       document.removeEventListener("keydown", handleEscape);
     };
-  }, [openActionMenu]);
+  }, [openActionMenu, openSettlementMenu]);
 
   function triggerRefresh() {
     void loadEntries();
@@ -502,6 +615,12 @@ export function CreditBigBookPanel({
         entryForm.currency_code,
         createdDelta
       );
+      applyOutstandingDelta(
+        entryForm.responsible_actor_id,
+        createdActor?.display_name ?? "Unknown Actor",
+        entryForm.currency_code,
+        createdDelta
+      );
       setEntryForm((prev) => ({
         ...prev,
         explanation: "",
@@ -554,6 +673,17 @@ export function CreditBigBookPanel({
         pendingDeleteEntry.actor_display_name,
         pendingDeleteEntry.currency_code,
         deletedDelta
+      );
+      const outstandingAbs = Math.abs(Number(pendingDeleteEntry.outstanding));
+      const outstandingDelta =
+        pendingDeleteEntry.entry_direction === "debt"
+          ? outstandingAbs
+          : -outstandingAbs;
+      applyOutstandingDelta(
+        pendingDeleteEntry.responsible_actor_id,
+        pendingDeleteEntry.actor_display_name,
+        pendingDeleteEntry.currency_code,
+        outstandingDelta
       );
       setPendingDeleteEntry(null);
       triggerRefresh();
@@ -624,6 +754,7 @@ export function CreditBigBookPanel({
       for (const currencyCode of currencyFilter) params.append("currencyCode", currencyCode);
       for (const actorId of actorFilter) params.append("actorId", actorId);
       for (const direction of directionFilter) params.append("direction", direction);
+      for (const status of statusFilter) params.append("status", status);
 
       const url = `/api/credit-big-book/export${params.toString() ? `?${params.toString()}` : ""}`;
       const response = await fetch(url);
@@ -809,6 +940,7 @@ export function CreditBigBookPanel({
       setOpenActionMenu(null);
       return;
     }
+    setOpenSettlementMenu(null);
     const rect = triggerEl.getBoundingClientRect();
     const menuWidth = 176;
     const viewportPadding = 8;
@@ -817,6 +949,26 @@ export function CreditBigBookPanel({
       Math.min(window.innerWidth - menuWidth - viewportPadding, rect.right - menuWidth)
     );
     setOpenActionMenu({
+      id: rowId,
+      top: rect.bottom + 6 + window.scrollY,
+      left: left + window.scrollX
+    });
+  }
+
+  function toggleSettlementMenu(rowId: string, triggerEl: HTMLButtonElement) {
+    if (openSettlementMenu?.id === rowId) {
+      setOpenSettlementMenu(null);
+      return;
+    }
+    setOpenActionMenu(null);
+    const rect = triggerEl.getBoundingClientRect();
+    const menuWidth = 176;
+    const viewportPadding = 8;
+    const left = Math.max(
+      viewportPadding,
+      Math.min(window.innerWidth - menuWidth - viewportPadding, rect.right - menuWidth)
+    );
+    setOpenSettlementMenu({
       id: rowId,
       top: rect.bottom + 6 + window.scrollY,
       left: left + window.scrollX
@@ -919,6 +1071,52 @@ export function CreditBigBookPanel({
       </section>
 
       <section className="card">
+        <h2 className="text-lg font-semibold">Outstanding by Actor (All Time)</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Unsettled amount remaining on credit/debt records grouped by actor and currency.
+        </p>
+        <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
+          {actorOutstandingMetrics.map((metric) => (
+            <article
+              key={metric.actor_id}
+              className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-4"
+            >
+              <p className="font-semibold">Actor {metric.actor_display_name}</p>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                {SUPPORTED_CURRENCIES.map((currency) => {
+                  const value = metric.totals[currency];
+                  const highlight = Math.abs(value) > 0.0001;
+                  return (
+                    <div
+                      key={currency}
+                      className={`rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2 ${
+                        highlight ? "ring-1 ring-[rgb(var(--border))]" : ""
+                      }`}
+                    >
+                      <p className="text-xs uppercase text-[rgb(var(--text-muted))]">{currency}</p>
+                      <p
+                        className={`font-medium ${
+                          highlight ? getAmountColorClass(value) : "text-[rgb(var(--text-muted))]"
+                        }`}
+                      >
+                        {formatAmount(value, {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 4
+                        })}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </article>
+          ))}
+          {!actorOutstandingMetrics.length ? (
+            <p className="text-sm text-slate-600">No outstanding balances.</p>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="card">
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Ledger Records</h2>
           {isRefreshing || entriesLoading ? <LoadingIndicator label="Refreshing..." /> : null}
@@ -1000,6 +1198,16 @@ export function CreditBigBookPanel({
                 searchPlaceholder="Search direction..."
               />
             </div>
+            <div className="text-sm text-slate-700">
+              <span className="mb-1 block">Status</span>
+              <SearchableMultiSelect
+                label="Status"
+                selectedValues={draftStatusFilter}
+                options={statusOptions}
+                onChange={setDraftStatusFilter}
+                searchPlaceholder="Search status..."
+              />
+            </div>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             {filtersDirty ? (
@@ -1019,11 +1227,12 @@ export function CreditBigBookPanel({
           </div>
         </form>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1320px] text-sm">
+          <table className="w-full min-w-[1440px] text-sm">
             <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
               <tr>
                 <th className="px-3 py-2">Date</th>
                 <th className="px-3 py-2">Cash Flow</th>
+                <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2">Type</th>
                 <th className="px-3 py-2">Sub-Type</th>
                 <th className="px-3 py-2">Explanation</th>
@@ -1031,6 +1240,7 @@ export function CreditBigBookPanel({
                 <th className="px-3 py-2">Actor</th>
                 <th className="px-3 py-2">Remark</th>
                 <th className="px-3 py-2">Attachments</th>
+                <th className="px-3 py-2">Settlement</th>
                 <th className="px-3 py-2">Actions</th>
               </tr>
             </thead>
@@ -1044,6 +1254,7 @@ export function CreditBigBookPanel({
                     >
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-5 w-14 rounded-full bg-[rgb(var(--surface-muted))]" /></td>
+                      <td className="px-3 py-2"><div className="h-5 w-16 rounded-full bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-28 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-56 rounded bg-[rgb(var(--surface-muted))]" /></td>
@@ -1051,6 +1262,7 @@ export function CreditBigBookPanel({
                       <td className="px-3 py-2"><div className="h-4 w-28 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-20 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-16 rounded bg-[rgb(var(--surface-muted))]" /></td>
+                      <td className="px-3 py-2"><div className="h-8 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-8 w-20 rounded bg-[rgb(var(--surface-muted))]" /></td>
                     </tr>
                   ))
@@ -1066,6 +1278,19 @@ export function CreditBigBookPanel({
                           }`}
                         >
                           {row.entry_direction === "credit" ? "Credit" : "Debt"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${getStatusChipClass(
+                            row.status
+                          )}`}
+                          title={`Outstanding ${row.currency_code} ${formatAmount(row.outstanding, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 4
+                          })}`}
+                        >
+                          {formatStatusLabel(row.status)}
                         </span>
                       </td>
                       <td className="px-3 py-2">{row.type_name}</td>
@@ -1128,6 +1353,20 @@ export function CreditBigBookPanel({
                         <div className="relative">
                           <button
                             className="btn-secondary btn-sm"
+                            aria-label="Open settlement menu"
+                            aria-expanded={openSettlementMenu?.id === row.id}
+                            aria-haspopup="menu"
+                            onClick={(event) => toggleSettlementMenu(row.id, event.currentTarget)}
+                            disabled={criticalPending}
+                          >
+                            Settlement
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="relative">
+                          <button
+                            className="btn-secondary btn-sm"
                             aria-label="Open actions menu"
                             aria-expanded={openActionMenu?.id === row.id}
                             aria-haspopup="menu"
@@ -1142,7 +1381,7 @@ export function CreditBigBookPanel({
                   ))}
               {!entries.length && !entriesLoading ? (
                 <tr>
-                  <td className="px-3 py-4 text-center text-slate-600" colSpan={10}>
+                  <td className="px-3 py-4 text-center text-slate-600" colSpan={12}>
                     No records match the current filters.
                   </td>
                 </tr>
@@ -1199,6 +1438,55 @@ export function CreditBigBookPanel({
                   }}
                 >
                   Delete record
+                </button>
+              </>
+            );
+          })()}
+        </div>
+      ) : null}
+
+      {openSettlementMenu ? (
+        <div
+          ref={settlementMenuRef}
+          role="menu"
+          className="absolute z-50 w-44 rounded-md border border-slate-200 bg-white p-1 text-slate-900 shadow-lg"
+          style={{ top: openSettlementMenu.top, left: openSettlementMenu.left }}
+        >
+          {(() => {
+            const targetRow = entries.find((entry) => entry.id === openSettlementMenu.id);
+            if (!targetRow) return null;
+            const settleLabel = targetRow.entry_direction === "credit" ? "Settle credit..." : "Settle debt...";
+            const settleDisabled = targetRow.status === "settled";
+            const historyDisabled = targetRow.settlements.length === 0;
+            return (
+              <>
+                <button
+                  className={`block w-full rounded px-2 py-1 text-left text-sm hover:bg-slate-100 ${
+                    settleDisabled ? "cursor-not-allowed text-slate-400 hover:bg-transparent" : ""
+                  }`}
+                  role="menuitem"
+                  disabled={settleDisabled}
+                  onClick={() => {
+                    if (settleDisabled) return;
+                    setOpenSettlementMenu(null);
+                    setSettlementEntry(targetRow);
+                  }}
+                >
+                  {settleLabel}
+                </button>
+                <button
+                  className={`block w-full rounded px-2 py-1 text-left text-sm hover:bg-slate-100 ${
+                    historyDisabled ? "cursor-not-allowed text-slate-400 hover:bg-transparent" : ""
+                  }`}
+                  role="menuitem"
+                  disabled={historyDisabled}
+                  onClick={() => {
+                    if (historyDisabled) return;
+                    setOpenSettlementMenu(null);
+                    setSettlementHistoryEntry(targetRow);
+                  }}
+                >
+                  Settlement history
                 </button>
               </>
             );
@@ -1788,6 +2076,26 @@ export function CreditBigBookPanel({
         variant="danger"
         closeOnBackdrop={false}
         onConfirm={deleteAttachment}
+      />
+
+      <CreditBigBookSettlementModal
+        entry={settlementEntry}
+        open={Boolean(settlementEntry)}
+        onOpenChange={(open) => {
+          if (!open) setSettlementEntry(null);
+        }}
+        onSuccess={handleSettlementRecorded}
+      />
+
+      <CreditBigBookSettlementHistoryModal
+        entry={settlementHistoryEntry}
+        open={Boolean(settlementHistoryEntry)}
+        onOpenChange={(open) => {
+          if (!open) setSettlementHistoryEntry(null);
+        }}
+        onChanged={() => {
+          triggerRefresh();
+        }}
       />
     </div>
   );

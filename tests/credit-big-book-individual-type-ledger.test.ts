@@ -29,7 +29,11 @@ const baseEntry: CreditBookEntry = {
   actor_display_name: "Actor A",
   creator_display_name: "-",
   updater_display_name: "-",
-  attachments: []
+  attachments: [],
+  total_settled: 0,
+  outstanding: 100,
+  status: "open",
+  settlements: []
 };
 
 describe("credit individual type ledger utils", () => {

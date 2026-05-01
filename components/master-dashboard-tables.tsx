@@ -282,7 +282,7 @@ export function MasterDashboardCreditBookTypeCashflowTable({
 
   return (
     <div className="mt-4 overflow-x-auto">
-      <table className="w-full min-w-[980px] text-sm">
+      <table className="w-full min-w-[1080px] text-sm">
         <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
           <tr>
             <th className="px-3 py-2">Currency</th>
@@ -291,6 +291,7 @@ export function MasterDashboardCreditBookTypeCashflowTable({
             <th className="px-3 py-2">Inflow</th>
             <th className="px-3 py-2">Outflow</th>
             <th className="px-3 py-2">Net</th>
+            <th className="px-3 py-2">Outstanding</th>
           </tr>
         </thead>
         <tbody>
@@ -310,6 +311,9 @@ export function MasterDashboardCreditBookTypeCashflowTable({
                   <td className={`px-3 py-2 ${getNetBlueRedNeutralClass(row.net)}`}>
                     {currencyRow.currency} {formatAmount(row.net)}
                   </td>
+                  <td className={`px-3 py-2 ${getNetBlueRedNeutralClass(row.outstanding)}`}>
+                    {currencyRow.currency} {formatAmount(row.outstanding)}
+                  </td>
                 </tr>
               ))}
               <tr className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-[rgb(var(--text))]">
@@ -324,10 +328,13 @@ export function MasterDashboardCreditBookTypeCashflowTable({
                 <td className={`px-3 py-2 font-semibold ${getNetBlueRedNeutralClass(currencyRow.combined.net)}`}>
                   {currencyRow.currency} {formatAmount(currencyRow.combined.net)}
                 </td>
+                <td className={`px-3 py-2 font-semibold ${getNetBlueRedNeutralClass(currencyRow.combined.outstanding)}`}>
+                  {currencyRow.currency} {formatAmount(currencyRow.combined.outstanding)}
+                </td>
               </tr>
               {index < visibleRowsByCurrency.length - 1 ? (
                 <tr aria-hidden="true">
-                  <td className="p-0" colSpan={6}>
+                  <td className="p-0" colSpan={7}>
                     <div className="h-4" />
                   </td>
                 </tr>
@@ -336,7 +343,7 @@ export function MasterDashboardCreditBookTypeCashflowTable({
           ))}
           {!visibleRowsByCurrency.length ? (
             <tr>
-              <td className="px-3 py-4 text-center text-muted" colSpan={6}>
+              <td className="px-3 py-4 text-center text-muted" colSpan={7}>
                 No Credit Big Book cashflow data matches the selected filters.
               </td>
             </tr>

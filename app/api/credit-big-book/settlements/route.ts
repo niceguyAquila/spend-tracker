@@ -3,11 +3,12 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAdminApi } from "@/lib/auth-api";
 import { assertCsrfAndOrigin } from "@/lib/security/origin";
 import {
-  creditBookEntriesQuerySchema,
-  creditBookEntryInputSchema,
-  creditBookEntryUpdateSchema
+  creditBookSettlementCreateSchema,
+  creditBookSettlementDeleteSchema,
+  creditBookSettlementListQuerySchema,
+  creditBookSettlementUpdateSchema
 } from "@/lib/validation/credit-big-book";
-import { getCreditBookEntriesPaged } from "@/lib/db/queries";
+import { getCreditBookSettlementsForEntry } from "@/lib/db/queries";
 
 export async function GET(request: Request) {
   const authCheck = await requireAdminApi();
@@ -16,27 +17,18 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const parsed = creditBookEntriesQuerySchema.safeParse({
-    typeId: searchParams.getAll("typeId"),
-    currencyCode: searchParams.getAll("currencyCode"),
-    direction: searchParams.getAll("direction"),
-    actorId: searchParams.getAll("actorId"),
-    status: searchParams.getAll("status"),
-    dateFrom: searchParams.get("dateFrom") ?? "",
-    dateTo: searchParams.get("dateTo") ?? "",
-    query: searchParams.get("query") ?? "",
-    page: searchParams.get("page") ?? undefined,
-    pageSize: searchParams.get("pageSize") ?? undefined
+  const parsed = creditBookSettlementListQuerySchema.safeParse({
+    entryId: searchParams.get("entryId") ?? ""
   });
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
   try {
-    const result = await getCreditBookEntriesPaged(parsed.data);
-    return NextResponse.json(result);
+    const settlements = await getCreditBookSettlementsForEntry(parsed.data.entryId);
+    return NextResponse.json({ settlements });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to load ledger entries.";
+    const message = error instanceof Error ? error.message : "Failed to load settlements.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -52,27 +44,34 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const parsed = creditBookEntryInputSchema.safeParse(body);
+  const parsed = creditBookSettlementCreateSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const actorId = authCheck.user.id;
   const payload = parsed.data;
-  const { data, error } = await supabase
+  const supabase = await createClient();
+
+  const { data: entry, error: entryError } = await supabase
     .from("credit_ledger_entries")
+    .select("id, brand_id")
+    .eq("id", payload.entry_id)
+    .maybeSingle();
+  if (entryError) {
+    return NextResponse.json({ error: entryError.message }, { status: 400 });
+  }
+  if (!entry) {
+    return NextResponse.json({ error: "Ledger entry not found." }, { status: 404 });
+  }
+
+  const actorId = authCheck.user.id;
+  const { data, error } = await supabase
+    .from("credit_ledger_settlements")
     .insert({
-      brand_id: authCheck.activeBrandId,
-      entry_date: payload.entry_date,
-      entry_direction: payload.entry_direction,
-      entry_type_id: payload.entry_type_id,
-      entry_sub_type_id: payload.entry_sub_type_id ?? null,
-      explanation: payload.explanation,
+      entry_id: payload.entry_id,
+      settlement_date: payload.settlement_date,
       amount: payload.amount,
-      currency_code: payload.currency_code,
-      remark: payload.remark || null,
-      responsible_actor_id: payload.responsible_actor_id,
+      note: payload.note ? payload.note : null,
       created_by: actorId,
       updated_by: actorId
     })
@@ -96,21 +95,24 @@ export async function PATCH(request: Request) {
   }
 
   const body = await request.json();
-  const parsed = creditBookEntryUpdateSchema.safeParse(body);
+  const parsed = creditBookSettlementUpdateSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
   const { id, ...payload } = parsed.data;
   const supabase = await createClient();
+
+  const updates: Record<string, unknown> = {
+    updated_by: authCheck.user.id
+  };
+  if (payload.settlement_date !== undefined) updates.settlement_date = payload.settlement_date;
+  if (payload.amount !== undefined) updates.amount = payload.amount;
+  if (payload.note !== undefined) updates.note = payload.note ? payload.note : null;
+
   const { error } = await supabase
-    .from("credit_ledger_entries")
-    .update({
-      ...payload,
-      entry_sub_type_id: payload.entry_sub_type_id ?? null,
-      remark: payload.remark || null,
-      updated_by: authCheck.user.id
-    })
+    .from("credit_ledger_settlements")
+    .update(updates)
     .eq("id", id);
 
   if (error) {
@@ -130,17 +132,16 @@ export async function DELETE(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const id = searchParams.get("id");
-  if (!id) {
-    return NextResponse.json({ error: "Entry ID is required." }, { status: 400 });
+  const parsed = creditBookSettlementDeleteSchema.safeParse({ id: searchParams.get("id") });
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Settlement ID is required." }, { status: 400 });
   }
 
   const supabase = await createClient();
   const { data, error } = await supabase
-    .from("credit_ledger_entries")
+    .from("credit_ledger_settlements")
     .delete()
-    .eq("id", id)
-    .eq("brand_id", authCheck.activeBrandId)
+    .eq("id", parsed.data.id)
     .select("id")
     .maybeSingle();
 
@@ -148,7 +149,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
   if (!data) {
-    return NextResponse.json({ error: "Entry not found." }, { status: 404 });
+    return NextResponse.json({ error: "Settlement not found." }, { status: 404 });
   }
   return NextResponse.json({ ok: true });
 }

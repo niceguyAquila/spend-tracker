@@ -3,6 +3,8 @@ import { z } from "zod";
 export const creditBookCurrencySchema = z.enum(["IDR", "MYR", "USDT", "TRX"]);
 export type CreditBookCurrencyCode = z.infer<typeof creditBookCurrencySchema>;
 export const creditBookEntryDirectionSchema = z.enum(["credit", "debt"]);
+export const creditBookEntryStatusSchema = z.enum(["open", "partial", "settled"]);
+export type CreditBookEntryStatusValue = z.infer<typeof creditBookEntryStatusSchema>;
 
 export const creditBookTypeCreateSchema = z.object({
   code: z
@@ -97,6 +99,7 @@ export const creditBookEntriesQuerySchema = z.object({
   currencyCode: normalizeMultiSelect(creditBookCurrencySchema),
   direction: normalizeMultiSelect(creditBookEntryDirectionSchema),
   actorId: normalizeMultiSelect(z.string().uuid()),
+  status: normalizeMultiSelect(creditBookEntryStatusSchema),
   dateFrom: optionalString,
   dateTo: optionalString,
   query: z.string().max(200).optional().or(z.literal("")).transform((v) => (v ? v : undefined)),
@@ -126,4 +129,42 @@ export const creditBookExchangeRateQuerySchema = z.object({
   amount: z.coerce.number().positive("Amount must be greater than 0"),
   base_currency: creditBookCurrencySchema,
   quote_currency: creditBookCurrencySchema
+});
+
+export const creditBookSettlementCreateSchema = z.object({
+  entry_id: z.string().uuid("Entry is required"),
+  settlement_date: z.string().min(1, "Settlement date is required"),
+  amount: z.coerce.number().positive("Settlement amount must be greater than 0"),
+  note: z.string().max(1000).optional().or(z.literal(""))
+});
+
+export const creditBookSettlementUpdateSchema = z.object({
+  id: z.string().uuid(),
+  settlement_date: z.string().min(1).optional(),
+  amount: z.coerce.number().positive("Settlement amount must be greater than 0").optional(),
+  note: z.string().max(1000).optional().or(z.literal(""))
+});
+
+export const creditBookSettlementDeleteSchema = z.object({
+  id: z.string().uuid()
+});
+
+export const creditBookSettlementListQuerySchema = z.object({
+  entryId: z.string().uuid()
+});
+
+export const creditBookSettlementAttachmentCreateSchema = z.object({
+  settlement_id: z.string().uuid(),
+  storage_path: z.string().trim().min(5).max(512),
+  file_name: z.string().trim().min(1).max(255),
+  mime_type: z.string().trim().min(3).max(120),
+  file_size: z.coerce.number().int().positive().max(5 * 1024 * 1024)
+});
+
+export const creditBookSettlementAttachmentDeleteSchema = z.object({
+  id: z.string().uuid()
+});
+
+export const creditBookSettlementAttachmentViewSchema = z.object({
+  id: z.string().uuid()
 });

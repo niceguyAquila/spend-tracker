@@ -189,6 +189,30 @@ describe("credit big book entries route", () => {
     );
   });
 
+  it("forwards status filter values to paged query", async () => {
+    const { GET } = await import("@/app/api/credit-big-book/entries/route");
+    const request = new Request(
+      "https://app.localhost/api/credit-big-book/entries?status=open&status=partial"
+    );
+
+    const response = await GET(request);
+    expect(response.status).toBe(200);
+    expect(getCreditBookEntriesPagedMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: ["open", "partial"]
+      })
+    );
+  });
+
+  it("returns 400 when GET receives an invalid status value", async () => {
+    const { GET } = await import("@/app/api/credit-big-book/entries/route");
+    const request = new Request("https://app.localhost/api/credit-big-book/entries?status=closed");
+
+    const response = await GET(request);
+    expect(response.status).toBe(400);
+    expect(getCreditBookEntriesPagedMock).not.toHaveBeenCalled();
+  });
+
   it("returns 400 when GET has invalid categorical values", async () => {
     const { GET } = await import("@/app/api/credit-big-book/entries/route");
     const request = new Request("https://app.localhost/api/credit-big-book/entries?direction=invalid");

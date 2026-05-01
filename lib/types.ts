@@ -299,6 +299,34 @@ export type CreditBookAttachment = {
   created_at: string;
 };
 
+export type CreditBookSettlementAttachment = {
+  id: string;
+  settlement_id: string;
+  storage_path: string;
+  file_name: string;
+  mime_type: string;
+  file_size: number;
+  uploaded_by: string | null;
+  created_at: string;
+};
+
+export type CreditBookSettlement = {
+  id: string;
+  entry_id: string;
+  settlement_date: string;
+  amount: number;
+  note: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  creator_display_name: string;
+  updater_display_name: string;
+  attachments: CreditBookSettlementAttachment[];
+};
+
+export type CreditBookEntryStatus = "open" | "partial" | "settled";
+
 export type CreditBookEntry = {
   id: string;
   entry_date: string;
@@ -323,6 +351,10 @@ export type CreditBookEntry = {
   creator_display_name: string;
   updater_display_name: string;
   attachments: CreditBookAttachment[];
+  total_settled: number;
+  outstanding: number;
+  status: CreditBookEntryStatus;
+  settlements: CreditBookSettlement[];
 };
 
 export type CreditBookAllowedUserOption = {
@@ -332,6 +364,18 @@ export type CreditBookAllowedUserOption = {
 };
 
 export type CreditBookActorCurrencyMetrics = {
+  actor_id: string;
+  actor_code: "A" | "B";
+  actor_display_name: string;
+  totals: {
+    IDR: number;
+    MYR: number;
+    USDT: number;
+    TRX: number;
+  };
+};
+
+export type CreditBookActorOutstandingMetrics = {
   actor_id: string;
   actor_code: "A" | "B";
   actor_display_name: string;
@@ -355,6 +399,7 @@ export type CreditBookTypeCashflowRow = {
   inflow: number;
   outflow: number;
   net: number;
+  outstanding: number;
 };
 
 export type CreditBookTypeCashflowByCurrency = {
@@ -364,5 +409,6 @@ export type CreditBookTypeCashflowByCurrency = {
     inflow: number;
     outflow: number;
     net: number;
+    outstanding: number;
   };
 };
