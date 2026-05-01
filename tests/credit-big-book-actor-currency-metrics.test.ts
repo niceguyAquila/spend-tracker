@@ -10,7 +10,6 @@ type EntryRow = {
 
 type SettlementRow = {
   amount: number;
-  amount_in_entry_currency: number;
   settlement_currency_code: "IDR" | "MYR" | "USDT" | "TRX";
   credit_ledger_entries: {
     responsible_actor_id: string;
@@ -53,7 +52,7 @@ vi.mock("@/lib/supabase/server", () => ({
   }))
 }));
 
-describe("getCreditBookActorCurrencyMetrics (net after settlements)", () => {
+describe("getCreditBookActorCurrencyMetrics (realized settlements only)", () => {
   beforeEach(() => {
     entryRowsRef.rows = [];
     settlementRowsRef.rows = [];
@@ -66,7 +65,7 @@ describe("getCreditBookActorCurrencyMetrics (net after settlements)", () => {
     expect(result).toEqual([]);
   });
 
-  it("aggregates entry amounts when there are no settlements", async () => {
+  it("shows zero realized totals when actor has ledger rows but no settlements", async () => {
     entryRowsRef.rows = [
       {
         responsible_actor_id: "actor-a",
@@ -87,118 +86,24 @@ describe("getCreditBookActorCurrencyMetrics (net after settlements)", () => {
     const { getCreditBookActorCurrencyMetrics } = await import("@/lib/db/queries");
     const result = await getCreditBookActorCurrencyMetrics();
     expect(result).toHaveLength(1);
-    expect(result[0].totals.MYR).toBe(800);
+    expect(result[0].totals.MYR).toBe(0);
     expect(result[0].totals.USDT).toBe(0);
   });
 
-  it("nets MYR by entry-currency equivalent and adds USDT for cross-currency credit settlement", async () => {
+  it("counts cross-currency settlement only in settlement currency (credit inflow)", async () => {
     entryRowsRef.rows = [
       {
         responsible_actor_id: "actor-a",
         entry_direction: "credit",
         currency_code: "MYR",
-        amount: 200000,
+        amount: 273264.45,
         credit_book_actors: { actor_code: "A", display_name: "Actor A" }
       }
     ];
     settlementRowsRef.rows = [
       {
         amount: 30000,
-        amount_in_entry_currency: 115629,
         settlement_currency_code: "USDT",
-        credit_ledger_entries: {
-          responsible_actor_id: "actor-a",
-          entry_direction: "credit",
-          currency_code: "MYR",
-          credit_book_actors: { actor_code: "A", display_name: "Actor A" }
-        }
-      }
-    ];
-
-    const { getCreditBookActorCurrencyMetrics } = await import("@/lib/db/queries");
-    const result = await getCreditBookActorCurrencyMetrics();
-    expect(result).toHaveLength(1);
-    expect(result[0].totals.MYR).toBe(84371);
-    expect(result[0].totals.USDT).toBe(30000);
-  });
-
-  it("nets MYR toward zero for debt and subtracts USDT outflow on cross-currency debt settlement", async () => {
-    entryRowsRef.rows = [
-      {
-        responsible_actor_id: "actor-a",
-        entry_direction: "debt",
-        currency_code: "MYR",
-        amount: 100000,
-        credit_book_actors: { actor_code: "A", display_name: "Actor A" }
-      }
-    ];
-    settlementRowsRef.rows = [
-      {
-        amount: 5000,
-        amount_in_entry_currency: 19000,
-        settlement_currency_code: "USDT",
-        credit_ledger_entries: {
-          responsible_actor_id: "actor-a",
-          entry_direction: "debt",
-          currency_code: "MYR",
-          credit_book_actors: { actor_code: "A", display_name: "Actor A" }
-        }
-      }
-    ];
-
-    const { getCreditBookActorCurrencyMetrics } = await import("@/lib/db/queries");
-    const result = await getCreditBookActorCurrencyMetrics();
-    expect(result).toHaveLength(1);
-    expect(result[0].totals.MYR).toBe(-81000);
-    expect(result[0].totals.USDT).toBe(-5000);
-  });
-
-  it("subtracts same-currency settlements from the entry currency bucket only", async () => {
-    entryRowsRef.rows = [
-      {
-        responsible_actor_id: "actor-a",
-        entry_direction: "credit",
-        currency_code: "MYR",
-        amount: 200000,
-        credit_book_actors: { actor_code: "A", display_name: "Actor A" }
-      }
-    ];
-    settlementRowsRef.rows = [
-      {
-        amount: 50000,
-        amount_in_entry_currency: 50000,
-        settlement_currency_code: "MYR",
-        credit_ledger_entries: {
-          responsible_actor_id: "actor-a",
-          entry_direction: "credit",
-          currency_code: "MYR",
-          credit_book_actors: { actor_code: "A", display_name: "Actor A" }
-        }
-      }
-    ];
-
-    const { getCreditBookActorCurrencyMetrics } = await import("@/lib/db/queries");
-    const result = await getCreditBookActorCurrencyMetrics();
-    expect(result).toHaveLength(1);
-    expect(result[0].totals.MYR).toBe(150000);
-    expect(result[0].totals.USDT).toBe(0);
-  });
-
-  it("fully nets a settled credit entry when equiv equals face amount", async () => {
-    entryRowsRef.rows = [
-      {
-        responsible_actor_id: "actor-a",
-        entry_direction: "credit",
-        currency_code: "MYR",
-        amount: 2920000,
-        credit_book_actors: { actor_code: "A", display_name: "Actor A" }
-      }
-    ];
-    settlementRowsRef.rows = [
-      {
-        amount: 2920000,
-        amount_in_entry_currency: 2920000,
-        settlement_currency_code: "MYR",
         credit_ledger_entries: {
           responsible_actor_id: "actor-a",
           entry_direction: "credit",
@@ -212,9 +117,110 @@ describe("getCreditBookActorCurrencyMetrics (net after settlements)", () => {
     const result = await getCreditBookActorCurrencyMetrics();
     expect(result).toHaveLength(1);
     expect(result[0].totals.MYR).toBe(0);
+    expect(result[0].totals.USDT).toBe(30000);
   });
 
-  it("nets cross-currency settlement against matching ledger row", async () => {
+  it("counts MYR remainder settlement as MYR realized (credit inflow)", async () => {
+    entryRowsRef.rows = [
+      {
+        responsible_actor_id: "actor-a",
+        entry_direction: "credit",
+        currency_code: "MYR",
+        amount: 273264.45,
+        credit_book_actors: { actor_code: "A", display_name: "Actor A" }
+      }
+    ];
+    settlementRowsRef.rows = [
+      {
+        amount: 157635.45,
+        settlement_currency_code: "MYR",
+        credit_ledger_entries: {
+          responsible_actor_id: "actor-a",
+          entry_direction: "credit",
+          currency_code: "MYR",
+          credit_book_actors: { actor_code: "A", display_name: "Actor A" }
+        }
+      }
+    ];
+
+    const { getCreditBookActorCurrencyMetrics } = await import("@/lib/db/queries");
+    const result = await getCreditBookActorCurrencyMetrics();
+    expect(result).toHaveLength(1);
+    expect(result[0].totals.MYR).toBe(157635.45);
+    expect(result[0].totals.USDT).toBe(0);
+  });
+
+  it("subtracts settlement currency on debt (outflow)", async () => {
+    entryRowsRef.rows = [
+      {
+        responsible_actor_id: "actor-a",
+        entry_direction: "debt",
+        currency_code: "MYR",
+        amount: 100000,
+        credit_book_actors: { actor_code: "A", display_name: "Actor A" }
+      }
+    ];
+    settlementRowsRef.rows = [
+      {
+        amount: 5000,
+        settlement_currency_code: "USDT",
+        credit_ledger_entries: {
+          responsible_actor_id: "actor-a",
+          entry_direction: "debt",
+          currency_code: "MYR",
+          credit_book_actors: { actor_code: "A", display_name: "Actor A" }
+        }
+      }
+    ];
+
+    const { getCreditBookActorCurrencyMetrics } = await import("@/lib/db/queries");
+    const result = await getCreditBookActorCurrencyMetrics();
+    expect(result).toHaveLength(1);
+    expect(result[0].totals.MYR).toBe(0);
+    expect(result[0].totals.USDT).toBe(-5000);
+  });
+
+  it("sums multiple settlements per actor/currency", async () => {
+    entryRowsRef.rows = [
+      {
+        responsible_actor_id: "actor-a",
+        entry_direction: "credit",
+        currency_code: "MYR",
+        amount: 200000,
+        credit_book_actors: { actor_code: "A", display_name: "Actor A" }
+      }
+    ];
+    settlementRowsRef.rows = [
+      {
+        amount: 30000,
+        settlement_currency_code: "USDT",
+        credit_ledger_entries: {
+          responsible_actor_id: "actor-a",
+          entry_direction: "credit",
+          currency_code: "MYR",
+          credit_book_actors: { actor_code: "A", display_name: "Actor A" }
+        }
+      },
+      {
+        amount: 50000,
+        settlement_currency_code: "MYR",
+        credit_ledger_entries: {
+          responsible_actor_id: "actor-a",
+          entry_direction: "credit",
+          currency_code: "MYR",
+          credit_book_actors: { actor_code: "A", display_name: "Actor A" }
+        }
+      }
+    ];
+
+    const { getCreditBookActorCurrencyMetrics } = await import("@/lib/db/queries");
+    const result = await getCreditBookActorCurrencyMetrics();
+    expect(result).toHaveLength(1);
+    expect(result[0].totals.USDT).toBe(30000);
+    expect(result[0].totals.MYR).toBe(50000);
+  });
+
+  it("nets IDR row to zero realized while recording USDT (cross-ccy)", async () => {
     entryRowsRef.rows = [
       {
         responsible_actor_id: "actor-b",
@@ -227,7 +233,6 @@ describe("getCreditBookActorCurrencyMetrics (net after settlements)", () => {
     settlementRowsRef.rows = [
       {
         amount: 1500,
-        amount_in_entry_currency: 2400000,
         settlement_currency_code: "USDT",
         credit_ledger_entries: {
           responsible_actor_id: "actor-b",
@@ -241,7 +246,6 @@ describe("getCreditBookActorCurrencyMetrics (net after settlements)", () => {
     const { getCreditBookActorCurrencyMetrics } = await import("@/lib/db/queries");
     const result = await getCreditBookActorCurrencyMetrics();
     expect(result).toHaveLength(1);
-    expect(result[0].actor_id).toBe("actor-b");
     expect(result[0].totals.IDR).toBe(0);
     expect(result[0].totals.USDT).toBe(1500);
   });

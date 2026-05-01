@@ -1671,29 +1671,24 @@ export async function getCreditBookActorCurrencyMetrics(): Promise<CreditBookAct
   }
 
   const byActor = new Map<string, CreditBookActorCurrencyMetrics>();
+  // Seed actors from ledger rows so open-only credits/debts still appear with zero realized totals.
   for (const row of rows) {
     const actor = Array.isArray(row.credit_book_actors) ? row.credit_book_actors[0] : row.credit_book_actors;
     const actorId = row.responsible_actor_id;
-    const existing =
-      byActor.get(actorId) ??
-      ({
+    if (!byActor.has(actorId)) {
+      byActor.set(actorId, {
         actor_id: actorId,
         actor_code: (actor?.actor_code ?? "A") as "A" | "B",
         actor_display_name: actor?.display_name ?? "Unknown Actor",
         totals: { IDR: 0, MYR: 0, USDT: 0, TRX: 0 }
-      } as CreditBookActorCurrencyMetrics);
-    const signedAmount = row.entry_direction === "debt" ? -Math.abs(Number(row.amount)) : Math.abs(Number(row.amount));
-    existing.totals[row.currency_code] += signedAmount;
-    byActor.set(actorId, existing);
+      });
+    }
   }
 
-  // Net Grand Total per currency: start from ledger face amounts, then apply
-  // every settlement's entry-currency equivalent (reduces credit exposure /
-  // moves debt toward zero). Cross-currency settlements additionally record the
-  // cash movement in the settlement currency so nothing is double-counted.
+  // Grand Total = realized cashflows only (each settlement in its settlement currency).
+  // Unrealized exposure stays in Outstanding-by-Actor (entry currency).
   type SettlementJoinRow = {
     amount: number;
-    amount_in_entry_currency: number;
     settlement_currency_code: "IDR" | "MYR" | "USDT" | "TRX";
     credit_ledger_entries:
       | {
@@ -1723,7 +1718,7 @@ export async function getCreditBookActorCurrencyMetrics(): Promise<CreditBookAct
       .from("credit_ledger_settlements")
       .select(
         `
-        amount, amount_in_entry_currency, settlement_currency_code,
+        amount, settlement_currency_code,
         credit_ledger_entries!inner(
           responsible_actor_id, entry_direction, currency_code,
           credit_book_actors(actor_code, display_name)
@@ -1758,16 +1753,9 @@ export async function getCreditBookActorCurrencyMetrics(): Promise<CreditBookAct
         totals: { IDR: 0, MYR: 0, USDT: 0, TRX: 0 }
       } as CreditBookActorCurrencyMetrics);
 
-    const equiv = Math.abs(Number(s.amount_in_entry_currency));
     const directionSign = e.entry_direction === "debt" ? -1 : 1;
-
-    // Entry currency bucket: settle credit receivable -> subtract equiv;
-    // settle debt payable -> add equiv (toward zero).
-    existing.totals[e.currency_code] += directionSign === 1 ? -equiv : equiv;
-
-    if (s.settlement_currency_code !== e.currency_code) {
-      existing.totals[s.settlement_currency_code] += directionSign * Math.abs(Number(s.amount));
-    }
+    existing.totals[s.settlement_currency_code] +=
+      directionSign * Math.abs(Number(s.amount));
 
     byActor.set(actorId, existing);
   }

@@ -490,22 +490,13 @@ export function CreditBigBookPanel({
         outstandingDelta
       );
 
-      // Net Grand Total: reduce entry-currency bucket by settled equiv (credit −,
-      // debt +); cross-currency settlements also add the realized flow in S.
+      // Grand Total tracks realized settlement cash only (in settlement currency).
       applyMetricDelta(
         entry.responsible_actor_id,
         entry.actor_display_name,
-        entry.currency_code,
-        -directionSign * entryCcyAbs
+        settlement_currency_code,
+        directionSign * settlementAbs
       );
-      if (settlement_currency_code !== entry.currency_code) {
-        applyMetricDelta(
-          entry.responsible_actor_id,
-          entry.actor_display_name,
-          settlement_currency_code,
-          directionSign * settlementAbs
-        );
-      }
 
       const settlementMessage =
         settlement_currency_code !== entry.currency_code
@@ -630,26 +621,9 @@ export function CreditBigBookPanel({
       setPendingEntryConfirm(false);
       setCreateModalOpen(keepModalOpen);
       setCreateAttachmentFiles([]);
-      // Optimistically update the Grand Total card so it reflects the new
-      // entry immediately. SSR via `triggerRefresh` will reconcile shortly
-      // and the prop-sync useEffect will overwrite this with the truth.
       const createdActor = initialActors.find((actor) => actor.id === entryForm.responsible_actor_id);
       const createdDelta =
         entryForm.entry_direction === "debt" ? -amountValue : amountValue;
-      // eslint-disable-next-line no-console
-      console.log("[CreditBigBook DEBUG] createEntry optimistic update", {
-        entry_direction: entryForm.entry_direction,
-        amountValue,
-        createdDelta,
-        responsible_actor_id: entryForm.responsible_actor_id,
-        currency_code: entryForm.currency_code
-      });
-      applyMetricDelta(
-        entryForm.responsible_actor_id,
-        createdActor?.display_name ?? "Unknown Actor",
-        entryForm.currency_code,
-        createdDelta
-      );
       applyOutstandingDelta(
         entryForm.responsible_actor_id,
         createdActor?.display_name ?? "Unknown Actor",
@@ -688,27 +662,6 @@ export function CreditBigBookPanel({
       setMessage("Ledger entry deleted.");
       setEntries((prev) => prev.filter((row) => row.id !== deletingEntryId));
       setTotalCount((prev) => Math.max(0, prev - 1));
-      // Optimistically undo the deleted row's contribution to the Grand Total
-      // card. spending was -amount, so undoing it adds +amount; profit was
-      // +amount, so undoing it subtracts amount. SSR via `triggerRefresh`
-      // will reconcile shortly via the prop-sync useEffect.
-      const deletedAmount = Math.abs(Number(pendingDeleteEntry.amount));
-      const deletedDelta =
-        pendingDeleteEntry.entry_direction === "debt" ? deletedAmount : -deletedAmount;
-      // eslint-disable-next-line no-console
-      console.log("[CreditBigBook DEBUG] deleteEntry optimistic update", {
-        entry_direction: pendingDeleteEntry.entry_direction,
-        deletedAmount,
-        deletedDelta,
-        responsible_actor_id: pendingDeleteEntry.responsible_actor_id,
-        currency_code: pendingDeleteEntry.currency_code
-      });
-      applyMetricDelta(
-        pendingDeleteEntry.responsible_actor_id,
-        pendingDeleteEntry.actor_display_name,
-        pendingDeleteEntry.currency_code,
-        deletedDelta
-      );
       const outstandingAbs = Math.abs(Number(pendingDeleteEntry.outstanding));
       const outstandingDelta =
         pendingDeleteEntry.entry_direction === "debt"
@@ -1051,9 +1004,9 @@ export function CreditBigBookPanel({
 
       <section className="card">
         <h2 className="text-lg font-semibold">Grand Total by Actor (All Time)</h2>
-        <p className="mt-1 text-sm text-slate-600 dark:text-[rgb(var(--text-muted))]">
-          Net position per currency after settlements: ledger amounts minus settled portions in the
-          entry currency (plus cross-currency settlement flows in their settlement currency).
+        <p className="mt-1 text-sm text-[rgb(var(--text-muted))]">
+          Realized cash by currency from settlements only. Open / partial balances stay in Outstanding
+          by Actor (entry currency).
         </p>
         <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
           {actorCurrencyMetrics.map((metric) => (
