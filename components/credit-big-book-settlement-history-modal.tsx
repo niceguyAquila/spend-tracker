@@ -119,7 +119,7 @@ export function CreditBigBookSettlementHistoryModal({ entry, open, onOpenChange,
         }
       >
         <div className="space-y-3">
-          <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-3 text-xs">
+          <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-3 text-xs text-[rgb(var(--text))]">
             <p>
               <span className="font-medium">{formatDateDisplay(entry.entry_date)}</span> ·{" "}
               {entry.type_name} · {entry.actor_display_name}
@@ -144,7 +144,7 @@ export function CreditBigBookSettlementHistoryModal({ entry, open, onOpenChange,
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-sm">
+            <table className="w-full min-w-[640px] text-sm text-[rgb(var(--text))]">
               <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
                 <tr>
                   <th className="px-3 py-2">Date</th>
@@ -158,7 +158,10 @@ export function CreditBigBookSettlementHistoryModal({ entry, open, onOpenChange,
               <tbody>
                 {loading ? (
                   <tr>
-                    <td className="px-3 py-3 text-center text-slate-600" colSpan={6}>
+                    <td
+                      className="px-3 py-3 text-center text-[rgb(var(--text-muted))]"
+                      colSpan={6}
+                    >
                       Loading...
                     </td>
                   </tr>
@@ -198,7 +201,7 @@ export function CreditBigBookSettlementHistoryModal({ entry, open, onOpenChange,
                             {s.note}
                           </span>
                         ) : (
-                          <span className="text-xs text-slate-500">-</span>
+                          <span className="text-xs text-[rgb(var(--text-muted))]">-</span>
                         )}
                       </td>
                       <td className="px-3 py-2">
@@ -207,7 +210,7 @@ export function CreditBigBookSettlementHistoryModal({ entry, open, onOpenChange,
                             {s.attachments.map((attachment) => (
                               <li key={attachment.id}>
                                 <button
-                                  className="text-xs text-blue-700 underline"
+                                  className="text-xs text-blue-600 underline hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300"
                                   onClick={() => void viewAttachment(attachment.id)}
                                   disabled={viewingAttachmentId === attachment.id}
                                 >
@@ -219,13 +222,13 @@ export function CreditBigBookSettlementHistoryModal({ entry, open, onOpenChange,
                             ))}
                           </ul>
                         ) : (
-                          <span className="text-xs text-slate-500">-</span>
+                          <span className="text-xs text-[rgb(var(--text-muted))]">-</span>
                         )}
                       </td>
                       <td className="px-3 py-2">{s.creator_display_name}</td>
                       <td className="px-3 py-2">
                         <button
-                          className="text-xs text-rose-600 underline"
+                          className="text-xs text-rose-600 underline dark:text-rose-400"
                           onClick={() => setPendingDeleteSettlementId(s.id)}
                           disabled={deleting}
                         >
@@ -237,7 +240,10 @@ export function CreditBigBookSettlementHistoryModal({ entry, open, onOpenChange,
                   })
                 ) : (
                   <tr>
-                    <td className="px-3 py-3 text-center text-slate-600" colSpan={6}>
+                    <td
+                      className="px-3 py-3 text-center text-[rgb(var(--text-muted))]"
+                      colSpan={6}
+                    >
                       No settlements recorded yet.
                     </td>
                   </tr>
@@ -246,7 +252,7 @@ export function CreditBigBookSettlementHistoryModal({ entry, open, onOpenChange,
             </table>
           </div>
 
-          {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+          {error ? <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p> : null}
         </div>
       </Modal>
 

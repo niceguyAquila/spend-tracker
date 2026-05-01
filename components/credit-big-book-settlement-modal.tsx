@@ -17,6 +17,8 @@ type Props = {
   onSuccess: (info: {
     entry: CreditBookEntry;
     amount: number;
+    settlement_amount: number;
+    settlement_currency_code: CreditCurrency;
     settlementId: string;
   }) => void;
 };
@@ -99,6 +101,9 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
+
+  const entryId = entry?.id ?? null;
 
   useEffect(() => {
     if (open && entry) {
@@ -110,7 +115,10 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
       setFiles([]);
       setError(null);
     }
-  }, [open, entry, today]);
+    // Intentionally key reset by entryId only. Re-deriving the dep on the entry
+    // reference clobbers user-typed state on every parent re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, entryId]);
 
   if (!entry) return null;
 
@@ -126,6 +134,21 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
   const isWithinOutstanding = amountInEntryCurrency <= entry.outstanding + 0.0001;
   const isAmountValid = isAmountFinite && isRateFinite && isWithinOutstanding;
   const canSubmit = !submitting && isAmountValid && Boolean(settlementDate);
+  const settleInFullDisabled =
+    entry.outstanding <= 0 || (!sameCurrency && !isRateFinite);
+  const settleInFullTitle = !sameCurrency && !isRateFinite
+    ? "Enter conversion rate first"
+    : entry.outstanding <= 0
+      ? "Nothing left to settle"
+      : "";
+
+  const dirty =
+    amount !== outstandingFormatted ||
+    settlementCurrency !== entryCurrency ||
+    conversionRate !== "" ||
+    note !== "" ||
+    files.length > 0 ||
+    settlementDate !== today;
 
   function setSettleInFull() {
     if (!entry) return;
@@ -144,6 +167,20 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
 
   function removeFileAt(index: number) {
     setFiles((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  function requestClose() {
+    if (submitting) return;
+    if (!dirty) {
+      onOpenChange(false);
+      return;
+    }
+    setDiscardConfirmOpen(true);
+  }
+
+  function confirmDiscard() {
+    setDiscardConfirmOpen(false);
+    onOpenChange(false);
   }
 
   async function submitSettlement() {
@@ -214,7 +251,13 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
                 `Settlement saved, but failed to upload ${file.name}.`
               )
             );
-            onSuccess({ entry, amount: settledAmountInEntryCurrency, settlementId });
+            onSuccess({
+              entry,
+              amount: settledAmountInEntryCurrency,
+              settlement_amount: amountValue,
+              settlement_currency_code: settlementCurrency,
+              settlementId
+            });
             setConfirmOpen(false);
             onOpenChange(false);
             return;
@@ -222,7 +265,13 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
         }
       }
 
-      onSuccess({ entry, amount: settledAmountInEntryCurrency, settlementId });
+      onSuccess({
+        entry,
+        amount: settledAmountInEntryCurrency,
+        settlement_amount: amountValue,
+        settlement_currency_code: settlementCurrency,
+        settlementId
+      });
       setConfirmOpen(false);
       onOpenChange(false);
     } catch {
@@ -237,7 +286,12 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
       <Modal
         open={open}
         onOpenChange={(next) => {
-          if (!submitting) onOpenChange(next);
+          if (submitting) return;
+          if (!next) {
+            requestClose();
+          } else {
+            onOpenChange(true);
+          }
         }}
         title={titleVerb}
         dismissible={!submitting}
@@ -247,7 +301,7 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
             <button
               className="btn-secondary"
               disabled={submitting}
-              onClick={() => onOpenChange(false)}
+              onClick={requestClose}
             >
               Cancel
             </button>
@@ -361,18 +415,24 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
             </label>
           ) : null}
 
-          <label className="block text-sm text-[rgb(var(--text))]">
-            <div className="flex items-center justify-between">
-              <span>Settlement Amount *</span>
+          <div className="text-sm text-[rgb(var(--text))]">
+            <div className="flex items-center justify-between gap-2">
+              <label htmlFor="settlement-amount-input" className="cursor-text">
+                Settlement Amount *
+              </label>
               <button
                 type="button"
-                className="text-xs text-blue-600 underline"
+                className="btn-secondary inline-flex items-center gap-1 px-2 py-1 text-xs"
+                disabled={settleInFullDisabled}
+                title={settleInFullTitle}
                 onClick={setSettleInFull}
               >
-                Settle in full
+                <span aria-hidden="true">⤓</span>
+                Use full outstanding
               </button>
             </div>
             <input
+              id="settlement-amount-input"
               className="field mt-1 w-full"
               inputMode="decimal"
               placeholder="0"
@@ -398,7 +458,7 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
                   : "--"}
               </p>
             ) : null}
-          </label>
+          </div>
 
           <label className="block text-sm text-[rgb(var(--text))]">
             Note
@@ -432,7 +492,7 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
                     </span>
                     <button
                       type="button"
-                      className="text-rose-600 underline"
+                      className="text-rose-600 underline dark:text-rose-400"
                       onClick={() => removeFileAt(index)}
                     >
                       Remove
@@ -443,7 +503,7 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
             ) : null}
           </label>
 
-          {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+          {error ? <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p> : null}
         </div>
       </Modal>
 
@@ -469,6 +529,17 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
         confirming={submitting}
         closeOnBackdrop={false}
         onConfirm={submitSettlement}
+      />
+
+      <ConfirmDialog
+        open={discardConfirmOpen}
+        onOpenChange={setDiscardConfirmOpen}
+        title="Discard settlement?"
+        description="You have unsaved changes (amount, currency, rate, note, or attachments). Closing the dialog will discard them."
+        confirmLabel="Discard"
+        variant="danger"
+        closeOnBackdrop={false}
+        onConfirm={confirmDiscard}
       />
     </>
   );

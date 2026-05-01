@@ -470,25 +470,60 @@ export function CreditBigBookPanel({
   );
 
   const handleSettlementRecorded = useCallback(
-    (info: { entry: CreditBookEntry; amount: number; settlementId: string }) => {
-      const { entry, amount } = info;
-      const settledAbs = Math.abs(Number(amount));
-      const outstandingDelta = entry.entry_direction === "debt" ? settledAbs : -settledAbs;
+    (info: {
+      entry: CreditBookEntry;
+      amount: number;
+      settlement_amount: number;
+      settlement_currency_code: "IDR" | "MYR" | "USDT" | "TRX";
+      settlementId: string;
+    }) => {
+      const { entry, amount, settlement_amount, settlement_currency_code } = info;
+      const entryCcyAbs = Math.abs(Number(amount));
+      const settlementAbs = Math.abs(Number(settlement_amount));
+      const directionSign = entry.entry_direction === "debt" ? -1 : 1;
+
+      const outstandingDelta = -directionSign * entryCcyAbs;
       applyOutstandingDelta(
         entry.responsible_actor_id,
         entry.actor_display_name,
         entry.currency_code,
         outstandingDelta
       );
-      setMessage(
-        `Recorded ${entry.currency_code} ${formatAmount(settledAbs, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 4
-        })} settlement.`
+
+      // Net Grand Total: reduce entry-currency bucket by settled equiv (credit −,
+      // debt +); cross-currency settlements also add the realized flow in S.
+      applyMetricDelta(
+        entry.responsible_actor_id,
+        entry.actor_display_name,
+        entry.currency_code,
+        -directionSign * entryCcyAbs
       );
+      if (settlement_currency_code !== entry.currency_code) {
+        applyMetricDelta(
+          entry.responsible_actor_id,
+          entry.actor_display_name,
+          settlement_currency_code,
+          directionSign * settlementAbs
+        );
+      }
+
+      const settlementMessage =
+        settlement_currency_code !== entry.currency_code
+          ? `Recorded ${settlement_currency_code} ${formatAmount(settlementAbs, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 4
+            })} settlement (~ ${entry.currency_code} ${formatAmount(entryCcyAbs, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 4
+            })}).`
+          : `Recorded ${entry.currency_code} ${formatAmount(entryCcyAbs, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 4
+            })} settlement.`;
+      setMessage(settlementMessage);
       triggerRefresh();
     },
-    [applyOutstandingDelta] // eslint-disable-line react-hooks/exhaustive-deps
+    [applyMetricDelta, applyOutstandingDelta] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const criticalPending =
@@ -1016,8 +1051,9 @@ export function CreditBigBookPanel({
 
       <section className="card">
         <h2 className="text-lg font-semibold">Grand Total by Actor (All Time)</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Total amount grouped by actor and currency across all Credit Big Book records.
+        <p className="mt-1 text-sm text-slate-600 dark:text-[rgb(var(--text-muted))]">
+          Net position per currency after settlements: ledger amounts minus settled portions in the
+          entry currency (plus cross-currency settlement flows in their settlement currency).
         </p>
         <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
           {actorCurrencyMetrics.map((metric) => (

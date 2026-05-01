@@ -1687,6 +1687,91 @@ export async function getCreditBookActorCurrencyMetrics(): Promise<CreditBookAct
     byActor.set(actorId, existing);
   }
 
+  // Net Grand Total per currency: start from ledger face amounts, then apply
+  // every settlement's entry-currency equivalent (reduces credit exposure /
+  // moves debt toward zero). Cross-currency settlements additionally record the
+  // cash movement in the settlement currency so nothing is double-counted.
+  type SettlementJoinRow = {
+    amount: number;
+    amount_in_entry_currency: number;
+    settlement_currency_code: "IDR" | "MYR" | "USDT" | "TRX";
+    credit_ledger_entries:
+      | {
+          responsible_actor_id: string;
+          entry_direction: "credit" | "debt";
+          currency_code: "IDR" | "MYR" | "USDT" | "TRX";
+          credit_book_actors:
+            | { actor_code: "A" | "B"; display_name: string }
+            | { actor_code: "A" | "B"; display_name: string }[]
+            | null;
+        }
+      | {
+          responsible_actor_id: string;
+          entry_direction: "credit" | "debt";
+          currency_code: "IDR" | "MYR" | "USDT" | "TRX";
+          credit_book_actors:
+            | { actor_code: "A" | "B"; display_name: string }
+            | { actor_code: "A" | "B"; display_name: string }[]
+            | null;
+        }[]
+      | null;
+  };
+  const settlementRows: SettlementJoinRow[] = [];
+  let settlementOffset = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("credit_ledger_settlements")
+      .select(
+        `
+        amount, amount_in_entry_currency, settlement_currency_code,
+        credit_ledger_entries!inner(
+          responsible_actor_id, entry_direction, currency_code,
+          credit_book_actors(actor_code, display_name)
+        )
+      `
+      )
+      .order("created_at", { ascending: false })
+      .range(settlementOffset, settlementOffset + pageSize - 1);
+    if (error) throw error;
+    const batch = (data ?? []) as SettlementJoinRow[];
+    settlementRows.push(...batch);
+    if (batch.length < pageSize) break;
+    settlementOffset += pageSize;
+  }
+
+  for (const s of settlementRows) {
+    const e = Array.isArray(s.credit_ledger_entries)
+      ? s.credit_ledger_entries[0]
+      : s.credit_ledger_entries;
+    if (!e) continue;
+
+    const actor = Array.isArray(e.credit_book_actors)
+      ? e.credit_book_actors[0]
+      : e.credit_book_actors;
+    const actorId = e.responsible_actor_id;
+    const existing =
+      byActor.get(actorId) ??
+      ({
+        actor_id: actorId,
+        actor_code: (actor?.actor_code ?? "A") as "A" | "B",
+        actor_display_name: actor?.display_name ?? "Unknown Actor",
+        totals: { IDR: 0, MYR: 0, USDT: 0, TRX: 0 }
+      } as CreditBookActorCurrencyMetrics);
+
+    const equiv = Math.abs(Number(s.amount_in_entry_currency));
+    const directionSign = e.entry_direction === "debt" ? -1 : 1;
+
+    // Entry currency bucket: settle credit receivable -> subtract equiv;
+    // settle debt payable -> add equiv (toward zero).
+    existing.totals[e.currency_code] += directionSign === 1 ? -equiv : equiv;
+
+    if (s.settlement_currency_code !== e.currency_code) {
+      existing.totals[s.settlement_currency_code] += directionSign * Math.abs(Number(s.amount));
+    }
+
+    byActor.set(actorId, existing);
+  }
+
   return [...byActor.values()].sort((a, b) => a.actor_code.localeCompare(b.actor_code));
 }
 
