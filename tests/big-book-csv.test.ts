@@ -86,3 +86,43 @@ describe("buildBigBookImportTemplateCsv", () => {
     });
   });
 });
+
+describe("parseBigBookCsv Excel compatibility", () => {
+  it("parses CSV with UTF-8 BOM", () => {
+    const csv =
+      "\uFEFF" +
+      [
+        "entry_date,entry_direction,type_name,explanation,amount,currency_code,remark,actor_name",
+        "2026-04-25,spending,Office Supplies,Printer ink,350000,IDR,Restock,Actor A"
+      ].join("\n");
+
+    const result = parseBigBookCsv(csv);
+    expect(result.errors).toEqual([]);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].type_name).toBe("Office Supplies");
+  });
+
+  it("parses semicolon-delimited CSV from Excel locales", () => {
+    const csv = [
+      "entry_date;entry_direction;type_name;sub_type_name;explanation;amount;currency_code;remark;actor_name",
+      "2026-04-25;spending;Office Supplies;Stationery;Printer ink;350000;IDR;Restock;Actor A"
+    ].join("\n");
+
+    const result = parseBigBookCsv(csv);
+    expect(result.errors).toEqual([]);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].sub_type_name).toBe("Stationery");
+  });
+
+  it("parses Excel single-column quoted CSV lines", () => {
+    const csv = [
+      '"entry_date,entry_direction,type_name,explanation,amount,currency_code,remark,actor_name"',
+      '"2026-04-25,spending,Office Supplies,Printer ink,350000,IDR,Restock,Actor A"'
+    ].join("\n");
+
+    const result = parseBigBookCsv(csv);
+    expect(result.errors).toEqual([]);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].actor_name).toBe("Actor A");
+  });
+});

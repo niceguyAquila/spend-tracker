@@ -38,7 +38,8 @@ export function buildBigBookImportTemplateCsv(): string {
     "Restock",
     "Actor A"
   ];
-  return [BIG_BOOK_CSV_HEADERS.join(","), exampleRow.join(",")].join("\n");
+  // UTF-8 BOM helps Excel on Windows keep columns when opening the template.
+  return `\uFEFF${[BIG_BOOK_CSV_HEADERS.join(","), exampleRow.join(",")].join("\r\n")}\r\n`;
 }
 
 type AllowedCurrency = "IDR" | "MYR" | "USDT" | "TRX";
@@ -153,13 +154,64 @@ function parseAmount(value: string): number | null {
   return parsed;
 }
 
+function normalizeHeader(value: string) {
+  return value.replace(/^\uFEFF/, "").trim();
+}
+
+function firstLine(content: string): string {
+  const end = content.search(/\r\n|\n|\r/);
+  return end === -1 ? content : content.slice(0, end);
+}
+
+/**
+ * Excel (wrong list-separator locale) often stores each CSV line as one quoted cell.
+ * Unwrap that so normal delimiter parsing can run.
+ */
+function unwrapExcelSingleColumn(content: string): string {
+  for (const delimiter of [",", ";", "\t"] as const) {
+    const rows = parseDelimitedRows(content, delimiter);
+    if (!rows.length || rows[0].length !== 1) continue;
+    const firstCell = normalizeHeader(rows[0][0]);
+    const parts = firstCell.split(/[,;\t]/).map((part) => part.trim());
+    const matched = REQUIRED_HEADERS.filter((header) => parts.includes(header)).length;
+    if (matched < REQUIRED_HEADERS.length) continue;
+    if (!rows.every((row) => row.length === 1)) continue;
+    return rows.map((row) => row[0] ?? "").join("\n");
+  }
+  return content;
+}
+
+/** Prefer the delimiter that yields the most recognized required headers (Excel often uses `;`). */
+function detectDelimiter(content: string): string {
+  const candidates = [",", ";", "\t"] as const;
+  let best: (typeof candidates)[number] = ",";
+  let bestScore = -1;
+
+  for (const delimiter of candidates) {
+    const cells = parseDelimitedRows(`${firstLine(content)}\n`, delimiter)[0] ?? [];
+    const headers = cells.map(normalizeHeader);
+    const score = REQUIRED_HEADERS.reduce(
+      (count, header) => count + (headers.includes(header) ? 1 : 0),
+      0
+    );
+    if (score > bestScore) {
+      bestScore = score;
+      best = delimiter;
+    }
+  }
+
+  return best;
+}
+
 export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
-  const rows = parseDelimitedRows(content, ",");
+  const withoutBom = content.replace(/^\uFEFF/, "");
+  const normalizedContent = unwrapExcelSingleColumn(withoutBom);
+  const rows = parseDelimitedRows(normalizedContent, detectDelimiter(normalizedContent));
   if (!rows.length) {
     return { rows: [], errors: ["CSV file is empty."] };
   }
 
-  const headers = rows[0].map((header) => header.trim());
+  const headers = rows[0].map(normalizeHeader);
   const headerMap = new Map<string, number>();
   headers.forEach((header, index) => headerMap.set(header, index));
 

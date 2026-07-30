@@ -1260,7 +1260,8 @@ export function BigBookPanel({
                 Download the template, fill multiple rows, then import all at once.
               </p>
               <p className="mt-1 text-xs text-slate-500">
-                Type name and actor name must match currently available values in Big Book.
+                Type name and actor name must match currently available values in Big Book. If you edit in
+                Excel, save as CSV (comma or semicolon delimited).
               </p>
             </div>
             <button type="button" className="btn-secondary shrink-0" onClick={downloadImportTemplate}>
