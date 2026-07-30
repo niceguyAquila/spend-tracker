@@ -7,6 +7,8 @@ import {
   BigBookEntry,
   BigBookLedgerSubType,
   BigBookLedgerType,
+  BigBookVendor,
+  BigBookVendorType,
   BigBookTypeCashflowByCurrency,
   BigBookTypeCashflowRow,
   BigBookMonthlyCurrencyRow,
@@ -257,6 +259,57 @@ export async function getBigBookLedgerSubTypes(options?: {
   }));
 }
 
+export async function getBigBookVendorTypes(options?: {
+  includeInactive?: boolean;
+}): Promise<BigBookVendorType[]> {
+  const supabase = await createClient();
+  let query = supabase
+    .from("business_ledger_vendor_types")
+    .select("id, code, name, is_active, sort_order, created_at, updated_at")
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+
+  if (!options?.includeInactive) {
+    query = query.eq("is_active", true);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    ...row,
+    sort_order: Number(row.sort_order)
+  }));
+}
+
+export async function getBigBookVendors(options?: {
+  vendorTypeId?: string;
+  includeInactive?: boolean;
+}): Promise<BigBookVendor[]> {
+  const supabase = await createClient();
+  let query = supabase
+    .from("business_ledger_vendors")
+    .select("id, vendor_type_id, code, name, is_active, sort_order, created_at, updated_at")
+    .order("vendor_type_id", { ascending: true })
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+
+  if (options?.vendorTypeId) {
+    query = query.eq("vendor_type_id", options.vendorTypeId);
+  }
+  if (!options?.includeInactive) {
+    query = query.eq("is_active", true);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    ...row,
+    sort_order: Number(row.sort_order)
+  }));
+}
+
 export async function getBigBookActors(): Promise<BigBookActor[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -319,9 +372,11 @@ export async function getBigBookEntries(filters?: BigBookEntryFilters & { limit?
     .from("business_ledger_entries")
     .select(
       `
-      id, entry_date, entry_direction, entry_type_id, entry_sub_type_id, explanation, amount, currency_code, remark, responsible_actor_id, created_by, updated_by, created_at, updated_at,
+      id, entry_date, entry_direction, entry_type_id, entry_sub_type_id, vendor_type_id, vendor_id, explanation, amount, currency_code, remark, responsible_actor_id, created_by, updated_by, created_at, updated_at,
       business_ledger_types(id, code, name),
       business_ledger_sub_types(id, code, name),
+      business_ledger_vendor_types(id, code, name),
+      business_ledger_vendors(id, code, name),
       big_book_actors(id, actor_code, display_name),
       business_ledger_attachments(id, ledger_entry_id, storage_path, file_name, mime_type, file_size, uploaded_by, created_at)
     `
@@ -376,6 +431,12 @@ export async function getBigBookEntries(filters?: BigBookEntryFilters & { limit?
     const subType = Array.isArray(row.business_ledger_sub_types)
       ? row.business_ledger_sub_types[0]
       : row.business_ledger_sub_types;
+    const vendorType = Array.isArray(row.business_ledger_vendor_types)
+      ? row.business_ledger_vendor_types[0]
+      : row.business_ledger_vendor_types;
+    const vendor = Array.isArray(row.business_ledger_vendors)
+      ? row.business_ledger_vendors[0]
+      : row.business_ledger_vendors;
     const actor = Array.isArray(row.big_book_actors)
       ? row.big_book_actors[0]
       : row.big_book_actors;
@@ -391,6 +452,8 @@ export async function getBigBookEntries(filters?: BigBookEntryFilters & { limit?
       entry_direction: row.entry_direction as "spending" | "profit",
       entry_type_id: row.entry_type_id,
       entry_sub_type_id: row.entry_sub_type_id ?? null,
+      vendor_type_id: row.vendor_type_id ?? null,
+      vendor_id: row.vendor_id ?? null,
       explanation: row.explanation,
       amount: Number(row.amount),
       currency_code: row.currency_code,
@@ -404,6 +467,8 @@ export async function getBigBookEntries(filters?: BigBookEntryFilters & { limit?
       type_code: type?.code ?? "-",
       sub_type_name: subType?.name ?? null,
       sub_type_code: subType?.code ?? null,
+      vendor_type_name: vendorType?.name ?? null,
+      vendor_name: vendor?.name ?? null,
       actor_code: (actor?.actor_code ?? "A") as "A" | "B",
       actor_display_name: actor?.display_name ?? "-",
       creator_display_name: row.created_by ? (actorMap.get(row.created_by) ?? row.created_by) : "-",
@@ -434,9 +499,11 @@ export async function getBigBookEntriesPaged(
     .from("business_ledger_entries")
     .select(
       `
-      id, entry_date, entry_direction, entry_type_id, entry_sub_type_id, explanation, amount, currency_code, remark, responsible_actor_id, created_by, updated_by, created_at, updated_at,
+      id, entry_date, entry_direction, entry_type_id, entry_sub_type_id, vendor_type_id, vendor_id, explanation, amount, currency_code, remark, responsible_actor_id, created_by, updated_by, created_at, updated_at,
       business_ledger_types(id, code, name),
       business_ledger_sub_types(id, code, name),
+      business_ledger_vendor_types(id, code, name),
+      business_ledger_vendors(id, code, name),
       big_book_actors(id, actor_code, display_name),
       business_ledger_attachments(id, ledger_entry_id, storage_path, file_name, mime_type, file_size, uploaded_by, created_at)
     `,
@@ -495,6 +562,12 @@ export async function getBigBookEntriesPaged(
     const subType = Array.isArray(row.business_ledger_sub_types)
       ? row.business_ledger_sub_types[0]
       : row.business_ledger_sub_types;
+    const vendorType = Array.isArray(row.business_ledger_vendor_types)
+      ? row.business_ledger_vendor_types[0]
+      : row.business_ledger_vendor_types;
+    const vendor = Array.isArray(row.business_ledger_vendors)
+      ? row.business_ledger_vendors[0]
+      : row.business_ledger_vendors;
     const actor = Array.isArray(row.big_book_actors)
       ? row.big_book_actors[0]
       : row.big_book_actors;
@@ -510,6 +583,8 @@ export async function getBigBookEntriesPaged(
       entry_direction: row.entry_direction as "spending" | "profit",
       entry_type_id: row.entry_type_id,
       entry_sub_type_id: row.entry_sub_type_id ?? null,
+      vendor_type_id: row.vendor_type_id ?? null,
+      vendor_id: row.vendor_id ?? null,
       explanation: row.explanation,
       amount: Number(row.amount),
       currency_code: row.currency_code,
@@ -523,6 +598,8 @@ export async function getBigBookEntriesPaged(
       type_code: type?.code ?? "-",
       sub_type_name: subType?.name ?? null,
       sub_type_code: subType?.code ?? null,
+      vendor_type_name: vendorType?.name ?? null,
+      vendor_name: vendor?.name ?? null,
       actor_code: (actor?.actor_code ?? "A") as "A" | "B",
       actor_display_name: actor?.display_name ?? "-",
       creator_display_name: row.created_by ? (actorMap.get(row.created_by) ?? row.created_by) : "-",

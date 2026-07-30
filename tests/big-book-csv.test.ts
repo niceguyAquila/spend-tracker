@@ -14,6 +14,8 @@ describe("parseBigBookCsv", () => {
     expect(result.rows).toHaveLength(2);
     expect(result.rows[0].currency_code).toBe("IDR");
     expect(result.rows[0].sub_type_name).toBeNull();
+    expect(result.rows[0].vendor_type_name).toBeNull();
+    expect(result.rows[0].vendor_name).toBeNull();
     expect(result.rows[1].remark).toBeNull();
     expect(result.rows[1].sub_type_name).toBeNull();
   });
@@ -30,6 +32,33 @@ describe("parseBigBookCsv", () => {
     expect(result.rows).toHaveLength(2);
     expect(result.rows[0].sub_type_name).toBe("Stationery");
     expect(result.rows[1].sub_type_name).toBeNull();
+  });
+
+  it("parses optional vendor fields when present", () => {
+    const csv = [
+      "entry_date,entry_direction,type_name,sub_type_name,vendor_type_name,vendor_name,explanation,amount,currency_code,remark,actor_name",
+      "2026-04-25,spending,Office Supplies,Stationery,Merchant,Rbee,Printer ink,350000,IDR,Restock,Actor A",
+      "2026-04-26,profit,Sales Revenue,,Partner,,Daily settlement,1250.5,USDT,,Actor B"
+    ].join("\n");
+
+    const result = parseBigBookCsv(csv);
+    expect(result.errors).toEqual([]);
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows[0].vendor_type_name).toBe("Merchant");
+    expect(result.rows[0].vendor_name).toBe("Rbee");
+    expect(result.rows[1].vendor_type_name).toBe("Partner");
+    expect(result.rows[1].vendor_name).toBeNull();
+  });
+
+  it("rejects vendor_name without vendor_type_name", () => {
+    const csv = [
+      "entry_date,entry_direction,type_name,vendor_name,explanation,amount,currency_code,remark,actor_name",
+      "2026-04-25,spending,Office Supplies,Rbee,Printer ink,350000,IDR,Restock,Actor A"
+    ].join("\n");
+
+    const result = parseBigBookCsv(csv);
+    expect(result.rows).toHaveLength(0);
+    expect(result.errors.some((item) => item.includes("vendor_type_name is required"))).toBe(true);
   });
 
   it("parses dates in YYYY-MMM-DD format", () => {
@@ -78,6 +107,8 @@ describe("buildBigBookImportTemplateCsv", () => {
       entry_direction: "spending",
       type_name: "Office Supplies",
       sub_type_name: "Stationery",
+      vendor_type_name: "Merchant",
+      vendor_name: "Rbee",
       explanation: "Printer ink",
       amount: 350000,
       currency_code: "IDR",

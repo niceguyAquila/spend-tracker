@@ -236,12 +236,14 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
         </div>
 
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[900px] text-sm">
+          <table className="w-full min-w-[1100px] text-sm">
             <thead className="border-b text-left bg-[rgb(var(--surface-muted))] text-[rgb(var(--text))]">
               <tr>
                 <th className="px-3 py-2">Date</th>
                 <th className="px-3 py-2">Cash Flow</th>
                 <th className="px-3 py-2">Type</th>
+                <th className="px-3 py-2">Vendor Type</th>
+                <th className="px-3 py-2">Vendor Name</th>
                 <th className="px-3 py-2">Explanation</th>
                 <th className="px-3 py-2">Amount</th>
                 <th className="px-3 py-2">Actor</th>
@@ -253,6 +255,8 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
                   <td className="px-3 py-2">{formatDateDisplay(entry.entry_date)}</td>
                   <td className="px-3 py-2">{entry.entry_direction === "profit" ? "In" : "Out"}</td>
                   <td className="px-3 py-2">{entry.type_name}</td>
+                  <td className="px-3 py-2">{entry.vendor_type_name ?? "-"}</td>
+                  <td className="px-3 py-2">{entry.vendor_name ?? "-"}</td>
                   <td className="px-3 py-2">{entry.explanation}</td>
                   <td className={`px-3 py-2 ${getAmountColorClass(entry.entry_direction === "spending" ? -entry.amount : entry.amount)}`}>
                     {entry.currency_code} {formatAmount(entry.amount, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
@@ -264,7 +268,7 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
               ))}
               {!visibleEntries.length ? (
                 <tr>
-                  <td className="px-3 py-4 text-center text-muted" colSpan={6}>
+                  <td className="px-3 py-4 text-center text-muted" colSpan={8}>
                     {selectedType ? "No records found for this type and filters." : "No type selected. Click Select Type to begin."}
                   </td>
                 </tr>

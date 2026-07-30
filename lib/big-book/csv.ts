@@ -11,7 +11,7 @@ const REQUIRED_HEADERS = [
   "actor_name"
 ] as const;
 
-const OPTIONAL_HEADERS = ["sub_type_name"] as const;
+const OPTIONAL_HEADERS = ["sub_type_name", "vendor_type_name", "vendor_name"] as const;
 
 /** Full import/export column order (required + optional). */
 export const BIG_BOOK_CSV_HEADERS = [
@@ -19,6 +19,8 @@ export const BIG_BOOK_CSV_HEADERS = [
   "entry_direction",
   "type_name",
   "sub_type_name",
+  "vendor_type_name",
+  "vendor_name",
   "explanation",
   "amount",
   "currency_code",
@@ -32,6 +34,8 @@ export function buildBigBookImportTemplateCsv(): string {
     "spending",
     "Office Supplies",
     "Stationery",
+    "Merchant",
+    "Rbee",
     "Printer ink",
     "350000",
     "IDR",
@@ -50,6 +54,8 @@ export type ParsedBigBookCsvRow = {
   entry_direction: AllowedDirection;
   type_name: string;
   sub_type_name: string | null;
+  vendor_type_name: string | null;
+  vendor_name: string | null;
   explanation: string;
   amount: number;
   currency_code: AllowedCurrency;
@@ -236,6 +242,8 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
     const entryDirectionRaw = normalizeRequired(get("entry_direction"));
     const typeName = normalizeRequired(get("type_name"));
     const subTypeName = normalizeOptional(get("sub_type_name"));
+    const vendorTypeName = normalizeOptional(get("vendor_type_name"));
+    const vendorName = normalizeOptional(get("vendor_name"));
     const explanation = normalizeRequired(get("explanation"));
     const amountRaw = normalizeRequired(get("amount"));
     const currencyRaw = normalizeRequired(get("currency_code")).toUpperCase();
@@ -271,11 +279,18 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
       continue;
     }
 
+    if (vendorName && !vendorTypeName) {
+      errors.push(`Row ${lineNumber}: vendor_type_name is required when vendor_name is provided.`);
+      continue;
+    }
+
     parsedRows.push({
       entry_date: entryDate,
       entry_direction: directionParsed.data,
       type_name: typeName,
       sub_type_name: subTypeName,
+      vendor_type_name: vendorTypeName,
+      vendor_name: vendorName,
       explanation,
       amount,
       currency_code: currencyParsed.data,

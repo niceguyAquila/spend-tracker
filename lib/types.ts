@@ -164,6 +164,27 @@ export type BigBookLedgerSubType = {
   updated_at: string;
 };
 
+export type BigBookVendorType = {
+  id: string;
+  code: string;
+  name: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BigBookVendor = {
+  id: string;
+  vendor_type_id: string;
+  code: string;
+  name: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type BigBookActor = {
   id: string;
   actor_code: "A" | "B";
@@ -188,6 +209,8 @@ export type BigBookEntry = {
   entry_direction: "spending" | "profit";
   entry_type_id: string;
   entry_sub_type_id: string | null;
+  vendor_type_id: string | null;
+  vendor_id: string | null;
   explanation: string;
   amount: number;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
@@ -201,6 +224,8 @@ export type BigBookEntry = {
   type_code: string;
   sub_type_name: string | null;
   sub_type_code: string | null;
+  vendor_type_name: string | null;
+  vendor_name: string | null;
   actor_code: "A" | "B";
   actor_display_name: string;
   creator_display_name: string;

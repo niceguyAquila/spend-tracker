@@ -6,7 +6,9 @@ import type {
   BigBookActor,
   BigBookAllowedUserOption,
   BigBookLedgerSubType,
-  BigBookLedgerType
+  BigBookLedgerType,
+  BigBookVendor,
+  BigBookVendorType
 } from "@/lib/types";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -19,6 +21,8 @@ type StatusFilter = "all" | "active" | "inactive";
 type Props = {
   initialTypes: BigBookLedgerType[];
   initialSubTypes: BigBookLedgerSubType[];
+  initialVendorTypes: BigBookVendorType[];
+  initialVendors: BigBookVendor[];
   initialActors: BigBookActor[];
   allowedUsers: BigBookAllowedUserOption[];
 };
@@ -48,7 +52,14 @@ function extractApiError(error: unknown, fallback: string) {
   return fallback;
 }
 
-export function BigBookSettingsPanel({ initialTypes, initialSubTypes, initialActors, allowedUsers }: Props) {
+export function BigBookSettingsPanel({
+  initialTypes,
+  initialSubTypes,
+  initialVendorTypes,
+  initialVendors,
+  initialActors,
+  allowedUsers
+}: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
@@ -79,15 +90,41 @@ export function BigBookSettingsPanel({ initialTypes, initialSubTypes, initialAct
   const [pendingDeleteSubType, setPendingDeleteSubType] = useState<BigBookLedgerSubType | null>(null);
   const [subTypeDeleting, setSubTypeDeleting] = useState(false);
 
+  const [newVendorTypeCode, setNewVendorTypeCode] = useState("");
+  const [newVendorTypeName, setNewVendorTypeName] = useState("");
+  const [pendingAddVendorTypeConfirm, setPendingAddVendorTypeConfirm] = useState(false);
+  const [vendorTypeSubmitting, setVendorTypeSubmitting] = useState(false);
+  const [pendingToggleVendorType, setPendingToggleVendorType] = useState<BigBookVendorType | null>(null);
+  const [toggleVendorTypeSubmitting, setToggleVendorTypeSubmitting] = useState(false);
+
+  const [vendorParentTypeId, setVendorParentTypeId] = useState<string>(() => initialVendorTypes[0]?.id ?? "");
+  const [newVendorCode, setNewVendorCode] = useState("");
+  const [newVendorName, setNewVendorName] = useState("");
+  const [pendingAddVendorConfirm, setPendingAddVendorConfirm] = useState(false);
+  const [vendorSubmitting, setVendorSubmitting] = useState(false);
+  const [pendingToggleVendor, setPendingToggleVendor] = useState<BigBookVendor | null>(null);
+  const [toggleVendorSubmitting, setToggleVendorSubmitting] = useState(false);
+  const [pendingDeleteVendor, setPendingDeleteVendor] = useState<BigBookVendor | null>(null);
+  const [vendorDeleting, setVendorDeleting] = useState(false);
+
   const subTypesForSelectedType = useMemo(
     () => initialSubTypes.filter((row) => row.entry_type_id === subTypeParentTypeId),
     [initialSubTypes, subTypeParentTypeId]
+  );
+
+  const vendorsForSelectedType = useMemo(
+    () => initialVendors.filter((row) => row.vendor_type_id === vendorParentTypeId),
+    [initialVendors, vendorParentTypeId]
   );
 
   const [typeQuery, setTypeQuery] = useState("");
   const [typeStatusFilter, setTypeStatusFilter] = useState<StatusFilter>("all");
   const [subTypeQuery, setSubTypeQuery] = useState("");
   const [subTypeStatusFilter, setSubTypeStatusFilter] = useState<StatusFilter>("all");
+  const [vendorTypeQuery, setVendorTypeQuery] = useState("");
+  const [vendorTypeStatusFilter, setVendorTypeStatusFilter] = useState<StatusFilter>("all");
+  const [vendorQuery, setVendorQuery] = useState("");
+  const [vendorStatusFilter, setVendorStatusFilter] = useState<StatusFilter>("all");
 
   const filteredTypes = useMemo(() => {
     const needle = typeQuery.trim().toLowerCase();
@@ -115,8 +152,36 @@ export function BigBookSettingsPanel({ initialTypes, initialSubTypes, initialAct
     });
   }, [subTypesForSelectedType, subTypeQuery, subTypeStatusFilter]);
 
+  const filteredVendorTypes = useMemo(() => {
+    const needle = vendorTypeQuery.trim().toLowerCase();
+    return initialVendorTypes.filter((row) => {
+      if (vendorTypeStatusFilter === "active" && !row.is_active) return false;
+      if (vendorTypeStatusFilter === "inactive" && row.is_active) return false;
+      if (!needle) return true;
+      return (
+        row.name.toLowerCase().includes(needle) ||
+        row.code.toLowerCase().includes(needle)
+      );
+    });
+  }, [initialVendorTypes, vendorTypeQuery, vendorTypeStatusFilter]);
+
+  const filteredVendors = useMemo(() => {
+    const needle = vendorQuery.trim().toLowerCase();
+    return vendorsForSelectedType.filter((row) => {
+      if (vendorStatusFilter === "active" && !row.is_active) return false;
+      if (vendorStatusFilter === "inactive" && row.is_active) return false;
+      if (!needle) return true;
+      return (
+        row.name.toLowerCase().includes(needle) ||
+        row.code.toLowerCase().includes(needle)
+      );
+    });
+  }, [vendorsForSelectedType, vendorQuery, vendorStatusFilter]);
+
   const typePagination = useTablePagination(filteredTypes.length, 10);
   const subTypePagination = useTablePagination(filteredSubTypes.length, 10);
+  const vendorTypePagination = useTablePagination(filteredVendorTypes.length, 10);
+  const vendorPagination = useTablePagination(filteredVendors.length, 10);
 
   // Reset to page 0 whenever the filtered set's identity changes due to filter
   // input changes — useTablePagination already clamps to a valid page when the
@@ -131,6 +196,16 @@ export function BigBookSettingsPanel({ initialTypes, initialSubTypes, initialAct
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subTypeQuery, subTypeStatusFilter, subTypeParentTypeId]);
 
+  useEffect(() => {
+    vendorTypePagination.setPage(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vendorTypeQuery, vendorTypeStatusFilter]);
+
+  useEffect(() => {
+    vendorPagination.setPage(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vendorQuery, vendorStatusFilter, vendorParentTypeId]);
+
   const pagedTypes = useMemo(
     () => sliceForPage(filteredTypes, typePagination.page, typePagination.pageSize),
     [filteredTypes, typePagination.page, typePagination.pageSize]
@@ -139,6 +214,14 @@ export function BigBookSettingsPanel({ initialTypes, initialSubTypes, initialAct
     () => sliceForPage(filteredSubTypes, subTypePagination.page, subTypePagination.pageSize),
     [filteredSubTypes, subTypePagination.page, subTypePagination.pageSize]
   );
+  const pagedVendorTypes = useMemo(
+    () => sliceForPage(filteredVendorTypes, vendorTypePagination.page, vendorTypePagination.pageSize),
+    [filteredVendorTypes, vendorTypePagination.page, vendorTypePagination.pageSize]
+  );
+  const pagedVendors = useMemo(
+    () => sliceForPage(filteredVendors, vendorPagination.page, vendorPagination.pageSize),
+    [filteredVendors, vendorPagination.page, vendorPagination.pageSize]
+  );
 
   const criticalPending =
     typeSubmitting ||
@@ -146,7 +229,12 @@ export function BigBookSettingsPanel({ initialTypes, initialSubTypes, initialAct
     actorSubmitting ||
     subTypeSubmitting ||
     toggleSubTypeSubmitting ||
-    subTypeDeleting;
+    subTypeDeleting ||
+    vendorTypeSubmitting ||
+    toggleVendorTypeSubmitting ||
+    vendorSubmitting ||
+    toggleVendorSubmitting ||
+    vendorDeleting;
 
   function triggerRefresh() {
     startTransition(() => {
@@ -304,6 +392,158 @@ export function BigBookSettingsPanel({ initialTypes, initialSubTypes, initialAct
       setError("Failed to delete sub-type due to a network error.");
     } finally {
       setSubTypeDeleting(false);
+    }
+  }
+
+  async function addVendorType() {
+    setVendorTypeSubmitting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await secureFetch("/api/big-book/vendor-types", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: newVendorTypeCode.trim().toUpperCase(),
+          name: newVendorTypeName.trim()
+        })
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(extractApiError(data.error, "Failed to add vendor type."));
+        return;
+      }
+      setMessage("Vendor Type added.");
+      setPendingAddVendorTypeConfirm(false);
+      setNewVendorTypeCode("");
+      setNewVendorTypeName("");
+      triggerRefresh();
+    } catch {
+      setError("Failed to add vendor type due to a network error.");
+    } finally {
+      setVendorTypeSubmitting(false);
+    }
+  }
+
+  async function toggleVendorType() {
+    if (!pendingToggleVendorType) return;
+    setToggleVendorTypeSubmitting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await secureFetch("/api/big-book/vendor-types", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: pendingToggleVendorType.id,
+          is_active: !pendingToggleVendorType.is_active
+        })
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(extractApiError(data.error, "Failed to update vendor type."));
+        return;
+      }
+      setMessage(`Vendor Type ${pendingToggleVendorType.is_active ? "deactivated" : "activated"}.`);
+      setPendingToggleVendorType(null);
+      triggerRefresh();
+    } catch {
+      setError("Failed to update vendor type due to a network error.");
+    } finally {
+      setToggleVendorTypeSubmitting(false);
+    }
+  }
+
+  async function addVendor() {
+    if (!vendorParentTypeId) {
+      setError("Select a parent vendor type first.");
+      return;
+    }
+    setVendorSubmitting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await secureFetch("/api/big-book/vendors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendor_type_id: vendorParentTypeId,
+          code: newVendorCode.trim().toUpperCase(),
+          name: newVendorName.trim()
+        })
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(extractApiError(data.error, "Failed to add vendor."));
+        return;
+      }
+      setMessage("Vendor Name added.");
+      setPendingAddVendorConfirm(false);
+      setNewVendorCode("");
+      setNewVendorName("");
+      triggerRefresh();
+    } catch {
+      setError("Failed to add vendor due to a network error.");
+    } finally {
+      setVendorSubmitting(false);
+    }
+  }
+
+  async function toggleVendor() {
+    if (!pendingToggleVendor) return;
+    setToggleVendorSubmitting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await secureFetch("/api/big-book/vendors", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: pendingToggleVendor.id,
+          is_active: !pendingToggleVendor.is_active
+        })
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(extractApiError(data.error, "Failed to update vendor."));
+        return;
+      }
+      setMessage(`Vendor Name ${pendingToggleVendor.is_active ? "deactivated" : "activated"}.`);
+      setPendingToggleVendor(null);
+      triggerRefresh();
+    } catch {
+      setError("Failed to update vendor due to a network error.");
+    } finally {
+      setToggleVendorSubmitting(false);
+    }
+  }
+
+  async function deleteVendor() {
+    if (!pendingDeleteVendor) return;
+    setVendorDeleting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await secureFetch(`/api/big-book/vendors?id=${pendingDeleteVendor.id}`, {
+        method: "DELETE"
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(extractApiError(data.error, "Failed to delete vendor."));
+        return;
+      }
+      setMessage("Vendor Name deleted.");
+      setPendingDeleteVendor(null);
+      triggerRefresh();
+    } catch {
+      setError("Failed to delete vendor due to a network error.");
+    } finally {
+      setVendorDeleting(false);
     }
   }
 
@@ -607,6 +847,276 @@ export function BigBookSettingsPanel({ initialTypes, initialSubTypes, initialAct
         />
       </section>
 
+      <section className="card relative" aria-busy={vendorTypeSubmitting || toggleVendorTypeSubmitting}>
+        <BlockingOverlay
+          active={vendorTypeSubmitting || toggleVendorTypeSubmitting}
+          label="Processing vendor types..."
+        />
+        <h2 className="text-lg font-semibold">Vendor Type Management</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Manage vendor types (e.g. Merchant, Partner, Client). Vendor Type is optional on ledger entries.
+        </p>
+        <div className="mt-4 grid grid-cols-1 gap-2 lg:grid-cols-3">
+          <input
+            className="field"
+            placeholder="Code (e.g. MERCHANT)"
+            value={newVendorTypeCode}
+            onChange={(event) => setNewVendorTypeCode(event.target.value)}
+          />
+          <input
+            className="field"
+            placeholder="Vendor Type Name"
+            value={newVendorTypeName}
+            onChange={(event) => setNewVendorTypeName(event.target.value)}
+          />
+          <button
+            className="btn"
+            disabled={!newVendorTypeCode.trim() || !newVendorTypeName.trim() || vendorTypeSubmitting}
+            onClick={() => setPendingAddVendorTypeConfirm(true)}
+          >
+            Add Vendor Type
+          </button>
+        </div>
+        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <label className="text-sm text-slate-700 sm:col-span-2">
+            <span className="mb-1 block">Search</span>
+            <input
+              className="field w-full"
+              placeholder="Search by name or code..."
+              value={vendorTypeQuery}
+              onChange={(event) => setVendorTypeQuery(event.target.value)}
+            />
+          </label>
+          <label className="text-sm text-slate-700">
+            <span className="mb-1 block">Status</span>
+            <select
+              className="field w-full"
+              value={vendorTypeStatusFilter}
+              onChange={(event) => setVendorTypeStatusFilter(event.target.value as StatusFilter)}
+            >
+              <option value="all">All</option>
+              <option value="active">Active only</option>
+              <option value="inactive">Inactive only</option>
+            </select>
+          </label>
+        </div>
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[640px] text-sm">
+            <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
+              <tr>
+                <th className="px-3 py-2">Code</th>
+                <th className="px-3 py-2">Name</th>
+                <th className="px-3 py-2">Sort</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pagedVendorTypes.length ? (
+                pagedVendorTypes.map((vendorType) => (
+                  <tr key={vendorType.id} className="border-b border-[rgb(var(--border))] align-middle">
+                    <td className="px-3 py-2 font-mono text-xs">{vendorType.code}</td>
+                    <td className="px-3 py-2 font-medium">{vendorType.name}</td>
+                    <td className="px-3 py-2 text-xs text-[rgb(var(--text-muted))]">{vendorType.sort_order}</td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${
+                          vendorType.is_active
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-slate-200 text-slate-700"
+                        }`}
+                      >
+                        {vendorType.is_active ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <button
+                        className="btn-secondary btn-sm"
+                        onClick={() => setPendingToggleVendorType(vendorType)}
+                        disabled={toggleVendorTypeSubmitting}
+                      >
+                        {vendorType.is_active ? "Deactivate" : "Activate"}
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td className="px-3 py-4 text-center text-slate-600" colSpan={5}>
+                    {initialVendorTypes.length
+                      ? "No vendor types match the current filters."
+                      : "No vendor types yet. Use the form above to add one."}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <TablePaginationBar
+          totalCount={filteredVendorTypes.length}
+          page={vendorTypePagination.page}
+          setPage={vendorTypePagination.setPage}
+          pageSize={vendorTypePagination.pageSize}
+          setPageSize={vendorTypePagination.setPageSize}
+          pageCount={vendorTypePagination.pageCount}
+          rangeLabel={vendorTypePagination.rangeLabel}
+        />
+      </section>
+
+      <section className="card relative" aria-busy={vendorSubmitting || toggleVendorSubmitting || vendorDeleting}>
+        <BlockingOverlay
+          active={vendorSubmitting || toggleVendorSubmitting || vendorDeleting}
+          label="Processing vendors..."
+        />
+        <h2 className="text-lg font-semibold">Vendor Name Management</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Manage vendor names per vendor type. Vendor Name is optional on ledger entries and can be left empty.
+        </p>
+        <div className="mt-4 grid grid-cols-1 gap-2 lg:grid-cols-4">
+          <select
+            className="field"
+            value={vendorParentTypeId}
+            onChange={(event) => setVendorParentTypeId(event.target.value)}
+            aria-label="Parent vendor type"
+          >
+            <option value="" disabled>
+              Select vendor type
+            </option>
+            {initialVendorTypes.map((vendorType) => (
+              <option key={vendorType.id} value={vendorType.id}>
+                {vendorType.name} {vendorType.is_active ? "" : "(inactive)"}
+              </option>
+            ))}
+          </select>
+          <input
+            className="field"
+            placeholder="Code (e.g. RBEE)"
+            value={newVendorCode}
+            onChange={(event) => setNewVendorCode(event.target.value)}
+          />
+          <input
+            className="field"
+            placeholder="Vendor Name"
+            value={newVendorName}
+            onChange={(event) => setNewVendorName(event.target.value)}
+          />
+          <button
+            className="btn"
+            disabled={
+              !vendorParentTypeId ||
+              !newVendorCode.trim() ||
+              !newVendorName.trim() ||
+              vendorSubmitting
+            }
+            onClick={() => setPendingAddVendorConfirm(true)}
+          >
+            Add Vendor Name
+          </button>
+        </div>
+        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <label className="text-sm text-slate-700 sm:col-span-2">
+            <span className="mb-1 block">Search</span>
+            <input
+              className="field w-full"
+              placeholder="Search by name or code..."
+              value={vendorQuery}
+              onChange={(event) => setVendorQuery(event.target.value)}
+              disabled={!vendorParentTypeId}
+            />
+          </label>
+          <label className="text-sm text-slate-700">
+            <span className="mb-1 block">Status</span>
+            <select
+              className="field w-full"
+              value={vendorStatusFilter}
+              onChange={(event) => setVendorStatusFilter(event.target.value as StatusFilter)}
+              disabled={!vendorParentTypeId}
+            >
+              <option value="all">All</option>
+              <option value="active">Active only</option>
+              <option value="inactive">Inactive only</option>
+            </select>
+          </label>
+        </div>
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[720px] text-sm">
+            <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
+              <tr>
+                <th className="px-3 py-2">Code</th>
+                <th className="px-3 py-2">Name</th>
+                <th className="px-3 py-2">Sort</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {!vendorParentTypeId ? (
+                <tr>
+                  <td className="px-3 py-4 text-center text-slate-600" colSpan={5}>
+                    Select a vendor type to view its vendor names.
+                  </td>
+                </tr>
+              ) : pagedVendors.length ? (
+                pagedVendors.map((vendor) => (
+                  <tr key={vendor.id} className="border-b border-[rgb(var(--border))] align-middle">
+                    <td className="px-3 py-2 font-mono text-xs">{vendor.code}</td>
+                    <td className="px-3 py-2 font-medium">{vendor.name}</td>
+                    <td className="px-3 py-2 text-xs text-[rgb(var(--text-muted))]">{vendor.sort_order}</td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${
+                          vendor.is_active
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-slate-200 text-slate-700"
+                        }`}
+                      >
+                        {vendor.is_active ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <button
+                          className="btn-secondary btn-sm"
+                          onClick={() => setPendingToggleVendor(vendor)}
+                          disabled={toggleVendorSubmitting || vendorDeleting}
+                        >
+                          {vendor.is_active ? "Deactivate" : "Activate"}
+                        </button>
+                        <button
+                          className="btn-secondary btn-sm !border-rose-300 !text-rose-700 hover:!bg-rose-50"
+                          onClick={() => setPendingDeleteVendor(vendor)}
+                          disabled={toggleVendorSubmitting || vendorDeleting}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td className="px-3 py-4 text-center text-slate-600" colSpan={5}>
+                    {vendorsForSelectedType.length
+                      ? "No vendor names match the current filters."
+                      : "No vendor names for this vendor type yet."}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <TablePaginationBar
+          totalCount={filteredVendors.length}
+          page={vendorPagination.page}
+          setPage={vendorPagination.setPage}
+          pageSize={vendorPagination.pageSize}
+          setPageSize={vendorPagination.setPageSize}
+          pageCount={vendorPagination.pageCount}
+          rangeLabel={vendorPagination.rangeLabel}
+          show={Boolean(vendorParentTypeId)}
+        />
+      </section>
+
       <section className="card">
         <h2 className="text-lg font-semibold">Actor A/B Mapping</h2>
         <p className="mt-1 text-sm text-slate-600">Both actors share the same authority level and are fixed globally.</p>
@@ -718,6 +1228,68 @@ export function BigBookSettingsPanel({ initialTypes, initialSubTypes, initialAct
         variant="danger"
         closeOnBackdrop={false}
         onConfirm={deleteSubType}
+      />
+
+      <ConfirmDialog
+        open={pendingAddVendorTypeConfirm}
+        onOpenChange={setPendingAddVendorTypeConfirm}
+        title="Add new vendor type?"
+        description="The new vendor type will become available for future Big Book records."
+        confirmLabel="Add Vendor Type"
+        confirming={vendorTypeSubmitting}
+        closeOnBackdrop={false}
+        onConfirm={addVendorType}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingToggleVendorType)}
+        onOpenChange={(open) => {
+          if (!open && !toggleVendorTypeSubmitting) setPendingToggleVendorType(null);
+        }}
+        title={pendingToggleVendorType?.is_active ? "Deactivate vendor type?" : "Activate vendor type?"}
+        description="Changing active state affects whether this vendor type can be selected in new records."
+        confirmLabel={pendingToggleVendorType?.is_active ? "Deactivate" : "Activate"}
+        confirming={toggleVendorTypeSubmitting}
+        closeOnBackdrop={false}
+        onConfirm={toggleVendorType}
+      />
+
+      <ConfirmDialog
+        open={pendingAddVendorConfirm}
+        onOpenChange={setPendingAddVendorConfirm}
+        title="Add new vendor name?"
+        description="The new vendor name will be available under the selected vendor type."
+        confirmLabel="Add Vendor Name"
+        confirming={vendorSubmitting}
+        closeOnBackdrop={false}
+        onConfirm={addVendor}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingToggleVendor)}
+        onOpenChange={(open) => {
+          if (!open && !toggleVendorSubmitting) setPendingToggleVendor(null);
+        }}
+        title={pendingToggleVendor?.is_active ? "Deactivate vendor name?" : "Activate vendor name?"}
+        description="Changing active state affects whether this vendor name can be selected in new records."
+        confirmLabel={pendingToggleVendor?.is_active ? "Deactivate" : "Activate"}
+        confirming={toggleVendorSubmitting}
+        closeOnBackdrop={false}
+        onConfirm={toggleVendor}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingDeleteVendor)}
+        onOpenChange={(open) => {
+          if (!open && !vendorDeleting) setPendingDeleteVendor(null);
+        }}
+        title="Delete vendor name?"
+        description="This will permanently remove the vendor name. Existing entries that reference it will have their vendor name cleared."
+        confirmLabel="Delete"
+        confirming={vendorDeleting}
+        variant="danger"
+        closeOnBackdrop={false}
+        onConfirm={deleteVendor}
       />
 
       <ConfirmDialog

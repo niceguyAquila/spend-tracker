@@ -7,7 +7,9 @@ import type {
   BigBookActorCurrencyMetrics,
   BigBookEntry,
   BigBookLedgerSubType,
-  BigBookLedgerType
+  BigBookLedgerType,
+  BigBookVendor,
+  BigBookVendorType
 } from "@/lib/types";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -23,6 +25,8 @@ import { buildBigBookImportTemplateCsv } from "@/lib/big-book/csv";
 type Props = {
   initialTypes: BigBookLedgerType[];
   initialSubTypes: BigBookLedgerSubType[];
+  initialVendorTypes: BigBookVendorType[];
+  initialVendors: BigBookVendor[];
   initialActors: BigBookActor[];
   initialEntries: BigBookEntry[];
   initialTotalCount: number;
@@ -34,6 +38,8 @@ type EntryFormState = {
   entry_direction: "spending" | "profit";
   entry_type_id: string;
   entry_sub_type_id: string;
+  vendor_type_id: string;
+  vendor_id: string;
   explanation: string;
   amount: string;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
@@ -101,6 +107,8 @@ const LEDGER_SKELETON_ROW_COUNT = 6;
 export function BigBookPanel({
   initialTypes,
   initialSubTypes,
+  initialVendorTypes,
+  initialVendors,
   initialActors,
   initialEntries,
   initialTotalCount,
@@ -145,6 +153,8 @@ export function BigBookPanel({
     entry_direction: "spending",
     entry_type_id: "",
     entry_sub_type_id: "",
+    vendor_type_id: "",
+    vendor_id: "",
     explanation: "",
     amount: "",
     currency_code: "IDR",
@@ -200,6 +210,8 @@ export function BigBookPanel({
     entry_direction: "spending",
     entry_type_id: activeTypes[0]?.id ?? initialTypes[0]?.id ?? "",
     entry_sub_type_id: "",
+    vendor_type_id: "",
+    vendor_id: "",
     explanation: "",
     amount: "",
     currency_code: "IDR",
@@ -215,6 +227,19 @@ export function BigBookPanel({
   const subTypesForEditForm = useMemo(
     () => activeSubTypes.filter((row) => row.entry_type_id === editForm.entry_type_id),
     [activeSubTypes, editForm.entry_type_id]
+  );
+  const activeVendorTypes = useMemo(
+    () => initialVendorTypes.filter((row) => row.is_active),
+    [initialVendorTypes]
+  );
+  const activeVendors = useMemo(() => initialVendors.filter((row) => row.is_active), [initialVendors]);
+  const vendorsForCreateForm = useMemo(
+    () => activeVendors.filter((row) => row.vendor_type_id === entryForm.vendor_type_id),
+    [activeVendors, entryForm.vendor_type_id]
+  );
+  const vendorsForEditForm = useMemo(
+    () => activeVendors.filter((row) => row.vendor_type_id === editForm.vendor_type_id),
+    [activeVendors, editForm.vendor_type_id]
   );
 
   const ledgerPagination = useTablePagination(totalCount);
@@ -446,6 +471,8 @@ export function BigBookPanel({
         body: JSON.stringify({
           ...entryForm,
           entry_sub_type_id: entryForm.entry_sub_type_id || null,
+          vendor_type_id: entryForm.vendor_type_id || null,
+          vendor_id: entryForm.vendor_id || null,
           amount: amountValue
         })
       });
@@ -508,7 +535,9 @@ export function BigBookPanel({
         explanation: "",
         amount: "",
         remark: "",
-        ...(keepModalOpen ? {} : { currency_code: "IDR", entry_sub_type_id: "" })
+        ...(keepModalOpen
+          ? {}
+          : { currency_code: "IDR", entry_sub_type_id: "", vendor_type_id: "", vendor_id: "" })
       }));
       triggerRefresh();
     } catch {
@@ -680,6 +709,8 @@ export function BigBookPanel({
       entry_direction: row.entry_direction,
       entry_type_id: row.entry_type_id,
       entry_sub_type_id: row.entry_sub_type_id ?? "",
+      vendor_type_id: row.vendor_type_id ?? "",
+      vendor_id: row.vendor_id ?? "",
       explanation: row.explanation,
       amount: formatAmountInput(String(row.amount)),
       currency_code: row.currency_code,
@@ -708,6 +739,8 @@ export function BigBookPanel({
           id: editingEntryId,
           ...editForm,
           entry_sub_type_id: editForm.entry_sub_type_id || null,
+          vendor_type_id: editForm.vendor_type_id || null,
+          vendor_id: editForm.vendor_id || null,
           amount: amountValue
         })
       });
@@ -1033,13 +1066,15 @@ export function BigBookPanel({
           </div>
         </form>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1320px] text-sm">
+          <table className="w-full min-w-[1520px] text-sm">
             <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
               <tr>
                 <th className="px-3 py-2">Date</th>
                 <th className="px-3 py-2">Cash Flow</th>
                 <th className="px-3 py-2">Type</th>
                 <th className="px-3 py-2">Sub-Type</th>
+                <th className="px-3 py-2">Vendor Type</th>
+                <th className="px-3 py-2">Vendor Name</th>
                 <th className="px-3 py-2">Explanation</th>
                 <th className="px-3 py-2">Amount</th>
                 <th className="px-3 py-2">Actor</th>
@@ -1059,6 +1094,8 @@ export function BigBookPanel({
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-5 w-14 rounded-full bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-28 rounded bg-[rgb(var(--surface-muted))]" /></td>
+                      <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
+                      <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-56 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
@@ -1086,6 +1123,20 @@ export function BigBookPanel({
                       <td className="px-3 py-2">
                         {row.sub_type_name ? (
                           row.sub_type_name
+                        ) : (
+                          <span className="text-xs text-slate-500">-</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {row.vendor_type_name ? (
+                          row.vendor_type_name
+                        ) : (
+                          <span className="text-xs text-slate-500">-</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {row.vendor_name ? (
+                          row.vendor_name
                         ) : (
                           <span className="text-xs text-slate-500">-</span>
                         )}
@@ -1156,7 +1207,7 @@ export function BigBookPanel({
                   ))}
               {!entries.length && !entriesLoading ? (
                 <tr>
-                  <td className="px-3 py-4 text-center text-slate-600" colSpan={10}>
+                  <td className="px-3 py-4 text-center text-slate-600" colSpan={12}>
                     No records match the current filters.
                   </td>
                 </tr>
@@ -1393,6 +1444,45 @@ export function BigBookPanel({
               ))}
             </select>
           </label>
+          <label className="text-sm">
+            Vendor Type
+            <select
+              className="field mt-1"
+              value={entryForm.vendor_type_id}
+              onChange={(event) =>
+                setEntryForm((prev) => ({
+                  ...prev,
+                  vendor_type_id: event.target.value,
+                  vendor_id: ""
+                }))
+              }
+            >
+              <option value="">(none)</option>
+              {activeVendorTypes.map((vendorType) => (
+                <option key={vendorType.id} value={vendorType.id}>
+                  {vendorType.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm">
+            Vendor Name
+            <select
+              className="field mt-1"
+              value={entryForm.vendor_id}
+              onChange={(event) =>
+                setEntryForm((prev) => ({ ...prev, vendor_id: event.target.value }))
+              }
+              disabled={!entryForm.vendor_type_id || !vendorsForCreateForm.length}
+            >
+              <option value="">(none)</option>
+              {vendorsForCreateForm.map((vendor) => (
+                <option key={vendor.id} value={vendor.id}>
+                  {vendor.name}
+                </option>
+              ))}
+            </select>
+          </label>
             <label className="text-sm">
               Cash Flow *
               <select
@@ -1596,6 +1686,45 @@ export function BigBookPanel({
               {subTypesForEditForm.map((subType) => (
                 <option key={subType.id} value={subType.id}>
                   {subType.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm">
+            Vendor Type
+            <select
+              className="field mt-1"
+              value={editForm.vendor_type_id}
+              onChange={(event) =>
+                setEditForm((prev) => ({
+                  ...prev,
+                  vendor_type_id: event.target.value,
+                  vendor_id: ""
+                }))
+              }
+            >
+              <option value="">(none)</option>
+              {activeVendorTypes.map((vendorType) => (
+                <option key={vendorType.id} value={vendorType.id}>
+                  {vendorType.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm">
+            Vendor Name
+            <select
+              className="field mt-1"
+              value={editForm.vendor_id}
+              onChange={(event) =>
+                setEditForm((prev) => ({ ...prev, vendor_id: event.target.value }))
+              }
+              disabled={!editForm.vendor_type_id || !vendorsForEditForm.length}
+            >
+              <option value="">(none)</option>
+              {vendorsForEditForm.map((vendor) => (
+                <option key={vendor.id} value={vendor.id}>
+                  {vendor.name}
                 </option>
               ))}
             </select>

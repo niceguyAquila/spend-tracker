@@ -49,23 +49,32 @@ export async function POST(request: Request) {
   const [
     { data: types, error: typesError },
     { data: actors, error: actorsError },
-    { data: subTypes, error: subTypesError }
+    { data: subTypes, error: subTypesError },
+    { data: vendorTypes, error: vendorTypesError },
+    { data: vendors, error: vendorsError }
   ] = await Promise.all([
     supabase.from("business_ledger_types").select("id,name").eq("is_active", true),
     supabase.from("big_book_actors").select("id,display_name"),
     supabase
       .from("business_ledger_sub_types")
       .select("id,name,entry_type_id")
+      .eq("is_active", true),
+    supabase.from("business_ledger_vendor_types").select("id,name").eq("is_active", true),
+    supabase
+      .from("business_ledger_vendors")
+      .select("id,name,vendor_type_id")
       .eq("is_active", true)
   ]);
 
-  if (typesError || actorsError || subTypesError) {
+  if (typesError || actorsError || subTypesError || vendorTypesError || vendorsError) {
     return NextResponse.json(
       {
         error:
           typesError?.message ??
           actorsError?.message ??
           subTypesError?.message ??
+          vendorTypesError?.message ??
+          vendorsError?.message ??
           "Failed to load import references."
       },
       { status: 400 }
@@ -79,6 +88,15 @@ export async function POST(request: Request) {
   const subTypeKeyToId: NameToIdMap = new Map(
     (subTypes ?? []).map((row) => [
       `${row.entry_type_id}::${normalizeLookupKey(row.name)}`,
+      row.id
+    ])
+  );
+  const vendorTypeNameToId: NameToIdMap = new Map(
+    (vendorTypes ?? []).map((row) => [normalizeLookupKey(row.name), row.id])
+  );
+  const vendorKeyToId: NameToIdMap = new Map(
+    (vendors ?? []).map((row) => [
+      `${row.vendor_type_id}::${normalizeLookupKey(row.name)}`,
       row.id
     ])
   );
@@ -105,6 +123,32 @@ export async function POST(request: Request) {
       }
     }
 
+    let vendorTypeId: string | null = null;
+    let vendorId: string | null = null;
+    if (row.vendor_type_name) {
+      vendorTypeId = vendorTypeNameToId.get(normalizeLookupKey(row.vendor_type_name)) ?? null;
+      if (!vendorTypeId) {
+        validationErrors.push(
+          `Row ${lineNumber}: vendor_type_name '${row.vendor_type_name}' is not available.`
+        );
+      }
+    }
+    if (row.vendor_name) {
+      if (!vendorTypeId) {
+        // skip when vendor type is missing/invalid — already reported above or by CSV parser
+      } else {
+        const vendorKey = `${vendorTypeId}::${normalizeLookupKey(row.vendor_name)}`;
+        const matchedVendorId = vendorKeyToId.get(vendorKey);
+        if (!matchedVendorId) {
+          validationErrors.push(
+            `Row ${lineNumber}: vendor_name '${row.vendor_name}' is not available under vendor type '${row.vendor_type_name}'.`
+          );
+        } else {
+          vendorId = matchedVendorId;
+        }
+      }
+    }
+
     if (!entryTypeId) {
       validationErrors.push(`Row ${lineNumber}: type_name '${row.type_name}' is not available.`);
     }
@@ -117,6 +161,8 @@ export async function POST(request: Request) {
       entry_direction: row.entry_direction,
       entry_type_id: entryTypeId ?? "",
       entry_sub_type_id: entrySubTypeId,
+      vendor_type_id: vendorTypeId,
+      vendor_id: vendorId,
       explanation: row.explanation,
       amount: row.amount,
       currency_code: row.currency_code,

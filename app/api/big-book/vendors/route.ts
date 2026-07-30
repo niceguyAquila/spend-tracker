@@ -2,12 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdminApi } from "@/lib/auth-api";
 import { assertCsrfAndOrigin } from "@/lib/security/origin";
-import {
-  bigBookEntriesQuerySchema,
-  bigBookEntryInputSchema,
-  bigBookEntryUpdateSchema
-} from "@/lib/validation/big-book";
-import { getBigBookEntriesPaged } from "@/lib/db/queries";
+import { bigBookVendorCreateSchema, bigBookVendorUpdateSchema } from "@/lib/validation/big-book";
 
 export async function GET(request: Request) {
   const authCheck = await requireAdminApi();
@@ -16,28 +11,26 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const parsed = bigBookEntriesQuerySchema.safeParse({
-    typeId: searchParams.getAll("typeId"),
-    currencyCode: searchParams.getAll("currencyCode"),
-    direction: searchParams.getAll("direction"),
-    actorId: searchParams.getAll("actorId"),
-    dateFrom: searchParams.get("dateFrom") ?? "",
-    dateTo: searchParams.get("dateTo") ?? "",
-    query: searchParams.get("query") ?? "",
-    page: searchParams.get("page") ?? undefined,
-    pageSize: searchParams.get("pageSize") ?? undefined
-  });
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  const vendorTypeId = searchParams.get("vendorTypeId");
+
+  const supabase = await createClient();
+  let query = supabase
+    .from("business_ledger_vendors")
+    .select("id, vendor_type_id, code, name, is_active, sort_order, created_at, updated_at")
+    .order("vendor_type_id", { ascending: true })
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+
+  if (vendorTypeId) {
+    query = query.eq("vendor_type_id", vendorTypeId);
   }
 
-  try {
-    const result = await getBigBookEntriesPaged(parsed.data);
-    return NextResponse.json(result);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to load ledger entries.";
-    return NextResponse.json({ error: message }, { status: 500 });
+  const { data, error } = await query;
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
   }
+  return NextResponse.json({ rows: data ?? [] });
 }
 
 export async function POST(request: Request) {
@@ -51,31 +44,38 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const parsed = bigBookEntryInputSchema.safeParse(body);
+  const parsed = bigBookVendorCreateSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
   const supabase = await createClient();
-  const actorId = authCheck.user.id;
-  const payload = parsed.data;
+  const { data: latestRow, error: latestError } = await supabase
+    .from("business_ledger_vendors")
+    .select("sort_order")
+    .eq("vendor_type_id", parsed.data.vendor_type_id)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (latestError) {
+    return NextResponse.json({ error: latestError.message }, { status: 400 });
+  }
+
+  const nextSortOrder =
+    typeof parsed.data.sort_order === "number"
+      ? parsed.data.sort_order
+      : typeof latestRow?.sort_order === "number"
+        ? latestRow.sort_order + 10
+        : 10;
+
   const { data, error } = await supabase
-    .from("business_ledger_entries")
+    .from("business_ledger_vendors")
     .insert({
-      brand_id: authCheck.activeBrandId,
-      entry_date: payload.entry_date,
-      entry_direction: payload.entry_direction,
-      entry_type_id: payload.entry_type_id,
-      entry_sub_type_id: payload.entry_sub_type_id ?? null,
-      vendor_type_id: payload.vendor_type_id ?? null,
-      vendor_id: payload.vendor_id ?? null,
-      explanation: payload.explanation,
-      amount: payload.amount,
-      currency_code: payload.currency_code,
-      remark: payload.remark || null,
-      responsible_actor_id: payload.responsible_actor_id,
-      created_by: actorId,
-      updated_by: actorId
+      vendor_type_id: parsed.data.vendor_type_id,
+      code: parsed.data.code,
+      name: parsed.data.name,
+      sort_order: nextSortOrder
     })
     .select("id")
     .single();
@@ -83,6 +83,7 @@ export async function POST(request: Request) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
+
   return NextResponse.json({ id: data.id });
 }
 
@@ -97,28 +98,22 @@ export async function PATCH(request: Request) {
   }
 
   const body = await request.json();
-  const parsed = bigBookEntryUpdateSchema.safeParse(body);
+  const parsed = bigBookVendorUpdateSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
   const { id, ...payload } = parsed.data;
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("business_ledger_entries")
-    .update({
-      ...payload,
-      entry_sub_type_id: payload.entry_sub_type_id ?? null,
-      vendor_type_id: payload.vendor_type_id ?? null,
-      vendor_id: payload.vendor_id ?? null,
-      remark: payload.remark || null,
-      updated_by: authCheck.user.id
-    })
-    .eq("id", id);
+  if (Object.keys(payload).length === 0) {
+    return NextResponse.json({ error: "No fields provided to update." }, { status: 400 });
+  }
 
+  const supabase = await createClient();
+  const { error } = await supabase.from("business_ledger_vendors").update(payload).eq("id", id);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
+
   return NextResponse.json({ ok: true });
 }
 
@@ -135,15 +130,14 @@ export async function DELETE(request: Request) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
   if (!id) {
-    return NextResponse.json({ error: "Entry ID is required." }, { status: 400 });
+    return NextResponse.json({ error: "Vendor ID is required." }, { status: 400 });
   }
 
   const supabase = await createClient();
   const { data, error } = await supabase
-    .from("business_ledger_entries")
+    .from("business_ledger_vendors")
     .delete()
     .eq("id", id)
-    .eq("brand_id", authCheck.activeBrandId)
     .select("id")
     .maybeSingle();
 
@@ -151,7 +145,8 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
   if (!data) {
-    return NextResponse.json({ error: "Entry not found." }, { status: 404 });
+    return NextResponse.json({ error: "Vendor not found." }, { status: 404 });
   }
+
   return NextResponse.json({ ok: true });
 }

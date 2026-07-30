@@ -41,23 +41,65 @@ export const bigBookSubTypeUpdateSchema = z.object({
   sort_order: z.coerce.number().int().min(0).max(9999).optional()
 });
 
+export const bigBookVendorTypeCreateSchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .min(2)
+    .max(64)
+    .regex(/^[A-Z0-9_]+$/, "Code must use uppercase letters, numbers, and underscores."),
+  name: z.string().trim().min(2).max(100),
+  sort_order: z.coerce.number().int().min(0).max(9999).optional()
+});
+
+export const bigBookVendorTypeUpdateSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().trim().min(2).max(100).optional(),
+  is_active: z.boolean().optional(),
+  sort_order: z.coerce.number().int().min(0).max(9999).optional()
+});
+
+export const bigBookVendorCreateSchema = z.object({
+  vendor_type_id: z.string().uuid("Vendor Type is required"),
+  code: z
+    .string()
+    .trim()
+    .min(2)
+    .max(64)
+    .regex(/^[A-Z0-9_]+$/, "Code must use uppercase letters, numbers, and underscores."),
+  name: z.string().trim().min(2).max(100),
+  sort_order: z.coerce.number().int().min(0).max(9999).optional()
+});
+
+export const bigBookVendorUpdateSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().trim().min(2).max(100).optional(),
+  is_active: z.boolean().optional(),
+  sort_order: z.coerce.number().int().min(0).max(9999).optional()
+});
+
 export const bigBookActorUpdateSchema = z.object({
   id: z.string().uuid(),
   display_name: z.string().trim().min(2).max(100).optional(),
   user_id: z.string().uuid().nullable().optional()
 });
 
+const optionalUuidOrEmpty = (message: string) =>
+  z
+    .string()
+    .uuid(message)
+    .nullable()
+    .optional()
+    .or(z.literal(""))
+    .transform((value) => (value && value.length ? value : null));
+
 export const bigBookEntryInputSchema = z.object({
   entry_date: z.string().min(1, "Date is required"),
   entry_direction: bigBookEntryDirectionSchema,
   entry_type_id: z.string().uuid("Type is required"),
-  entry_sub_type_id: z
-    .string()
-    .uuid("Sub-Type must be a valid id")
-    .nullable()
-    .optional()
-    .or(z.literal(""))
-    .transform((value) => (value && value.length ? value : null)),
+  entry_sub_type_id: optionalUuidOrEmpty("Sub-Type must be a valid id"),
+  vendor_type_id: optionalUuidOrEmpty("Vendor Type must be a valid id"),
+  vendor_id: optionalUuidOrEmpty("Vendor Name must be a valid id"),
   explanation: z.string().trim().min(2).max(500),
   amount: z.coerce.number().positive("Amount must be greater than 0"),
   currency_code: bigBookCurrencySchema,

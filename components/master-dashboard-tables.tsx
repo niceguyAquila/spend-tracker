@@ -127,12 +127,14 @@ export function MasterDashboardBigBookEntriesTable({ entries }: MasterDashboardB
   return (
     <>
       <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[980px] text-sm">
+        <table className="w-full min-w-[1180px] text-sm">
           <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
             <tr>
               <th className="px-3 py-2">Date</th>
               <th className="px-3 py-2">Cash Flow</th>
               <th className="px-3 py-2">Type</th>
+              <th className="px-3 py-2">Vendor Type</th>
+              <th className="px-3 py-2">Vendor Name</th>
               <th className="px-3 py-2">Explanation</th>
               <th className="px-3 py-2">Amount</th>
               <th className="px-3 py-2">Actor</th>
@@ -144,6 +146,8 @@ export function MasterDashboardBigBookEntriesTable({ entries }: MasterDashboardB
                 <td className="px-3 py-2">{formatDateDisplay(entry.entry_date)}</td>
                 <td className="px-3 py-2">{entry.entry_direction === "profit" ? "In" : "Out"}</td>
                 <td className="px-3 py-2">{entry.type_name}</td>
+                <td className="px-3 py-2">{entry.vendor_type_name ?? "-"}</td>
+                <td className="px-3 py-2">{entry.vendor_name ?? "-"}</td>
                 <td className="px-3 py-2">{entry.explanation}</td>
                 <td className={`px-3 py-2 ${getAmountColorClass(entry.entry_direction === "spending" ? -entry.amount : entry.amount)}`}>
                   {entry.currency_code} {formatAmount(entry.amount, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
@@ -153,7 +157,7 @@ export function MasterDashboardBigBookEntriesTable({ entries }: MasterDashboardB
             ))}
             {!entries.length ? (
               <tr>
-                <td className="px-3 py-4 text-center text-muted" colSpan={6}>
+                <td className="px-3 py-4 text-center text-muted" colSpan={8}>
                   No Big Book entries found for this brand type mapping.
                 </td>
               </tr>
