@@ -13,6 +13,34 @@ const REQUIRED_HEADERS = [
 
 const OPTIONAL_HEADERS = ["sub_type_name"] as const;
 
+/** Full import/export column order (required + optional). */
+export const BIG_BOOK_CSV_HEADERS = [
+  "entry_date",
+  "entry_direction",
+  "type_name",
+  "sub_type_name",
+  "explanation",
+  "amount",
+  "currency_code",
+  "remark",
+  "actor_name"
+] as const;
+
+export function buildBigBookImportTemplateCsv(): string {
+  const exampleRow = [
+    "2026-04-25",
+    "spending",
+    "Office Supplies",
+    "Stationery",
+    "Printer ink",
+    "350000",
+    "IDR",
+    "Restock",
+    "Actor A"
+  ];
+  return [BIG_BOOK_CSV_HEADERS.join(","), exampleRow.join(",")].join("\n");
+}
+
 type AllowedCurrency = "IDR" | "MYR" | "USDT" | "TRX";
 type AllowedDirection = "spending" | "profit";
 

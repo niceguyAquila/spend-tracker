@@ -1,4 +1,4 @@
-# ZenPlay Spend Tracker
+# Aquila Big Book
 
 Next.js + Supabase application for tracking monthly operational spending with dynamic sub-categories.
 
@@ -23,6 +23,8 @@ Next.js + Supabase application for tracking monthly operational spending with dy
 5. Run the app:
   - `npm run dev`
 
+
+
 ## Routes
 
 - `/dashboard` - KPI and monthly analytics dashboard
@@ -30,6 +32,8 @@ Next.js + Supabase application for tracking monthly operational spending with dy
 - `/dashboard/settings/categories` - sub-category manager
 - `/dashboard/admin/users` - admin-only invite and access management
 - `/login` - internal login page
+
+
 
 ## Internal Auth Model
 
@@ -44,12 +48,15 @@ Next.js + Supabase application for tracking monthly operational spending with dy
   - `viewer`: read-only dashboard access
 
 Key auth files:
+
 - `lib/supabase/server.ts` / `lib/supabase/client.ts` / `lib/supabase/admin.ts`
 - `middleware.ts`
 - `app/login/page.tsx`
 - `app/auth/callback/route.ts`
 - `app/api/admin/invite/route.ts`
 - `app/api/admin/users/route.ts`
+
+
 
 ## Supabase Migrations
 
@@ -61,3 +68,4 @@ Key auth files:
   - Explicit RLS policies and function permissions
 - `202604230004_internal_auth_access.sql`
   - Allowed-user table and RLS for internal invited access
+

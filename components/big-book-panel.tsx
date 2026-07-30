@@ -18,6 +18,7 @@ import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/disp
 import { useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
+import { buildBigBookImportTemplateCsv } from "@/lib/big-book/csv";
 
 type Props = {
   initialTypes: BigBookLedgerType[];
@@ -609,6 +610,19 @@ export function BigBookPanel({
     } finally {
       setImportSubmitting(false);
     }
+  }
+
+  function downloadImportTemplate() {
+    const csv = buildBigBookImportTemplateCsv();
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const downloadUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = downloadUrl;
+    anchor.download = "big-book-import-template.csv";
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(downloadUrl);
   }
 
   async function exportEntries() {
@@ -1240,7 +1254,7 @@ export function BigBookPanel({
         }
       >
         <div className="space-y-4">
-          <div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="text-sm text-slate-600">
                 Download the template, fill multiple rows, then import all at once.
@@ -1249,6 +1263,9 @@ export function BigBookPanel({
                 Type name and actor name must match currently available values in Big Book.
               </p>
             </div>
+            <button type="button" className="btn-secondary shrink-0" onClick={downloadImportTemplate}>
+              Download Template
+            </button>
           </div>
           <label className="text-sm text-slate-700">
             <span className="mb-1 block">CSV File</span>

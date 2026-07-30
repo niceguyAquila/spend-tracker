@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseBigBookCsv } from "@/lib/big-book/csv";
+import { buildBigBookImportTemplateCsv, parseBigBookCsv } from "@/lib/big-book/csv";
 
 describe("parseBigBookCsv", () => {
   it("parses valid rows", () => {
@@ -64,5 +64,25 @@ describe("parseBigBookCsv", () => {
     const result = parseBigBookCsv(csv);
     expect(result.rows).toHaveLength(0);
     expect(result.errors.some((item) => item.includes("entry_date"))).toBe(true);
+  });
+});
+
+describe("buildBigBookImportTemplateCsv", () => {
+  it("produces a CSV that parseBigBookCsv accepts", () => {
+    const csv = buildBigBookImportTemplateCsv();
+    const result = parseBigBookCsv(csv);
+    expect(result.errors).toEqual([]);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({
+      entry_date: "2026-04-25",
+      entry_direction: "spending",
+      type_name: "Office Supplies",
+      sub_type_name: "Stationery",
+      explanation: "Printer ink",
+      amount: 350000,
+      currency_code: "IDR",
+      remark: "Restock",
+      actor_name: "Actor A"
+    });
   });
 });
