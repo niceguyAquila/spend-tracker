@@ -86,6 +86,8 @@ export default async function BigBookMasterDashboardPage({ searchParams }: BigBo
           <h2 className="text-lg font-semibold">Cashflow by Type and Currency</h2>
           <p className="mt-1 text-sm text-muted">
             Each row is grouped by Actor + Type. Inflow is blue, outflow is red, and net follows its value sign.
+            Pocket transactions are excluded here, so with no filters applied the combined net per currency matches
+            Grand Total by Actor on the Transaction Dashboard.
           </p>
           <BigBookTypeCashflowFilters
             actors={actors}

@@ -5,6 +5,7 @@ import {
   aggregateVendorActorOutstanding
 } from "@/lib/big-book/credit";
 import {
+  roundBigBookAmount,
   summarizeCurrencies,
   type BigBookCurrency,
   type BigBookCurrencyTotal
@@ -1279,6 +1280,24 @@ export async function getBigBookActorPocketMetrics(): Promise<BigBookActorPocket
   return [...byActor.values()].sort((a, b) => a.actor_code.localeCompare(b.actor_code));
 }
 
+const BIG_BOOK_CASHFLOW_SCAN_PAGE_SIZE = 1000;
+
+const BIG_BOOK_CASHFLOW_SCAN_SELECT = `
+  responsible_actor_id, entry_type_id, entry_direction, currency_code, amount,
+  big_book_actors(display_name),
+  business_ledger_types(code, name)
+`;
+
+type RawBigBookCashflowScanRow = {
+  responsible_actor_id: string;
+  entry_type_id: string;
+  entry_direction: "spending" | "profit";
+  currency_code: BigBookTypeCashflowByCurrency["currency"];
+  amount: number | string;
+  big_book_actors: { display_name: string } | { display_name: string }[] | null;
+  business_ledger_types: { code: string; name: string } | { code: string; name: string }[] | null;
+};
+
 export async function getBigBookTypeCashflowByCurrency(filters?: {
   actorId?: string[];
   typeId?: string[];
@@ -1288,73 +1307,88 @@ export async function getBigBookTypeCashflowByCurrency(filters?: {
   dateFrom?: string;
   dateTo?: string;
 }): Promise<BigBookTypeCashflowByCurrency[]> {
+  const supabase = await createClient();
   const activeTypes = await getBigBookLedgerTypes({ includeInactive: true });
   const allCurrencies: Array<BigBookTypeCashflowByCurrency["currency"]> = ["IDR", "MYR", "USDT", "TRX"];
   const currencies = filters?.currencyCode?.length
     ? allCurrencies.filter((currency) => filters.currencyCode!.includes(currency))
     : allCurrencies;
-  const entries = await getBigBookEntries({
-    actorId: filters?.actorId,
-    typeId: filters?.typeId,
-    vendorTypeId: filters?.vendorTypeId,
-    vendorId: filters?.vendorId,
-    currencyCode: filters?.currencyCode,
-    dateFrom: filters?.dateFrom,
-    dateTo: filters?.dateTo,
-    limit: 5000
-  });
   const typeMap = new Map(activeTypes.map((type) => [type.id, type]));
 
-  const totalsMap = new Map<string, { inflow: number; outflow: number; net: number }>();
-  for (const entry of entries) {
-    const amount = Math.abs(Number(entry.amount));
-    const key = `${entry.currency_code}:${entry.responsible_actor_id}:${entry.entry_type_id}`;
-    const existing = totalsMap.get(key) ?? { inflow: 0, outflow: 0, net: 0 };
+  // Paged to exhaustion rather than taking a single large `.limit()`, which
+  // PostgREST silently truncates at its `max-rows` setting and would leave the
+  // dashboard quietly summing only the most recent slice of the ledger.
+  const scanRows: RawBigBookCashflowScanRow[] = [];
+  let offset = 0;
+  while (true) {
+    let query = supabase
+      .from("business_ledger_entries")
+      .select(BIG_BOOK_CASHFLOW_SCAN_SELECT)
+      // Pocket-tagged entries are reported under pocket totals, matching
+      // `getBigBookActorCurrencyMetrics`, so the two views reconcile.
+      .is("pocket_id", null)
+      // Unique and immutable, so pages cannot overlap or skip rows mid-scan.
+      .order("id", { ascending: true });
+    query = applyBigBookEntryFilters(query, filters);
 
-    if (entry.entry_direction === "profit") {
-      existing.inflow += amount;
-      existing.net += amount;
-    } else {
-      existing.outflow += amount;
-      existing.net -= amount;
+    const { data, error } = await query.range(
+      offset,
+      offset + BIG_BOOK_CASHFLOW_SCAN_PAGE_SIZE - 1
+    );
+    if (error) throw error;
+
+    const batch = (data ?? []) as unknown as RawBigBookCashflowScanRow[];
+    scanRows.push(...batch);
+    if (batch.length < BIG_BOOK_CASHFLOW_SCAN_PAGE_SIZE) break;
+    offset += BIG_BOOK_CASHFLOW_SCAN_PAGE_SIZE;
+  }
+
+  const rowsByCurrency = new Map<
+    BigBookTypeCashflowByCurrency["currency"],
+    Map<string, BigBookTypeCashflowRow>
+  >(currencies.map((currency) => [currency, new Map<string, BigBookTypeCashflowRow>()]));
+
+  for (const row of scanRows) {
+    const bucket = rowsByCurrency.get(row.currency_code);
+    if (!bucket) continue;
+    const amount = Math.abs(Number(row.amount));
+    if (!Number.isFinite(amount)) continue;
+
+    const rowKey = `${row.responsible_actor_id}:${row.entry_type_id}`;
+    let cashflowRow = bucket.get(rowKey);
+    if (!cashflowRow) {
+      const actor = Array.isArray(row.big_book_actors) ? row.big_book_actors[0] : row.big_book_actors;
+      const joinedType = Array.isArray(row.business_ledger_types)
+        ? row.business_ledger_types[0]
+        : row.business_ledger_types;
+      const type = typeMap.get(row.entry_type_id);
+      cashflowRow = {
+        row_key: rowKey,
+        actor_id: row.responsible_actor_id,
+        actor_display_name: actor?.display_name ?? "Unknown Actor",
+        type_id: row.entry_type_id,
+        type_code: type?.code ?? joinedType?.code ?? "",
+        type_name: type?.name ?? joinedType?.name ?? "Unknown Type",
+        inflow: 0,
+        outflow: 0,
+        net: 0
+      };
+      bucket.set(rowKey, cashflowRow);
     }
 
-    totalsMap.set(key, existing);
+    if (row.entry_direction === "profit") {
+      cashflowRow.inflow += amount;
+    } else {
+      cashflowRow.outflow += amount;
+    }
   }
 
   return currencies.map((currency) => {
-    const rowMap = entries
-      .filter((entry) => entry.currency_code === currency)
-      .reduce<Map<string, BigBookTypeCashflowRow>>((acc, entry) => {
-        const rowKey = `${entry.responsible_actor_id}:${entry.entry_type_id}`;
-        if (acc.has(rowKey)) return acc;
-        const type = typeMap.get(entry.entry_type_id);
-        acc.set(rowKey, {
-          row_key: rowKey,
-          actor_id: entry.responsible_actor_id,
-          actor_display_name: entry.actor_display_name,
-          type_id: entry.entry_type_id,
-          type_code: type?.code ?? entry.type_code,
-          type_name: type?.name ?? entry.type_name,
-          inflow: 0,
-          outflow: 0,
-          net: 0
-        });
-        return acc;
-      }, new Map<string, BigBookTypeCashflowRow>());
-    const rows: BigBookTypeCashflowRow[] = Array.from(rowMap.values());
-
-    for (const row of rows) {
-      const totals =
-        totalsMap.get(`${currency}:${row.actor_id}:${row.type_id}`) ?? {
-          inflow: 0,
-          outflow: 0,
-          net: 0
-        };
-      row.inflow = totals.inflow;
-      row.outflow = totals.outflow;
-      row.net = totals.net;
-    }
+    const rows = [...(rowsByCurrency.get(currency)?.values() ?? [])].map((row) => {
+      const inflow = roundBigBookAmount(row.inflow);
+      const outflow = roundBigBookAmount(row.outflow);
+      return { ...row, inflow, outflow, net: roundBigBookAmount(inflow - outflow) };
+    });
 
     rows.sort((a, b) => {
       if (a.actor_display_name !== b.actor_display_name) {
@@ -1372,7 +1406,15 @@ export async function getBigBookTypeCashflowByCurrency(filters?: {
       { inflow: 0, outflow: 0, net: 0 }
     );
 
-    return { currency, rows, combined };
+    return {
+      currency,
+      rows,
+      combined: {
+        inflow: roundBigBookAmount(combined.inflow),
+        outflow: roundBigBookAmount(combined.outflow),
+        net: roundBigBookAmount(combined.net)
+      }
+    };
   });
 }
 

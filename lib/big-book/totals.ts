@@ -17,7 +17,7 @@ type SummableEntry = {
 
 // Amounts carry up to 4 decimals. Rounding the accumulated value at 8 decimals
 // keeps repeated float addition from surfacing artefacts like 1234.5600000000002.
-function roundAmount(value: number) {
+export function roundBigBookAmount(value: number) {
   return Math.round(value * 1e8) / 1e8;
 }
 
@@ -43,8 +43,8 @@ export function summarizeCurrencies(entries: SummableEntry[]): BigBookCurrencyTo
   return BIG_BOOK_CURRENCY_ORDER.flatMap((currency) => {
     const totals = map.get(currency);
     if (!totals) return [];
-    const spending = roundAmount(totals.spending);
-    const profit = roundAmount(totals.profit);
-    return [{ currency, spending, profit, net: roundAmount(profit - spending) }];
+    const spending = roundBigBookAmount(totals.spending);
+    const profit = roundBigBookAmount(totals.profit);
+    return [{ currency, spending, profit, net: roundBigBookAmount(profit - spending) }];
   });
 }
