@@ -99,8 +99,15 @@ const EMPTY_LEDGER_TOTALS: BigBookLedgerTotals = {
   pageTotals: [],
   pageEntryCount: 0,
   grandTotals: [],
-  grandEntryCount: 0
+  grandEntryCount: 0,
+  pagePocketExcludedCount: 0,
+  grandPocketExcludedCount: 0
 };
+
+function pocketExcludedLabel(count: number) {
+  if (count < 1) return null;
+  return ` · ${count} pocket transaction${count === 1 ? "" : "s"} excluded from totals`;
+}
 const GROUP_MENU_PREFIX = "group:";
 
 const CREDIT_FLAG_OPTIONS = [
@@ -599,8 +606,6 @@ export function BigBookPanel({
     useState<BigBookActorCurrencyMetrics[]>(initialActorMetrics);
 
   useEffect(() => {
-    // eslint-disable-next-line no-console
-    console.log("[BigBook DEBUG] prop-sync useEffect, initialActorMetrics:", initialActorMetrics);
     setActorCurrencyMetrics(initialActorMetrics);
   }, [initialActorMetrics]);
 
@@ -616,20 +621,10 @@ export function BigBookPanel({
       // excluded server-side too, so applying a delta here would only show a
       // wrong number until the refresh lands.
       if (pocketId) return;
-      // eslint-disable-next-line no-console
-      console.log("[BigBook DEBUG] applyMetricDelta called", { actorId, actorDisplayName, currency, delta });
       setActorCurrencyMetrics((prev) => {
         const next = prev.map((row) => ({ ...row, totals: { ...row.totals } }));
         const existing = next.find((row) => row.actor_id === actorId);
         if (existing) {
-          // eslint-disable-next-line no-console
-          console.log("[BigBook DEBUG] applyMetricDelta updating existing actor", {
-            actorId,
-            currency,
-            before: existing.totals[currency],
-            delta,
-            after: existing.totals[currency] + delta
-          });
           existing.totals[currency] += delta;
           return next;
         }
@@ -641,8 +636,6 @@ export function BigBookPanel({
           totals: { IDR: 0, MYR: 0, USDT: 0, TRX: 0 }
         };
         inserted.totals[currency] = delta;
-        // eslint-disable-next-line no-console
-        console.log("[BigBook DEBUG] applyMetricDelta inserting new actor", inserted);
         return [...next, inserted].sort((a, b) => a.actor_code.localeCompare(b.actor_code));
       });
     },
@@ -945,14 +938,6 @@ export function BigBookPanel({
       const createdActor = initialActors.find((actor) => actor.id === entryForm.responsible_actor_id);
       const createdDelta =
         entryForm.entry_direction === "spending" ? -amountValue : amountValue;
-      // eslint-disable-next-line no-console
-      console.log("[BigBook DEBUG] createEntry optimistic update", {
-        entry_direction: entryForm.entry_direction,
-        amountValue,
-        createdDelta,
-        responsible_actor_id: entryForm.responsible_actor_id,
-        currency_code: entryForm.currency_code
-      });
       applyMetricDelta(
         entryForm.responsible_actor_id,
         createdActor?.display_name ?? "Unknown Actor",
@@ -1024,14 +1009,6 @@ export function BigBookPanel({
       const deletedAmount = Math.abs(Number(pendingDeleteEntry.amount));
       const deletedDelta =
         pendingDeleteEntry.entry_direction === "spending" ? deletedAmount : -deletedAmount;
-      // eslint-disable-next-line no-console
-      console.log("[BigBook DEBUG] deleteEntry optimistic update", {
-        entry_direction: pendingDeleteEntry.entry_direction,
-        deletedAmount,
-        deletedDelta,
-        responsible_actor_id: pendingDeleteEntry.responsible_actor_id,
-        currency_code: pendingDeleteEntry.currency_code
-      });
       applyMetricDelta(
         pendingDeleteEntry.responsible_actor_id,
         pendingDeleteEntry.actor_display_name,
@@ -2197,6 +2174,7 @@ export function BigBookPanel({
                           <p className="text-xs text-muted">
                             this page · {totals.pageEntryCount} transaction
                             {totals.pageEntryCount === 1 ? "" : "s"}
+                            {pocketExcludedLabel(totals.pagePocketExcludedCount)}
                           </p>
                         </div>
                         <BigBookCurrencyTotals totals={totals.pageTotals} showHeader showNet />
@@ -2208,6 +2186,7 @@ export function BigBookPanel({
                             all pages · {totals.grandEntryCount} transaction
                             {totals.grandEntryCount === 1 ? "" : "s"}
                             {filtersActive ? " matching the current filters" : ""}
+                            {pocketExcludedLabel(totals.grandPocketExcludedCount)}
                           </p>
                         </div>
                         <BigBookCurrencyTotals totals={totals.grandTotals} showHeader showNet />

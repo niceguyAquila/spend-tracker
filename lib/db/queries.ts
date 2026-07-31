@@ -866,6 +866,7 @@ type LedgerScanRow = {
   amount: number;
   currency_code: BigBookCurrency;
   entry_direction: "spending" | "profit";
+  pocket_id?: string | null;
   is_credit?: boolean;
 };
 
@@ -934,6 +935,10 @@ export type BigBookLedgerTotals = {
   pageEntryCount: number;
   grandTotals: BigBookCurrencyTotal[];
   grandEntryCount: number;
+  // Entry counts describe the rows on screen, so these report how many of them
+  // were held back from the totals and let the footer say so.
+  pagePocketExcludedCount: number;
+  grandPocketExcludedCount: number;
 };
 
 export type BigBookLedgerRowsPagedResult = {
@@ -957,7 +962,9 @@ export async function getBigBookLedgerRowsPaged(
   while (true) {
     let query = supabase
       .from("business_ledger_entries")
-      .select("id, group_id, entry_date, created_at, amount, currency_code, entry_direction, is_credit")
+      .select(
+        "id, group_id, entry_date, created_at, amount, currency_code, entry_direction, pocket_id, is_credit"
+      )
       .order("entry_date", { ascending: false })
       .order("created_at", { ascending: false })
       .range(offset, offset + scanPageSize - 1);
@@ -1030,11 +1037,22 @@ export async function getBigBookLedgerRowsPaged(
     row.group_id ? pageGroupIdSet.has(row.group_id) : standaloneIdSet.has(row.id)
   );
 
+  // Pocket-tagged entries are reported under pocket totals, so holding them back
+  // here keeps this footer, the Master Dashboard and Grand Total by Actor in
+  // agreement. Excluding them while the caller is filtering *by* pocket would
+  // zero the footer under a full table, so that case sums everything instead.
+  const pocketFilterActive = Boolean(toFilterArray(filters.pocketId)?.length);
+  const countsTowardTotals = (row: LedgerScanRow) => pocketFilterActive || !row.pocket_id;
+  const pageTotalRows = pageScanRows.filter(countsTowardTotals);
+  const grandTotalRows = effectiveScanRows.filter(countsTowardTotals);
+
   const totals: BigBookLedgerTotals = {
-    pageTotals: summarizeCurrencies(pageScanRows),
+    pageTotals: summarizeCurrencies(pageTotalRows),
     pageEntryCount: pageScanRows.length,
-    grandTotals: summarizeCurrencies(effectiveScanRows),
-    grandEntryCount: effectiveScanRows.length
+    grandTotals: summarizeCurrencies(grandTotalRows),
+    grandEntryCount: effectiveScanRows.length,
+    pagePocketExcludedCount: pageScanRows.length - pageTotalRows.length,
+    grandPocketExcludedCount: effectiveScanRows.length - grandTotalRows.length
   };
 
   if (!pageKeys.length) {

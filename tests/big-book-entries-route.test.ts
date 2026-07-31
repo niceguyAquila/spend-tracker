@@ -76,7 +76,14 @@ describe("big book entries route", () => {
     getBigBookLedgerRowsPagedMock.mockResolvedValue({
       rows: [],
       totalCount: 0,
-      totals: { pageTotals: [], pageEntryCount: 0, grandTotals: [], grandEntryCount: 0 }
+      totals: {
+        pageTotals: [],
+        pageEntryCount: 0,
+        grandTotals: [],
+        grandEntryCount: 0,
+        pagePocketExcludedCount: 0,
+        grandPocketExcludedCount: 0
+      }
     });
   });
 
