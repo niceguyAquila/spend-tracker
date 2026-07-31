@@ -1,25 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/auth-api";
+import { BIG_BOOK_CSV_EXPORT_HEADERS } from "@/lib/big-book/csv";
 import { bigBookEntriesQuerySchema } from "@/lib/validation/big-book";
 import { getBigBookEntries } from "@/lib/db/queries";
 import { createClient } from "@/lib/supabase/server";
-
-const EXPORT_HEADERS = [
-  "entry_date",
-  "entry_direction",
-  "type_name",
-  "sub_type_name",
-  "vendor_type_name",
-  "vendor_name",
-  "explanation",
-  "amount",
-  "currency_code",
-  "remark",
-  "actor_name",
-  "pocket_name",
-  "group_label",
-  "group_remark"
-] as const;
 
 function escapeCsvCell(value: string | null | undefined): string {
   const str = value == null ? "" : String(value);
@@ -51,6 +35,8 @@ export async function GET(request: Request) {
     vendorTypeId: searchParams.getAll("vendorTypeId"),
     vendorId: searchParams.getAll("vendorId"),
     pocketId: searchParams.getAll("pocketId"),
+    creditFlag: searchParams.getAll("creditFlag"),
+    creditStatus: searchParams.getAll("creditStatus"),
     dateFrom: searchParams.get("dateFrom") ?? "",
     dateTo: searchParams.get("dateTo") ?? "",
     query: searchParams.get("query") ?? "",
@@ -70,6 +56,8 @@ export async function GET(request: Request) {
       vendorTypeId: parsed.data.vendorTypeId,
       vendorId: parsed.data.vendorId,
       pocketId: parsed.data.pocketId,
+      creditFlag: parsed.data.creditFlag,
+      creditStatus: parsed.data.creditStatus,
       dateFrom: parsed.data.dateFrom,
       dateTo: parsed.data.dateTo,
       query: parsed.data.query,
@@ -103,7 +91,7 @@ export async function GET(request: Request) {
     });
 
     const lines: string[] = [];
-    lines.push(EXPORT_HEADERS.join(","));
+    lines.push(BIG_BOOK_CSV_EXPORT_HEADERS.join(","));
     for (const entry of sortedEntries) {
       const group = entry.group_id ? groupMap.get(entry.group_id) : null;
       const cells = [
@@ -120,7 +108,11 @@ export async function GET(request: Request) {
         entry.actor_display_name,
         entry.pocket_name ?? "",
         group?.label ?? "",
-        group?.remark ?? ""
+        group?.remark ?? "",
+        entry.is_credit ? "true" : "false",
+        entry.credit_status ?? "",
+        entry.is_credit ? formatAmountForCsv(entry.outstanding) : "",
+        entry.settles_entry?.explanation ?? ""
       ].map(escapeCsvCell);
       lines.push(cells.join(","));
     }

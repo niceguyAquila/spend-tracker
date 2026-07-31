@@ -7,12 +7,15 @@ import type {
   BigBookActorCurrencyMetrics,
   BigBookActorPocket,
   BigBookActorPocketMetrics,
+  BigBookCreditStatus,
   BigBookEntry,
   BigBookEntryGroup,
   BigBookLedgerRow,
   BigBookLedgerSubType,
   BigBookLedgerType,
+  BigBookSettlementTargetRef,
   BigBookVendor,
+  BigBookVendorActorOutstandingRow,
   BigBookVendorType
 } from "@/lib/types";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
@@ -20,10 +23,12 @@ import {
   BigBookEntryFields,
   createEmptyEntryForm,
   formatAmountInput,
+  formatRateInput,
   parseAmountInput,
   type EntryFormState
 } from "@/components/big-book-entry-fields";
 import { BigBookCurrencyTotals } from "@/components/big-book-currency-totals";
+import { BigBookVendorActorOutstandingTable } from "@/components/big-book-vendor-actor-outstanding-table";
 import { BigBookGroupHeaderRow } from "@/components/big-book-group-row";
 import type { BigBookLedgerTotals } from "@/lib/db/queries";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -50,6 +55,7 @@ type Props = {
   initialTotals: BigBookLedgerTotals;
   initialActorMetrics: BigBookActorCurrencyMetrics[];
   initialActorPocketMetrics: BigBookActorPocketMetrics[];
+  initialVendorActorOutstanding: BigBookVendorActorOutstandingRow[];
 };
 
 type ApiErrorShape = {
@@ -88,7 +94,7 @@ function arraysEqual(left: string[], right: string[]) {
 
 const SUPPORTED_CURRENCIES: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR", "USDT", "TRX"];
 const LEDGER_SKELETON_ROW_COUNT = 6;
-const LEDGER_COLUMN_COUNT = 14;
+const LEDGER_COLUMN_COUNT = 15;
 const EMPTY_LEDGER_TOTALS: BigBookLedgerTotals = {
   pageTotals: [],
   pageEntryCount: 0,
@@ -96,6 +102,71 @@ const EMPTY_LEDGER_TOTALS: BigBookLedgerTotals = {
   grandEntryCount: 0
 };
 const GROUP_MENU_PREFIX = "group:";
+
+const CREDIT_FLAG_OPTIONS = [
+  { value: "credit", label: "Credit" },
+  { value: "settlement", label: "Settlement" },
+  { value: "none", label: "Not credit-related" }
+];
+
+const CREDIT_STATUS_OPTIONS = [
+  { value: "open", label: "Open" },
+  { value: "partial", label: "Partial" },
+  { value: "settled", label: "Settled" }
+];
+
+const CREDIT_STATUS_LABELS: Record<BigBookCreditStatus, string> = {
+  open: "Open",
+  partial: "Partial",
+  settled: "Settled"
+};
+
+function creditStatusBadgeClass(status: BigBookCreditStatus) {
+  if (status === "settled") return "bg-[rgb(var(--success)/0.15)] text-[rgb(var(--success))]";
+  if (status === "partial") return "bg-[rgb(var(--info)/0.15)] text-[rgb(var(--info))]";
+  return "bg-[rgb(var(--warning)/0.15)] text-[rgb(var(--warning))]";
+}
+
+function truncateText(value: string, maxLength = 28) {
+  const trimmed = value.trim();
+  if (trimmed.length <= maxLength) return trimmed;
+  return `${trimmed.slice(0, maxLength - 1)}…`;
+}
+
+// Credit fields never travel with grouped entries (the API rejects them there),
+// so this only runs for the single-entry create/edit payloads.
+function toCreditPayload(form: EntryFormState, settlesEntry: BigBookSettlementTargetRef | null) {
+  const settlesEntryId = form.settles_entry_id || null;
+  if (!settlesEntryId) {
+    return {
+      is_credit: form.is_credit,
+      settles_entry_id: null,
+      settlement_conversion_rate: null,
+      settlement_note: ""
+    };
+  }
+  const typedRate = Number(form.settlement_conversion_rate);
+  const sameCurrency = settlesEntry ? form.currency_code === settlesEntry.currency_code : false;
+  const rate = sameCurrency ? 1 : Number.isFinite(typedRate) && typedRate > 0 ? typedRate : null;
+  return {
+    is_credit: false,
+    settles_entry_id: settlesEntryId,
+    settlement_conversion_rate: rate,
+    settlement_note: form.settlement_note
+  };
+}
+
+function settlementTargetFromEntry(entry: BigBookEntry): BigBookSettlementTargetRef {
+  return {
+    id: entry.id,
+    entry_date: entry.entry_date,
+    explanation: entry.explanation,
+    amount: entry.amount,
+    currency_code: entry.currency_code,
+    vendor_name: entry.vendor_name,
+    outstanding: entry.outstanding
+  };
+}
 
 function toEntryPayload(form: EntryFormState) {
   return {
@@ -128,7 +199,12 @@ function entryFormFromEntry(entry: BigBookEntry): GroupEntryFormState {
     amount: formatAmountInput(String(entry.amount)),
     currency_code: entry.currency_code,
     remark: entry.remark ?? "",
-    responsible_actor_id: entry.responsible_actor_id
+    responsible_actor_id: entry.responsible_actor_id,
+    is_credit: entry.is_credit,
+    settles_entry_id: entry.settles_entry_id ?? "",
+    settlement_conversion_rate:
+      entry.settlement_conversion_rate != null ? formatRateInput(String(entry.settlement_conversion_rate)) : "",
+    settlement_note: entry.settlement_note ?? ""
   };
 }
 
@@ -148,7 +224,8 @@ export function BigBookPanel({
   initialTotalCount,
   initialTotals,
   initialActorMetrics,
-  initialActorPocketMetrics
+  initialActorPocketMetrics,
+  initialVendorActorOutstanding
 }: Props) {
   const router = useRouter();
   const [isRefreshing, startTransition] = useTransition();
@@ -164,6 +241,8 @@ export function BigBookPanel({
   const [vendorTypeFilter, setVendorTypeFilter] = useState<string[]>([]);
   const [vendorFilter, setVendorFilter] = useState<string[]>([]);
   const [pocketFilter, setPocketFilter] = useState<string[]>([]);
+  const [creditFlagFilter, setCreditFlagFilter] = useState<string[]>([]);
+  const [creditStatusFilter, setCreditStatusFilter] = useState<string[]>([]);
   // Draft filter state: drives the inputs. Filters only run after "Apply Filters".
   const [draftQuery, setDraftQuery] = useState("");
   const [draftDateFrom, setDraftDateFrom] = useState("");
@@ -175,6 +254,8 @@ export function BigBookPanel({
   const [draftVendorTypeFilter, setDraftVendorTypeFilter] = useState<string[]>([]);
   const [draftVendorFilter, setDraftVendorFilter] = useState<string[]>([]);
   const [draftPocketFilter, setDraftPocketFilter] = useState<string[]>([]);
+  const [draftCreditFlagFilter, setDraftCreditFlagFilter] = useState<string[]>([]);
+  const [draftCreditStatusFilter, setDraftCreditStatusFilter] = useState<string[]>([]);
   const [openActionMenu, setOpenActionMenu] = useState<{
     id: string;
     top: number;
@@ -203,8 +284,13 @@ export function BigBookPanel({
     amount: "",
     currency_code: "IDR",
     remark: "",
-    responsible_actor_id: ""
+    responsible_actor_id: "",
+    is_credit: false,
+    settles_entry_id: "",
+    settlement_conversion_rate: "",
+    settlement_note: ""
   });
+  const [editSettlesEntry, setEditSettlesEntry] = useState<BigBookSettlementTargetRef | null>(null);
   const [pendingDeleteEntry, setPendingDeleteEntry] = useState<BigBookEntry | null>(null);
   const [entryDeleting, setEntryDeleting] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -240,6 +326,17 @@ export function BigBookPanel({
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [assignLabel, setAssignLabel] = useState("");
   const [assignRemark, setAssignRemark] = useState("");
+  const [settlementTarget, setSettlementTarget] = useState<BigBookEntry | null>(null);
+  const [settlementForm, setSettlementForm] = useState<EntryFormState | null>(null);
+  const [settlementAttachmentFiles, setSettlementAttachmentFiles] = useState<File[]>([]);
+  const [settlementSubmitting, setSettlementSubmitting] = useState(false);
+  const [pendingSettlementConfirm, setPendingSettlementConfirm] = useState(false);
+  const [fetchingConversionRate, setFetchingConversionRate] = useState(false);
+  // Kept as an id so the open history modal re-reads the freshly loaded entry
+  // after a settlement is added or deleted.
+  const [settlementHistoryEntryId, setSettlementHistoryEntryId] = useState<string | null>(null);
+  const [pendingDeleteSettlementId, setPendingDeleteSettlementId] = useState<string | null>(null);
+  const [settlementDeleting, setSettlementDeleting] = useState(false);
 
   const activeTypes = useMemo(() => initialTypes.filter((item) => item.is_active), [initialTypes]);
   const currencies = SUPPORTED_CURRENCIES;
@@ -298,7 +395,11 @@ export function BigBookPanel({
     amount: "",
     currency_code: "IDR",
     remark: "",
-    responsible_actor_id: initialActors[0]?.id ?? ""
+    responsible_actor_id: initialActors[0]?.id ?? "",
+    is_credit: false,
+    settles_entry_id: "",
+    settlement_conversion_rate: "",
+    settlement_note: ""
   });
 
   const defaultTypeId = activeTypes[0]?.id ?? initialTypes[0]?.id ?? "";
@@ -323,7 +424,7 @@ export function BigBookPanel({
 
   useEffect(() => {
     ledgerPagination.setPage(0);
-  }, [query, dateFrom, dateTo, typeFilter, currencyFilter, actorFilter, directionFilter, vendorTypeFilter, vendorFilter, pocketFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [query, dateFrom, dateTo, typeFilter, currencyFilter, actorFilter, directionFilter, vendorTypeFilter, vendorFilter, pocketFilter, creditFlagFilter, creditStatusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Race-safe request token: ignore stale fetch responses.
   const loadRequestIdRef = useRef(0);
@@ -351,6 +452,8 @@ export function BigBookPanel({
       for (const vendorTypeId of vendorTypeFilter) params.append("vendorTypeId", vendorTypeId);
       for (const vendorId of vendorFilter) params.append("vendorId", vendorId);
       for (const pocketId of pocketFilter) params.append("pocketId", pocketId);
+      for (const creditFlag of creditFlagFilter) params.append("creditFlag", creditFlag);
+      for (const creditStatus of creditStatusFilter) params.append("creditStatus", creditStatus);
 
       const response = await fetch(`/api/big-book/entries?${params.toString()}`);
       if (handleUnauthorizedResponse(response)) return;
@@ -390,7 +493,9 @@ export function BigBookPanel({
     directionFilter,
     vendorTypeFilter,
     vendorFilter,
-    pocketFilter
+    pocketFilter,
+    creditFlagFilter,
+    creditStatusFilter
   ]);
 
   useEffect(() => {
@@ -411,7 +516,9 @@ export function BigBookPanel({
     !arraysEqual(draftDirectionFilter, directionFilter) ||
     !arraysEqual(draftVendorTypeFilter, vendorTypeFilter) ||
     !arraysEqual(draftVendorFilter, vendorFilter) ||
-    !arraysEqual(draftPocketFilter, pocketFilter);
+    !arraysEqual(draftPocketFilter, pocketFilter) ||
+    !arraysEqual(draftCreditFlagFilter, creditFlagFilter) ||
+    !arraysEqual(draftCreditStatusFilter, creditStatusFilter);
 
   const filtersActive =
     Boolean(query) ||
@@ -423,7 +530,9 @@ export function BigBookPanel({
     Boolean(directionFilter.length) ||
     Boolean(vendorTypeFilter.length) ||
     Boolean(vendorFilter.length) ||
-    Boolean(pocketFilter.length);
+    Boolean(pocketFilter.length) ||
+    Boolean(creditFlagFilter.length) ||
+    Boolean(creditStatusFilter.length);
 
   const draftFiltersActive =
     Boolean(draftQuery) ||
@@ -435,7 +544,9 @@ export function BigBookPanel({
     Boolean(draftDirectionFilter.length) ||
     Boolean(draftVendorTypeFilter.length) ||
     Boolean(draftVendorFilter.length) ||
-    Boolean(draftPocketFilter.length);
+    Boolean(draftPocketFilter.length) ||
+    Boolean(draftCreditFlagFilter.length) ||
+    Boolean(draftCreditStatusFilter.length);
 
   function applyFilters() {
     setQuery(draftQuery);
@@ -448,6 +559,8 @@ export function BigBookPanel({
     setVendorTypeFilter(draftVendorTypeFilter);
     setVendorFilter(draftVendorFilter);
     setPocketFilter(draftPocketFilter);
+    setCreditFlagFilter(draftCreditFlagFilter);
+    setCreditStatusFilter(draftCreditStatusFilter);
   }
 
   function resetFilters() {
@@ -461,6 +574,8 @@ export function BigBookPanel({
     setDraftVendorTypeFilter([]);
     setDraftVendorFilter([]);
     setDraftPocketFilter([]);
+    setDraftCreditFlagFilter([]);
+    setDraftCreditStatusFilter([]);
     setQuery("");
     setDateFrom("");
     setDateTo("");
@@ -471,6 +586,8 @@ export function BigBookPanel({
     setVendorTypeFilter([]);
     setVendorFilter([]);
     setPocketFilter([]);
+    setCreditFlagFilter([]);
+    setCreditStatusFilter([]);
   }
 
   // Totals reflect ALL ledger rows in the database (computed server-side in
@@ -655,7 +772,19 @@ export function BigBookPanel({
     importSubmitting ||
     exportSubmitting ||
     uploadSubmitting ||
-    attachmentDeleting;
+    attachmentDeleting ||
+    settlementSubmitting ||
+    settlementDeleting;
+
+  const settlementTargetRef = useMemo(
+    () => (settlementTarget ? settlementTargetFromEntry(settlementTarget) : null),
+    [settlementTarget]
+  );
+  // Re-derived from the loaded rows so the modal reflects settlements that were
+  // just added or removed.
+  const settlementHistoryEntry = settlementHistoryEntryId
+    ? findEntryById(settlementHistoryEntryId)
+    : null;
 
   useEffect(() => {
     function handleOutsideClick(event: MouseEvent) {
@@ -772,7 +901,8 @@ export function BigBookPanel({
           vendor_type_id: entryForm.vendor_type_id || null,
           vendor_id: entryForm.vendor_id || null,
           pocket_id: entryForm.pocket_id || null,
-          amount: amountValue
+          amount: amountValue,
+          ...toCreditPayload(entryForm, null)
         })
       });
       if (handleUnauthorizedResponse(response)) return;
@@ -838,11 +968,15 @@ export function BigBookPanel({
         ...(keepModalOpen
           ? {}
           : {
-              currency_code: "IDR",
+              currency_code: "IDR" as const,
               entry_sub_type_id: "",
               vendor_type_id: "",
               vendor_id: "",
-              pocket_id: ""
+              pocket_id: "",
+              is_credit: false,
+              settles_entry_id: "",
+              settlement_conversion_rate: "",
+              settlement_note: ""
             })
       }));
       triggerRefresh();
@@ -1028,20 +1162,8 @@ export function BigBookPanel({
     setOpenActionMenu(null);
     setEditingGroupId(null);
     setEditingEntryId(row.id);
-    setEditForm({
-      entry_date: row.entry_date,
-      entry_direction: row.entry_direction,
-      entry_type_id: row.entry_type_id,
-      entry_sub_type_id: row.entry_sub_type_id ?? "",
-      vendor_type_id: row.vendor_type_id ?? "",
-      vendor_id: row.vendor_id ?? "",
-      pocket_id: row.pocket_id ?? "",
-      explanation: row.explanation,
-      amount: formatAmountInput(String(row.amount)),
-      currency_code: row.currency_code,
-      remark: row.remark ?? "",
-      responsible_actor_id: row.responsible_actor_id
-    });
+    setEditForm(entryFormFromEntry(row));
+    setEditSettlesEntry(row.settles_entry);
     setEditModalOpen(true);
   }
 
@@ -1179,13 +1301,14 @@ export function BigBookPanel({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: editingEntryId,
           ...editForm,
+          id: editingEntryId,
           entry_sub_type_id: editForm.entry_sub_type_id || null,
           vendor_type_id: editForm.vendor_type_id || null,
           vendor_id: editForm.vendor_id || null,
           pocket_id: editForm.pocket_id || null,
-          amount: amountValue
+          amount: amountValue,
+          ...toCreditPayload(editForm, editSettlesEntry)
         })
       });
       if (handleUnauthorizedResponse(response)) return;
@@ -1198,6 +1321,7 @@ export function BigBookPanel({
       setPendingEditConfirm(false);
       setEditModalOpen(false);
       setEditingEntryId(null);
+      setEditSettlesEntry(null);
       triggerRefresh();
     } catch {
       setError("Failed to update ledger entry due to a network error.");
@@ -1295,6 +1419,180 @@ export function BigBookPanel({
     setManageAttachmentsEntry(row);
     setManageAttachmentFiles([]);
   }
+
+  function openRecordSettlement(row: BigBookEntry) {
+    setOpenActionMenu(null);
+    setSettlementTarget(row);
+    setSettlementAttachmentFiles([]);
+    setSettlementForm({
+      entry_date: today,
+      entry_direction: "profit",
+      entry_type_id: row.entry_type_id,
+      entry_sub_type_id: row.entry_sub_type_id ?? "",
+      vendor_type_id: row.vendor_type_id ?? "",
+      vendor_id: row.vendor_id ?? "",
+      pocket_id: "",
+      explanation: `Settlement for: ${row.explanation}`,
+      amount: formatAmountInput(String(row.outstanding)),
+      currency_code: row.currency_code,
+      remark: "",
+      responsible_actor_id: row.responsible_actor_id,
+      is_credit: false,
+      settles_entry_id: row.id,
+      settlement_conversion_rate: "1",
+      settlement_note: ""
+    });
+  }
+
+  function closeRecordSettlement() {
+    setSettlementTarget(null);
+    setSettlementForm(null);
+    setSettlementAttachmentFiles([]);
+  }
+
+  async function fetchConversionRate(
+    baseCurrency: EntryFormState["currency_code"],
+    quoteCurrency: EntryFormState["currency_code"],
+    applyRate: (rate: string) => void
+  ) {
+    setFetchingConversionRate(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({
+        amount: "1",
+        base_currency: baseCurrency,
+        quote_currency: quoteCurrency
+      });
+      const response = await fetch(`/api/big-book/exchange-rate?${params.toString()}`, {
+        cache: "no-store"
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(extractApiError(data?.error, "Failed to fetch the conversion rate."));
+        return;
+      }
+      const rate = typeof data?.rate === "number" ? data.rate : Number(data?.converted_amount);
+      if (!Number.isFinite(rate) || rate <= 0) {
+        setError("The exchange service returned an unusable rate.");
+        return;
+      }
+      applyRate(formatRateInput(String(rate)));
+    } catch {
+      setError("Failed to fetch the conversion rate due to a network error.");
+    } finally {
+      setFetchingConversionRate(false);
+    }
+  }
+
+  async function recordSettlement() {
+    if (!settlementTarget || !settlementForm) return;
+    const amountValue = Number(parseAmountInput(settlementForm.amount));
+    if (!Number.isFinite(amountValue) || amountValue <= 0) {
+      setError("Settlement amount must be greater than 0.");
+      return;
+    }
+    const creditPayload = toCreditPayload(settlementForm, settlementTargetRef);
+    const conversionRate = creditPayload.settlement_conversion_rate;
+    if (conversionRate == null) {
+      setError("Conversion rate must be greater than 0.");
+      return;
+    }
+    const amountInCreditCurrency = Math.round(amountValue * conversionRate * 10000) / 10000;
+    if (amountInCreditCurrency > settlementTarget.outstanding + 0.0001) {
+      setError(
+        `Settlement equivalent (${formatAmount(amountInCreditCurrency, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 4
+        })} ${settlementTarget.currency_code}) exceeds the outstanding balance (${formatAmount(
+          settlementTarget.outstanding,
+          { minimumFractionDigits: 2, maximumFractionDigits: 4 }
+        )} ${settlementTarget.currency_code}).`
+      );
+      return;
+    }
+
+    setSettlementSubmitting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await secureFetch("/api/big-book/entries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...settlementForm,
+          entry_sub_type_id: settlementForm.entry_sub_type_id || null,
+          vendor_type_id: settlementForm.vendor_type_id || null,
+          vendor_id: settlementForm.vendor_id || null,
+          pocket_id: settlementForm.pocket_id || null,
+          amount: amountValue,
+          ...creditPayload
+        })
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(extractApiError(data.error, "Failed to record the settlement."));
+        return;
+      }
+
+      const createdEntryId = data.id as string;
+      for (const file of settlementAttachmentFiles) {
+        const formData = new FormData();
+        formData.append("ledger_entry_id", createdEntryId);
+        formData.append("file", file);
+        const uploadResponse = await secureFetch("/api/big-book/attachments", {
+          method: "POST",
+          body: formData
+        });
+        if (handleUnauthorizedResponse(uploadResponse)) return;
+        const uploadData = await uploadResponse.json();
+        if (!uploadResponse.ok) {
+          setError(
+            extractApiError(uploadData.error, `Settlement recorded, but failed to upload ${file.name}.`)
+          );
+          setPendingSettlementConfirm(false);
+          closeRecordSettlement();
+          triggerRefresh();
+          return;
+        }
+      }
+
+      setMessage("Settlement recorded.");
+      setPendingSettlementConfirm(false);
+      closeRecordSettlement();
+      triggerRefresh();
+    } catch {
+      setError("Failed to record the settlement due to a network error.");
+    } finally {
+      setSettlementSubmitting(false);
+    }
+  }
+
+  async function deleteSettlement() {
+    if (!pendingDeleteSettlementId) return;
+    setSettlementDeleting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await secureFetch(`/api/big-book/entries?id=${pendingDeleteSettlementId}`, {
+        method: "DELETE"
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(extractApiError(data.error, "Failed to delete the settlement."));
+        return;
+      }
+      setMessage("Settlement deleted.");
+      setPendingDeleteSettlementId(null);
+      triggerRefresh();
+    } catch {
+      setError("Failed to delete the settlement due to a network error.");
+    } finally {
+      setSettlementDeleting(false);
+    }
+  }
   function toggleActionMenu(rowId: string, triggerEl: HTMLButtonElement) {
     if (openActionMenu?.id === rowId) {
       setOpenActionMenu(null);
@@ -1387,6 +1685,34 @@ export function BigBookPanel({
             {entry.currency_code}{" "}
             {formatAmount(entry.amount, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
           </span>
+        </td>
+        <td className="px-3 py-2">
+          {entry.is_credit ? (
+            <div className="space-y-1">
+              <span
+                className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${creditStatusBadgeClass(
+                  entry.credit_status ?? "open"
+                )}`}
+              >
+                {CREDIT_STATUS_LABELS[entry.credit_status ?? "open"]}
+              </span>
+              <p className="text-xs text-muted">
+                Outstanding:{" "}
+                {formatAmount(entry.outstanding, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}{" "}
+                {entry.currency_code}
+              </p>
+            </div>
+          ) : entry.settles_entry_id ? (
+            <span className="inline-flex max-w-[220px] rounded bg-[rgb(var(--info)/0.15)] px-2 py-0.5 text-xs font-medium text-[rgb(var(--info))]">
+              Settles:{" "}
+              {truncateText(
+                entry.settles_entry?.explanation ||
+                  (entry.settles_entry ? formatDateDisplay(entry.settles_entry.entry_date) : "credit")
+              )}
+            </span>
+          ) : (
+            <span className="text-xs text-muted">-</span>
+          )}
         </td>
         <td className="px-3 py-2">{entry.actor_display_name}</td>
         <td className="px-3 py-2">
@@ -1573,6 +1899,14 @@ export function BigBookPanel({
       </section>
 
       <section className="card">
+        <h2 className="text-lg font-semibold">Outstanding Credit by Vendor and Actor (All Time)</h2>
+        <p className="mt-1 text-sm text-muted">
+          Shows which vendor owes which actor, per currency. Fully settled credits are omitted.
+        </p>
+        <BigBookVendorActorOutstandingTable rows={initialVendorActorOutstanding} />
+      </section>
+
+      <section className="card">
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Ledger Records</h2>
           {isRefreshing || entriesLoading ? <LoadingIndicator label="Refreshing..." /> : null}
@@ -1702,6 +2036,26 @@ export function BigBookPanel({
                 searchPlaceholder="Search pocket..."
               />
             </div>
+            <div className="text-sm text-muted">
+              <span className="mb-1 block">Credit</span>
+              <SearchableMultiSelect
+                label="Credit"
+                selectedValues={draftCreditFlagFilter}
+                options={CREDIT_FLAG_OPTIONS}
+                onChange={setDraftCreditFlagFilter}
+                searchPlaceholder="Search credit type..."
+              />
+            </div>
+            <div className="text-sm text-muted">
+              <span className="mb-1 block">Credit Status</span>
+              <SearchableMultiSelect
+                label="Credit Status"
+                selectedValues={draftCreditStatusFilter}
+                options={CREDIT_STATUS_OPTIONS}
+                onChange={setDraftCreditStatusFilter}
+                searchPlaceholder="Search credit status..."
+              />
+            </div>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             {filtersDirty ? (
@@ -1748,7 +2102,7 @@ export function BigBookPanel({
           </div>
         ) : null}
         <div className="overflow-x-auto">
-          <table className="data-table min-w-[1660px]">
+          <table className="data-table min-w-[1800px]">
             <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
               <tr>
                 <th className="px-3 py-2">
@@ -1769,6 +2123,7 @@ export function BigBookPanel({
                 <th className="px-3 py-2">Vendor Name</th>
                 <th className="px-3 py-2">Explanation</th>
                 <th className="px-3 py-2">Amount</th>
+                <th className="px-3 py-2">Credit</th>
                 <th className="px-3 py-2">Actor</th>
                 <th className="px-3 py-2">Pocket</th>
                 <th className="px-3 py-2">Remark</th>
@@ -1793,6 +2148,7 @@ export function BigBookPanel({
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-56 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
+                      <td className="px-3 py-2"><div className="h-5 w-16 rounded-full bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-28 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-20 rounded bg-[rgb(var(--surface-muted))]" /></td>
@@ -1904,6 +2260,27 @@ export function BigBookPanel({
                 >
                   Manage attachments
                 </button>
+                {targetRow.is_credit && targetRow.outstanding > 0 ? (
+                  <button
+                    className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
+                    role="menuitem"
+                    onClick={() => openRecordSettlement(targetRow)}
+                  >
+                    Record settlement
+                  </button>
+                ) : null}
+                {targetRow.is_credit && targetRow.settlements.length > 0 ? (
+                  <button
+                    className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
+                    role="menuitem"
+                    onClick={() => {
+                      setOpenActionMenu(null);
+                      setSettlementHistoryEntryId(targetRow.id);
+                    }}
+                  >
+                    View settlements
+                  </button>
+                ) : null}
                 <button
                   className="block w-full rounded px-2 py-1 text-left text-sm text-[rgb(var(--danger))] hover:bg-[rgb(var(--surface-muted))]"
                   role="menuitem"
@@ -2349,6 +2726,16 @@ export function BigBookPanel({
             pockets={initialPockets}
             actors={initialActors}
             currencies={currencies}
+            settlesEntry={editSettlesEntry}
+            fetchingConversionRate={fetchingConversionRate}
+            onFetchConversionRate={
+              editSettlesEntry
+                ? () =>
+                    void fetchConversionRate(editForm.currency_code, editSettlesEntry.currency_code, (rate) =>
+                      setEditForm((prev) => ({ ...prev, settlement_conversion_rate: rate }))
+                    )
+                : undefined
+            }
           />
         )}
       </Modal>
@@ -2518,6 +2905,213 @@ export function BigBookPanel({
         variant="danger"
         closeOnBackdrop={false}
         onConfirm={deleteAttachment}
+      />
+
+      <Modal
+        open={Boolean(settlementTarget && settlementForm)}
+        onOpenChange={(open) => {
+          if (!open && !settlementSubmitting) closeRecordSettlement();
+        }}
+        title="Record Settlement"
+        dismissible={!settlementSubmitting}
+        closeOnBackdrop={!settlementSubmitting}
+        footer={
+          <>
+            <button className="btn-secondary" disabled={settlementSubmitting} onClick={closeRecordSettlement}>
+              Cancel
+            </button>
+            <button
+              className="btn"
+              disabled={
+                settlementSubmitting ||
+                !settlementForm ||
+                !settlementForm.explanation.trim() ||
+                !settlementForm.amount
+              }
+              onClick={() => setPendingSettlementConfirm(true)}
+            >
+              {settlementSubmitting ? "Saving..." : "Save"}
+            </button>
+          </>
+        }
+      >
+        {settlementForm && settlementTargetRef ? (
+          <BigBookEntryFields
+            value={settlementForm}
+            onChange={(next) => setSettlementForm(next)}
+            types={initialTypes}
+            subTypes={initialSubTypes}
+            vendorTypes={initialVendorTypes}
+            vendors={initialVendors}
+            pockets={initialPockets}
+            actors={initialActors}
+            currencies={currencies}
+            showAttachments
+            attachmentFiles={settlementAttachmentFiles}
+            onAttachmentFilesChange={setSettlementAttachmentFiles}
+            onRemoveAttachmentAt={(index) =>
+              setSettlementAttachmentFiles((prev) => prev.filter((_, itemIndex) => itemIndex !== index))
+            }
+            explanationPlaceholder="What does this settlement payment cover?"
+            settlesEntry={settlementTargetRef}
+            hideCreditToggle
+            fetchingConversionRate={fetchingConversionRate}
+            onFetchConversionRate={() =>
+              void fetchConversionRate(settlementForm.currency_code, settlementTargetRef.currency_code, (rate) =>
+                setSettlementForm((prev) => (prev ? { ...prev, settlement_conversion_rate: rate } : prev))
+              )
+            }
+          />
+        ) : null}
+      </Modal>
+
+      <ConfirmDialog
+        open={pendingSettlementConfirm}
+        onOpenChange={setPendingSettlementConfirm}
+        title="Record settlement?"
+        description={
+          settlementTarget
+            ? `This will create a settlement entry against "${settlementTarget.explanation}" and reduce its outstanding balance.`
+            : "This will create a settlement entry."
+        }
+        confirmLabel="Record Settlement"
+        confirming={settlementSubmitting}
+        closeOnBackdrop={false}
+        onConfirm={recordSettlement}
+      />
+
+      <Modal
+        open={Boolean(settlementHistoryEntryId)}
+        onOpenChange={(open) => {
+          if (!open && !settlementDeleting) setSettlementHistoryEntryId(null);
+        }}
+        title="Settlement History"
+        dismissible={!settlementDeleting}
+        closeOnBackdrop={!settlementDeleting}
+        footer={
+          <button
+            className="btn-secondary"
+            disabled={settlementDeleting}
+            onClick={() => setSettlementHistoryEntryId(null)}
+          >
+            Close
+          </button>
+        }
+      >
+        {settlementHistoryEntry ? (
+          <div className="space-y-3">
+            <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-3 text-sm">
+              <p className="font-medium">{settlementHistoryEntry.explanation}</p>
+              <p className="mt-1 text-xs text-muted">
+                {formatDateDisplay(settlementHistoryEntry.entry_date)}
+                {settlementHistoryEntry.vendor_name ? ` · ${settlementHistoryEntry.vendor_name}` : ""}
+              </p>
+              <p className="mt-2 text-xs text-muted">
+                Credit:{" "}
+                {formatAmount(settlementHistoryEntry.amount, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 4
+                })}{" "}
+                {settlementHistoryEntry.currency_code} · Settled:{" "}
+                {formatAmount(settlementHistoryEntry.total_settled, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 4
+                })}{" "}
+                {settlementHistoryEntry.currency_code} · Outstanding:{" "}
+                {formatAmount(settlementHistoryEntry.outstanding, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 4
+                })}{" "}
+                {settlementHistoryEntry.currency_code}
+              </p>
+            </div>
+            <ul className="space-y-2">
+              {settlementHistoryEntry.settlements.map((settlement) => {
+                const settlementEntry = findEntryById(settlement.id);
+                return (
+                  <li
+                    key={settlement.id}
+                    className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-3 text-sm"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium">
+                          {formatDateDisplay(settlement.entry_date)} ·{" "}
+                          {formatAmount(settlement.amount, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 4
+                          })}{" "}
+                          {settlement.currency_code}
+                        </p>
+                        <p className="mt-1 text-xs text-muted">{settlement.explanation}</p>
+                        <p className="mt-1 text-xs text-muted">
+                          Rate:{" "}
+                          {formatAmount(settlement.settlement_conversion_rate, {
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 8
+                          })}{" "}
+                          · Equivalent:{" "}
+                          {formatAmount(settlement.settlement_amount_in_credit_currency, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 4
+                          })}{" "}
+                          {settlementHistoryEntry.currency_code}
+                        </p>
+                        {settlement.settlement_note ? (
+                          <p className="mt-1 text-xs text-muted">Note: {settlement.settlement_note}</p>
+                        ) : null}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-3">
+                        {settlementEntry ? (
+                          <button
+                            type="button"
+                            className="text-xs text-[rgb(var(--info))] underline"
+                            disabled={settlementDeleting}
+                            onClick={() => {
+                              setSettlementHistoryEntryId(null);
+                              startEditEntry(settlementEntry);
+                            }}
+                          >
+                            Edit
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="text-xs text-[rgb(var(--danger))] underline"
+                          disabled={settlementDeleting}
+                          onClick={() => setPendingDeleteSettlementId(settlement.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+              {!settlementHistoryEntry.settlements.length ? (
+                <li className="text-xs text-muted">No settlements recorded yet.</li>
+              ) : null}
+            </ul>
+          </div>
+        ) : (
+          <p className="text-sm text-muted">
+            This credit is no longer on the current page. Close this dialog and reopen it from the record.
+          </p>
+        )}
+      </Modal>
+
+      <ConfirmDialog
+        open={Boolean(pendingDeleteSettlementId)}
+        onOpenChange={(open) => {
+          if (!open && !settlementDeleting) setPendingDeleteSettlementId(null);
+        }}
+        title="Delete settlement?"
+        description="This will permanently remove the settlement entry and restore the credit's outstanding balance."
+        confirmLabel="Delete"
+        confirming={settlementDeleting}
+        variant="danger"
+        closeOnBackdrop={false}
+        onConfirm={deleteSettlement}
       />
     </div>
   );

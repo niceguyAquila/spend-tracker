@@ -4,13 +4,16 @@ const insertMock = vi.fn();
 const updateMock = vi.fn();
 const deleteMaybeSingleMock = vi.fn();
 const deleteSelectMock = vi.fn(() => ({ maybeSingle: deleteMaybeSingleMock }));
-const deleteEqBrandMock = vi.fn(() => ({ select: deleteSelectMock }));
-const deleteEqIdMock = vi.fn(() => ({ eq: deleteEqBrandMock }));
+const deleteEqIdMock = vi.fn(() => ({ select: deleteSelectMock }));
 const updateEqIdMock = vi.fn(() => ({ eq: vi.fn().mockResolvedValue({ error: null }) }));
 const insertSelectSingleMock = vi.fn();
 const requireAdminApiMock = vi.fn();
 const assertCsrfAndOriginMock = vi.fn();
 const getBigBookEntriesPagedMock = vi.fn();
+const getBigBookLedgerRowsPagedMock = vi.fn();
+const creditLookupMaybeSingleMock = vi.fn();
+const creditLookupEqMock = vi.fn(() => ({ maybeSingle: creditLookupMaybeSingleMock }));
+const creditLookupSelectMock = vi.fn(() => ({ eq: creditLookupEqMock }));
 
 vi.mock("@/lib/security/origin", () => ({
   assertCsrfAndOrigin: assertCsrfAndOriginMock,
@@ -28,7 +31,8 @@ vi.mock("@/lib/supabase/server", () => ({
         return {
           insert: insertMock,
           update: updateMock,
-          delete: vi.fn(() => ({ eq: deleteEqIdMock }))
+          delete: vi.fn(() => ({ eq: deleteEqIdMock })),
+          select: (_columns?: string) => creditLookupSelectMock()
         };
       }
       return {};
@@ -37,7 +41,8 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 vi.mock("@/lib/db/queries", () => ({
-  getBigBookEntriesPaged: getBigBookEntriesPagedMock
+  getBigBookEntriesPaged: getBigBookEntriesPagedMock,
+  getBigBookLedgerRowsPaged: getBigBookLedgerRowsPagedMock
 }));
 
 describe("big book entries route", () => {
@@ -63,9 +68,15 @@ describe("big book entries route", () => {
       eq: updateEqIdMock
     });
     deleteMaybeSingleMock.mockResolvedValue({ data: { id: "entry-1" }, error: null });
+    creditLookupMaybeSingleMock.mockResolvedValue({ data: null, error: null });
     getBigBookEntriesPagedMock.mockResolvedValue({
       rows: [],
       totalCount: 0
+    });
+    getBigBookLedgerRowsPagedMock.mockResolvedValue({
+      rows: [],
+      totalCount: 0,
+      totals: { pageTotals: [], pageEntryCount: 0, grandTotals: [], grandEntryCount: 0 }
     });
   });
 
@@ -308,6 +319,233 @@ describe("big book entries route", () => {
     expect(getBigBookEntriesPagedMock).not.toHaveBeenCalled();
   });
 
+  it("creates a credit entry when is_credit is true", async () => {
+    const { POST } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_date: "2026-04-23",
+        entry_direction: "spending",
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        explanation: "Vendor owes us",
+        amount: 1000,
+        currency_code: "USDT",
+        remark: "",
+        responsible_actor_id: "22222222-2222-4222-8222-222222222222",
+        is_credit: true
+      })
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    expect(insertMock.mock.calls[0][0]).toMatchObject({
+      is_credit: true,
+      settles_entry_id: null,
+      settlement_conversion_rate: null,
+      settlement_amount_in_credit_currency: null
+    });
+  });
+
+  it("creates a same-currency settlement and forces conversion rate to 1", async () => {
+    creditLookupMaybeSingleMock.mockResolvedValueOnce({
+      data: {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        is_credit: true,
+        settles_entry_id: null,
+        currency_code: "USDT"
+      },
+      error: null
+    });
+
+    const { POST } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_date: "2026-05-01",
+        entry_direction: "profit",
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        explanation: "Settlement payment",
+        amount: 400,
+        currency_code: "USDT",
+        remark: "",
+        responsible_actor_id: "22222222-2222-4222-8222-222222222222",
+        settles_entry_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        settlement_conversion_rate: 9,
+        settlement_note: "Partial payment"
+      })
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+    expect(response.status).toBe(200);
+    expect(data.settlement_conversion_rate).toBe(1);
+    expect(data.settlement_amount_in_credit_currency).toBe(400);
+    expect(insertMock.mock.calls[0][0]).toMatchObject({
+      is_credit: false,
+      settles_entry_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      settlement_conversion_rate: 1,
+      settlement_amount_in_credit_currency: 400,
+      settlement_note: "Partial payment"
+    });
+  });
+
+  it("creates a cross-currency settlement using the provided rate", async () => {
+    creditLookupMaybeSingleMock.mockResolvedValueOnce({
+      data: {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        is_credit: true,
+        settles_entry_id: null,
+        currency_code: "USDT"
+      },
+      error: null
+    });
+
+    const { POST } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_date: "2026-05-01",
+        entry_direction: "profit",
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        explanation: "Settlement in IDR",
+        amount: 9000000,
+        currency_code: "IDR",
+        remark: "",
+        responsible_actor_id: "22222222-2222-4222-8222-222222222222",
+        settles_entry_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        settlement_conversion_rate: 0.000066,
+        settlement_note: ""
+      })
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+    expect(response.status).toBe(200);
+    expect(data.settlement_conversion_rate).toBe(0.000066);
+    expect(data.settlement_amount_in_credit_currency).toBe(594);
+    expect(insertMock.mock.calls[0][0]).toMatchObject({
+      settlement_conversion_rate: 0.000066,
+      settlement_amount_in_credit_currency: 594
+    });
+  });
+
+  it("rejects settling a non-credit entry", async () => {
+    creditLookupMaybeSingleMock.mockResolvedValueOnce({
+      data: {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        is_credit: false,
+        settles_entry_id: null,
+        currency_code: "USDT"
+      },
+      error: null
+    });
+
+    const { POST } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_date: "2026-05-01",
+        entry_direction: "profit",
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        explanation: "Bad settlement",
+        amount: 100,
+        currency_code: "USDT",
+        remark: "",
+        responsible_actor_id: "22222222-2222-4222-8222-222222222222",
+        settles_entry_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        settlement_conversion_rate: 1
+      })
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+    expect(response.status).toBe(400);
+    expect(data.error).toMatch(/not marked as credit/i);
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects settlement chains", async () => {
+    creditLookupMaybeSingleMock.mockResolvedValueOnce({
+      data: {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        is_credit: true,
+        settles_entry_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        currency_code: "USDT"
+      },
+      error: null
+    });
+
+    const { POST } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_date: "2026-05-01",
+        entry_direction: "profit",
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        explanation: "Chained settlement",
+        amount: 100,
+        currency_code: "USDT",
+        remark: "",
+        responsible_actor_id: "22222222-2222-4222-8222-222222222222",
+        settles_entry_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        settlement_conversion_rate: 1
+      })
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+    expect(response.status).toBe(400);
+    expect(data.error).toMatch(/chains are not allowed/i);
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects is_credit combined with settles_entry_id", async () => {
+    const { POST } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_date: "2026-05-01",
+        entry_direction: "profit",
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        explanation: "Invalid combo",
+        amount: 100,
+        currency_code: "USDT",
+        remark: "",
+        responsible_actor_id: "22222222-2222-4222-8222-222222222222",
+        is_credit: true,
+        settles_entry_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        settlement_conversion_rate: 1
+      })
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it("maps FK restrict delete errors to a readable message", async () => {
+    deleteMaybeSingleMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'update or delete on table "business_ledger_entries" violates foreign key constraint' }
+    });
+
+    const { DELETE } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries?id=entry-1", {
+      method: "DELETE"
+    });
+
+    const response = await DELETE(request);
+    const data = await response.json();
+    expect(response.status).toBe(400);
+    expect(data.error).toBe("This credit has settlements. Delete them first.");
+  });
+
   it("deletes entry and returns 200", async () => {
     const { DELETE } = await import("@/app/api/big-book/entries/route");
     const request = new Request("https://app.localhost/api/big-book/entries?id=entry-1", {
@@ -317,6 +555,6 @@ describe("big book entries route", () => {
     const response = await DELETE(request);
     expect(response.status).toBe(200);
     expect(deleteEqIdMock).toHaveBeenCalledWith("id", "entry-1");
-    expect(deleteEqBrandMock).toHaveBeenCalledWith("brand_id", "brand-1");
+    expect(deleteSelectMock).toHaveBeenCalled();
   });
 });

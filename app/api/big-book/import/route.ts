@@ -198,6 +198,7 @@ export async function POST(request: Request) {
       currency_code: row.currency_code,
       remark: row.remark ?? "",
       responsible_actor_id: actorId ?? "",
+      is_credit: row.is_credit,
       group_label: row.group_label,
       group_remark: row.group_remark
     };
@@ -302,6 +303,7 @@ export async function POST(request: Request) {
         currency_code: row.currency_code,
         remark: row.remark || null,
         responsible_actor_id: row.responsible_actor_id,
+        is_credit: Boolean(row.is_credit),
         group_id: groupId,
         created_by: authCheck.user.id,
         updated_by: authCheck.user.id

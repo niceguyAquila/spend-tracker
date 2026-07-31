@@ -19,8 +19,34 @@ describe("parseBigBookCsv", () => {
     expect(result.rows[0].pocket_name).toBeNull();
     expect(result.rows[0].group_label).toBeNull();
     expect(result.rows[0].group_remark).toBeNull();
+    expect(result.rows[0].is_credit).toBe(false);
     expect(result.rows[1].remark).toBeNull();
     expect(result.rows[1].sub_type_name).toBeNull();
+    expect(result.rows[1].is_credit).toBe(false);
+  });
+
+  it("parses is_credit when present", () => {
+    const csv = [
+      "entry_date,entry_direction,type_name,explanation,amount,currency_code,remark,actor_name,is_credit",
+      "2026-04-25,spending,Office Supplies,Printer ink,350000,IDR,Restock,Actor A,true",
+      "2026-04-26,profit,Sales Revenue,Daily settlement,1250.5,USDT,,Actor B,yes",
+      "2026-04-27,spending,Office Supplies,Paper,10000,IDR,,Actor A,0"
+    ].join("\n");
+
+    const result = parseBigBookCsv(csv);
+    expect(result.errors).toEqual([]);
+    expect(result.rows.map((row) => row.is_credit)).toEqual([true, true, false]);
+  });
+
+  it("rejects invalid is_credit values", () => {
+    const csv = [
+      "entry_date,entry_direction,type_name,explanation,amount,currency_code,remark,actor_name,is_credit",
+      "2026-04-25,spending,Office Supplies,Printer ink,350000,IDR,Restock,Actor A,maybe"
+    ].join("\n");
+
+    const result = parseBigBookCsv(csv);
+    expect(result.rows).toHaveLength(0);
+    expect(result.errors.some((item) => item.includes("is_credit must be true/false"))).toBe(true);
   });
 
   it("parses optional sub_type_name when present", () => {
@@ -239,5 +265,10 @@ describe("parseBigBookCsv Excel compatibility", () => {
     expect(result.errors).toEqual([]);
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0].actor_name).toBe("Actor A");
+  });
+
+  it("includes is_credit in the import template header", () => {
+    const template = buildBigBookImportTemplateCsv();
+    expect(template).toContain("is_credit");
   });
 });

@@ -5,9 +5,11 @@ import type {
   BigBookActorPocket,
   BigBookLedgerSubType,
   BigBookLedgerType,
+  BigBookSettlementTargetRef,
   BigBookVendor,
   BigBookVendorType
 } from "@/lib/types";
+import { formatAmount } from "@/lib/display-format";
 
 export type EntryFormState = {
   entry_date: string;
@@ -22,6 +24,10 @@ export type EntryFormState = {
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
   remark: string;
   responsible_actor_id: string;
+  is_credit: boolean;
+  settles_entry_id: string;
+  settlement_conversion_rate: string;
+  settlement_note: string;
 };
 
 const amountFormatter = new Intl.NumberFormat("en-US", {
@@ -46,6 +52,17 @@ export function formatAmountInput(value: string) {
   return decimalPart.length > 0 ? `${formattedInteger}.${decimalPart}` : formattedInteger;
 }
 
+export function formatRateInput(value: string) {
+  const cleaned = value.replace(/[^\d.]/g, "");
+  if (!cleaned) return "";
+  const [integerPart, ...decimalParts] = cleaned.split(".");
+  const decimalPart = decimalParts.join("").slice(0, 8);
+  if (cleaned.includes(".")) {
+    return `${integerPart}.${decimalPart}`;
+  }
+  return integerPart;
+}
+
 export function createEmptyEntryForm(options: {
   today: string;
   defaultTypeId: string;
@@ -63,7 +80,11 @@ export function createEmptyEntryForm(options: {
     amount: "",
     currency_code: "IDR",
     remark: "",
-    responsible_actor_id: options.defaultActorId
+    responsible_actor_id: options.defaultActorId,
+    is_credit: false,
+    settles_entry_id: "",
+    settlement_conversion_rate: "",
+    settlement_note: ""
   };
 }
 
@@ -82,6 +103,10 @@ type Props = {
   onAttachmentFilesChange?: (files: File[]) => void;
   onRemoveAttachmentAt?: (index: number) => void;
   explanationPlaceholder?: string;
+  settlesEntry?: BigBookSettlementTargetRef | null;
+  onFetchConversionRate?: () => void;
+  fetchingConversionRate?: boolean;
+  hideCreditToggle?: boolean;
 };
 
 export function BigBookEntryFields({
@@ -98,7 +123,11 @@ export function BigBookEntryFields({
   attachmentFiles = [],
   onAttachmentFilesChange,
   onRemoveAttachmentAt,
-  explanationPlaceholder = "What was this spending/profit for?"
+  explanationPlaceholder = "What was this spending/profit for?",
+  settlesEntry = null,
+  onFetchConversionRate,
+  fetchingConversionRate = false,
+  hideCreditToggle = false
 }: Props) {
   const activeTypes = types.filter((row) => row.is_active);
   const subTypesForForm = subTypes.filter(
@@ -121,6 +150,11 @@ export function BigBookEntryFields({
       : !pocketsForForm.length
         ? "No pockets for this actor yet"
         : null;
+  const isSettlementMode = Boolean(settlesEntry || value.settles_entry_id);
+  const settlementCurrencyDiffers =
+    isSettlementMode &&
+    settlesEntry != null &&
+    value.currency_code !== settlesEntry.currency_code;
 
   function patch(partial: Partial<EntryFormState>) {
     onChange({ ...value, ...partial });
@@ -128,6 +162,26 @@ export function BigBookEntryFields({
 
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+      {settlesEntry ? (
+        <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-3 text-sm lg:col-span-2">
+          <p className="font-medium">Settling credit</p>
+          <p className="mt-1 text-muted">
+            {settlesEntry.entry_date} · {settlesEntry.explanation}
+            {settlesEntry.vendor_name ? ` · ${settlesEntry.vendor_name}` : ""}
+          </p>
+          <p className="mt-1">
+            Outstanding:{" "}
+            <span className="font-medium">
+              {formatAmount(settlesEntry.outstanding, {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 4
+              })}{" "}
+              {settlesEntry.currency_code}
+            </span>
+          </p>
+        </div>
+      ) : null}
+
       <label className="text-sm">
         Date *
         <input
@@ -250,7 +304,11 @@ export function BigBookEntryFields({
           onChange={(event) =>
             patch({
               currency_code: event.target.value as EntryFormState["currency_code"],
-              pocket_id: ""
+              pocket_id: "",
+              settlement_conversion_rate:
+                settlesEntry && event.target.value === settlesEntry.currency_code
+                  ? "1"
+                  : value.settlement_conversion_rate
             })
           }
         >
@@ -335,6 +393,73 @@ export function BigBookEntryFields({
           onChange={(event) => patch({ remark: event.target.value })}
         />
       </label>
+
+      {!hideCreditToggle && !isSettlementMode ? (
+        <label className="flex items-start gap-2 text-sm lg:col-span-2">
+          <input
+            className="mt-1"
+            type="checkbox"
+            checked={value.is_credit}
+            onChange={(event) =>
+              patch({
+                is_credit: event.target.checked,
+                settles_entry_id: "",
+                settlement_conversion_rate: "",
+                settlement_note: ""
+              })
+            }
+          />
+          <span>
+            <span className="font-medium">Mark as Credit</span>
+            <span className="mt-0.5 block text-xs text-muted">
+              Vendor owes our company this amount. You can record settlement payments later.
+            </span>
+          </span>
+        </label>
+      ) : null}
+
+      {isSettlementMode ? (
+        <>
+          {settlementCurrencyDiffers ? (
+            <label className="text-sm lg:col-span-2">
+              Conversion Rate * ({value.currency_code} → {settlesEntry?.currency_code})
+              <div className="mt-1 flex gap-2">
+                <input
+                  className="field flex-1"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={value.settlement_conversion_rate}
+                  onChange={(event) =>
+                    patch({ settlement_conversion_rate: formatRateInput(event.target.value) })
+                  }
+                />
+                {onFetchConversionRate ? (
+                  <button
+                    type="button"
+                    className="btn-secondary whitespace-nowrap"
+                    onClick={onFetchConversionRate}
+                    disabled={fetchingConversionRate}
+                  >
+                    {fetchingConversionRate ? "Fetching..." : "Fetch rate"}
+                  </button>
+                ) : null}
+              </div>
+              <span className="mt-1 block text-xs text-muted">
+                Multiply settlement amount by this rate to get the credit-currency equivalent.
+              </span>
+            </label>
+          ) : null}
+          <label className="text-sm lg:col-span-2">
+            Settlement Note
+            <input
+              className="field mt-1"
+              value={value.settlement_note}
+              onChange={(event) => patch({ settlement_note: event.target.value })}
+              placeholder="Optional note about this settlement payment"
+            />
+          </label>
+        </>
+      ) : null}
     </div>
   );
 }

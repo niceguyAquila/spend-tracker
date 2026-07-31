@@ -17,10 +17,11 @@ const OPTIONAL_HEADERS = [
   "vendor_name",
   "pocket_name",
   "group_label",
-  "group_remark"
+  "group_remark",
+  "is_credit"
 ] as const;
 
-/** Full import/export column order (required + optional). */
+/** Full import/export column order (required + optional + derived export-only). */
 export const BIG_BOOK_CSV_HEADERS = [
   "entry_date",
   "entry_direction",
@@ -35,7 +36,15 @@ export const BIG_BOOK_CSV_HEADERS = [
   "actor_name",
   "pocket_name",
   "group_label",
-  "group_remark"
+  "group_remark",
+  "is_credit"
+] as const;
+
+export const BIG_BOOK_CSV_EXPORT_HEADERS = [
+  ...BIG_BOOK_CSV_HEADERS,
+  "credit_status",
+  "outstanding",
+  "settles_explanation"
 ] as const;
 
 export function buildBigBookImportTemplateCsv(): string {
@@ -53,7 +62,8 @@ export function buildBigBookImportTemplateCsv(): string {
     "Actor A",
     "Petty Cash",
     "",
-    ""
+    "",
+    "false"
   ];
   const groupRowA = [
     "2026-04-26",
@@ -69,7 +79,8 @@ export function buildBigBookImportTemplateCsv(): string {
     "Actor A",
     "Petty Cash",
     "Hardware purchase",
-    "Grouped multi-currency buy"
+    "Grouped multi-currency buy",
+    "false"
   ];
   const groupRowB = [
     "2026-04-26",
@@ -85,7 +96,8 @@ export function buildBigBookImportTemplateCsv(): string {
     "Actor A",
     "",
     "Hardware purchase",
-    "Grouped multi-currency buy"
+    "Grouped multi-currency buy",
+    "true"
   ];
   // UTF-8 BOM helps Excel on Windows keep columns when opening the template.
   return `\uFEFF${[BIG_BOOK_CSV_HEADERS.join(","), standaloneRow.join(","), groupRowA.join(","), groupRowB.join(",")].join("\r\n")}\r\n`;
@@ -109,6 +121,7 @@ export type ParsedBigBookCsvRow = {
   pocket_name: string | null;
   group_label: string | null;
   group_remark: string | null;
+  is_credit: boolean;
 };
 
 export type ParseBigBookCsvResult = {
@@ -206,6 +219,14 @@ function parseAmount(value: string): number | null {
   const parsed = Number(value.replace(/,/g, ""));
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
   return parsed;
+}
+
+function parseIsCredit(value: string | null): boolean | null {
+  if (value == null || value.trim() === "") return false;
+  const normalized = value.trim().toLowerCase();
+  if (["true", "1", "yes", "y"].includes(normalized)) return true;
+  if (["false", "0", "no", "n"].includes(normalized)) return false;
+  return null;
 }
 
 function normalizeHeader(value: string) {
@@ -309,6 +330,7 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
     const pocketName = normalizeOptional(get("pocket_name"));
     const groupLabel = normalizeOptional(get("group_label"));
     const groupRemark = normalizeOptional(get("group_remark"));
+    const isCreditRaw = normalizeOptional(get("is_credit"));
 
     if (!entryDateRaw || !entryDirectionRaw || !typeName || !explanation || !amountRaw || !currencyRaw || !actorName) {
       errors.push(`Row ${lineNumber}: required fields must not be empty.`);
@@ -359,6 +381,12 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
       continue;
     }
 
+    const isCredit = parseIsCredit(isCreditRaw);
+    if (isCredit === null) {
+      errors.push(`Row ${lineNumber}: is_credit must be true/false (or 1/0, yes/no).`);
+      continue;
+    }
+
     parsedRows.push({
       entry_date: entryDate,
       entry_direction: directionParsed.data,
@@ -373,7 +401,8 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
       actor_name: actorName,
       pocket_name: pocketName,
       group_label: groupLabel,
-      group_remark: groupRemark
+      group_remark: groupRemark,
+      is_credit: isCredit
     });
   }
 

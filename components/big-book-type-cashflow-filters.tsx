@@ -2,7 +2,12 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { BigBookActor, BigBookLedgerType } from "@/lib/types";
+import type {
+  BigBookActor,
+  BigBookLedgerType,
+  BigBookVendor,
+  BigBookVendorType
+} from "@/lib/types";
 import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
 
 const CURRENCY_OPTIONS = [
@@ -15,8 +20,12 @@ const CURRENCY_OPTIONS = [
 type Props = {
   actors: BigBookActor[];
   types: BigBookLedgerType[];
+  vendorTypes: BigBookVendorType[];
+  vendors: BigBookVendor[];
   initialActorIds: string[];
   initialTypeIds: string[];
+  initialVendorTypeIds: string[];
+  initialVendorIds: string[];
   initialCurrencyCodes: string[];
   initialDateFrom: string;
   initialDateTo: string;
@@ -25,8 +34,12 @@ type Props = {
 export function BigBookTypeCashflowFilters({
   actors,
   types,
+  vendorTypes,
+  vendors,
   initialActorIds,
   initialTypeIds,
+  initialVendorTypeIds,
+  initialVendorIds,
   initialCurrencyCodes,
   initialDateFrom,
   initialDateTo
@@ -36,6 +49,8 @@ export function BigBookTypeCashflowFilters({
 
   const [actorIds, setActorIds] = useState<string[]>(initialActorIds);
   const [typeIds, setTypeIds] = useState<string[]>(initialTypeIds);
+  const [vendorTypeIds, setVendorTypeIds] = useState<string[]>(initialVendorTypeIds);
+  const [vendorIds, setVendorIds] = useState<string[]>(initialVendorIds);
   const [currencyCodes, setCurrencyCodes] = useState<string[]>(initialCurrencyCodes);
   const [dateFrom, setDateFrom] = useState<string>(initialDateFrom);
   const [dateTo, setDateTo] = useState<string>(initialDateTo);
@@ -58,10 +73,35 @@ export function BigBookTypeCashflowFilters({
     [types]
   );
 
+  const vendorTypeOptions = useMemo(
+    () =>
+      vendorTypes
+        .filter((row) => row.is_active)
+        .map((vendorType) => ({
+          value: vendorType.id,
+          label: vendorType.name
+        })),
+    [vendorTypes]
+  );
+
+  const vendorOptions = useMemo(() => {
+    const filtered = vendors.filter((row) => {
+      if (!row.is_active) return false;
+      if (!vendorTypeIds.length) return true;
+      return vendorTypeIds.includes(row.vendor_type_id);
+    });
+    return filtered.map((vendor) => ({
+      value: vendor.id,
+      label: vendor.name
+    }));
+  }, [vendors, vendorTypeIds]);
+
   function buildQueryString() {
     const params = new URLSearchParams();
     for (const id of actorIds) params.append("actorId", id);
     for (const id of typeIds) params.append("typeId", id);
+    for (const id of vendorTypeIds) params.append("vendorTypeId", id);
+    for (const id of vendorIds) params.append("vendorId", id);
     for (const code of currencyCodes) params.append("currencyCode", code);
     if (dateFrom) params.set("dateFrom", dateFrom);
     if (dateTo) params.set("dateTo", dateTo);
@@ -80,12 +120,25 @@ export function BigBookTypeCashflowFilters({
   function resetFilters() {
     setActorIds([]);
     setTypeIds([]);
+    setVendorTypeIds([]);
+    setVendorIds([]);
     setCurrencyCodes([]);
     setDateFrom("");
     setDateTo("");
     startTransition(() => {
       router.push("/dashboard/big-book/master-dashboard");
     });
+  }
+
+  function onVendorTypeChange(next: string[]) {
+    setVendorTypeIds(next);
+    if (!next.length) return;
+    setVendorIds((prev) =>
+      prev.filter((id) => {
+        const vendor = vendors.find((row) => row.id === id);
+        return vendor ? next.includes(vendor.vendor_type_id) : false;
+      })
+    );
   }
 
   return (
@@ -119,6 +172,26 @@ export function BigBookTypeCashflowFilters({
             options={typeOptions}
             onChange={setTypeIds}
             searchPlaceholder="Search type..."
+          />
+        </div>
+        <div className="text-sm text-muted">
+          <span className="mb-1 block">Vendor Type</span>
+          <SearchableMultiSelect
+            label="Vendor Type"
+            selectedValues={vendorTypeIds}
+            options={vendorTypeOptions}
+            onChange={onVendorTypeChange}
+            searchPlaceholder="Search vendor type..."
+          />
+        </div>
+        <div className="text-sm text-muted">
+          <span className="mb-1 block">Vendor</span>
+          <SearchableMultiSelect
+            label="Vendor"
+            selectedValues={vendorIds}
+            options={vendorOptions}
+            onChange={setVendorIds}
+            searchPlaceholder="Search vendor..."
           />
         </div>
         <label className="text-sm text-muted">

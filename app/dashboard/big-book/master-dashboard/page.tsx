@@ -1,11 +1,15 @@
 import { MasterDashboardBigBookTypeCashflowTable } from "@/components/master-dashboard-tables";
 import { BigBookTypeCashflowFilters } from "@/components/big-book-type-cashflow-filters";
+import { BigBookVendorActorOutstandingTable } from "@/components/big-book-vendor-actor-outstanding-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { SetupRequiredCard } from "@/components/ui/setup-required-card";
 import {
   getBigBookActors,
   getBigBookLedgerTypes,
-  getBigBookTypeCashflowByCurrency
+  getBigBookTypeCashflowByCurrency,
+  getBigBookVendorActorOutstanding,
+  getBigBookVendorTypes,
+  getBigBookVendors
 } from "@/lib/db/queries";
 
 type SearchParamValue = string | string[] | undefined;
@@ -38,23 +42,38 @@ export default async function BigBookMasterDashboardPage({ searchParams }: BigBo
     const params = (await searchParams) ?? {};
     const actorIds = normalizeArrayParam(params.actorId);
     const typeIds = normalizeArrayParam(params.typeId);
+    const vendorTypeIds = normalizeArrayParam(params.vendorTypeId);
+    const vendorIds = normalizeArrayParam(params.vendorId);
     const currencyCodes = normalizeArrayParam(params.currencyCode).filter((value): value is CashflowCurrency =>
       (ALLOWED_CURRENCIES as string[]).includes(value)
     );
     const dateFrom = normalizeDateParam(params.dateFrom);
     const dateTo = normalizeDateParam(params.dateTo);
 
-    const [actors, types, sourceRowsByCurrency] = await Promise.all([
-      getBigBookActors(),
-      getBigBookLedgerTypes({ includeInactive: true }),
-      getBigBookTypeCashflowByCurrency({
-        actorId: actorIds.length ? actorIds : undefined,
-        typeId: typeIds.length ? typeIds : undefined,
-        currencyCode: currencyCodes.length ? currencyCodes : undefined,
-        dateFrom: dateFrom || undefined,
-        dateTo: dateTo || undefined
-      })
-    ]);
+    const [actors, types, vendorTypes, vendors, sourceRowsByCurrency, vendorActorOutstanding] =
+      await Promise.all([
+        getBigBookActors(),
+        getBigBookLedgerTypes({ includeInactive: true }),
+        getBigBookVendorTypes({ includeInactive: true }),
+        getBigBookVendors({ includeInactive: true }),
+        getBigBookTypeCashflowByCurrency({
+          actorId: actorIds.length ? actorIds : undefined,
+          typeId: typeIds.length ? typeIds : undefined,
+          vendorTypeId: vendorTypeIds.length ? vendorTypeIds : undefined,
+          vendorId: vendorIds.length ? vendorIds : undefined,
+          currencyCode: currencyCodes.length ? currencyCodes : undefined,
+          dateFrom: dateFrom || undefined,
+          dateTo: dateTo || undefined
+        }),
+        getBigBookVendorActorOutstanding({
+          actorId: actorIds.length ? actorIds : undefined,
+          vendorTypeId: vendorTypeIds.length ? vendorTypeIds : undefined,
+          vendorId: vendorIds.length ? vendorIds : undefined,
+          currencyCode: currencyCodes.length ? currencyCodes : undefined,
+          dateFrom: dateFrom || undefined,
+          dateTo: dateTo || undefined
+        })
+      ]);
 
     return (
       <div className="space-y-6">
@@ -71,13 +90,27 @@ export default async function BigBookMasterDashboardPage({ searchParams }: BigBo
           <BigBookTypeCashflowFilters
             actors={actors}
             types={types}
+            vendorTypes={vendorTypes}
+            vendors={vendors}
             initialActorIds={actorIds}
             initialTypeIds={typeIds}
+            initialVendorTypeIds={vendorTypeIds}
+            initialVendorIds={vendorIds}
             initialCurrencyCodes={currencyCodes}
             initialDateFrom={dateFrom}
             initialDateTo={dateTo}
           />
           <MasterDashboardBigBookTypeCashflowTable sourceRowsByCurrency={sourceRowsByCurrency} />
+        </section>
+
+        <section className="card">
+          <h2 className="text-lg font-semibold">Outstanding Credit by Vendor and Actor</h2>
+          <p className="mt-1 text-sm text-muted">
+            Who owes whom: vendor (owes) to actor (owed), per currency. Fully settled credits are omitted.
+            Filters above also apply here; date range selects which credits are included, while all of their
+            settlements still count against outstanding.
+          </p>
+          <BigBookVendorActorOutstandingTable rows={vendorActorOutstanding} />
         </section>
       </div>
     );

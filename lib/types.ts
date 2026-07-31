@@ -225,6 +225,29 @@ export type BigBookEntryGroup = {
   updated_at: string;
 };
 
+export type BigBookCreditStatus = "open" | "partial" | "settled";
+
+export type BigBookSettlementRef = {
+  id: string;
+  entry_date: string;
+  amount: number;
+  currency_code: "IDR" | "MYR" | "USDT" | "TRX";
+  settlement_conversion_rate: number;
+  settlement_amount_in_credit_currency: number;
+  settlement_note: string | null;
+  explanation: string;
+};
+
+export type BigBookSettlementTargetRef = {
+  id: string;
+  entry_date: string;
+  explanation: string;
+  amount: number;
+  currency_code: "IDR" | "MYR" | "USDT" | "TRX";
+  vendor_name: string | null;
+  outstanding: number;
+};
+
 export type BigBookEntry = {
   id: string;
   group_id: string | null;
@@ -240,6 +263,11 @@ export type BigBookEntry = {
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
   remark: string | null;
   responsible_actor_id: string;
+  is_credit: boolean;
+  settles_entry_id: string | null;
+  settlement_conversion_rate: number | null;
+  settlement_amount_in_credit_currency: number | null;
+  settlement_note: string | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -256,6 +284,11 @@ export type BigBookEntry = {
   creator_display_name: string;
   updater_display_name: string;
   attachments: BigBookAttachment[];
+  total_settled: number;
+  outstanding: number;
+  credit_status: BigBookCreditStatus | null;
+  settlements: BigBookSettlementRef[];
+  settles_entry: BigBookSettlementTargetRef | null;
 };
 
 export type BigBookLedgerRow =
@@ -326,6 +359,22 @@ export type BigBookTypeCashflowByCurrency = {
     outflow: number;
     net: number;
   };
+};
+
+export type BigBookVendorActorOutstandingRow = {
+  row_key: string;
+  vendor_id: string | null;
+  vendor_name: string;
+  vendor_type_id: string | null;
+  vendor_type_name: string;
+  actor_id: string;
+  actor_code: "A" | "B";
+  actor_display_name: string;
+  currency: BigBookCashflowCurrency;
+  total_credited: number;
+  total_settled: number;
+  outstanding: number;
+  open_credit_count: number;
 };
 
 export type CreditBookLedgerType = {

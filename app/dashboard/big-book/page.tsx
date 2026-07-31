@@ -6,6 +6,7 @@ import {
   getBigBookLedgerRowsPaged,
   getBigBookLedgerSubTypes,
   getBigBookLedgerTypes,
+  getBigBookVendorActorOutstanding,
   getBigBookVendorTypes,
   getBigBookVendors
 } from "@/lib/db/queries";
@@ -25,7 +26,8 @@ export default async function BigBookPage() {
       actors,
       entriesPage,
       actorMetrics,
-      actorPocketMetrics
+      actorPocketMetrics,
+      vendorActorOutstanding
     ] = await Promise.all([
       getBigBookLedgerTypes({ includeInactive: true }),
       getBigBookLedgerSubTypes({ includeInactive: true }),
@@ -35,7 +37,8 @@ export default async function BigBookPage() {
       getBigBookActors(),
       getBigBookLedgerRowsPaged({ page: 0, pageSize: DEFAULT_PAGE_SIZE }),
       getBigBookActorCurrencyMetrics(),
-      getBigBookActorPocketMetrics()
+      getBigBookActorPocketMetrics(),
+      getBigBookVendorActorOutstanding()
     ]);
 
     return (
@@ -56,6 +59,7 @@ export default async function BigBookPage() {
           initialTotals={entriesPage.totals}
           initialActorMetrics={actorMetrics}
           initialActorPocketMetrics={actorPocketMetrics}
+          initialVendorActorOutstanding={vendorActorOutstanding}
         />
       </div>
     );

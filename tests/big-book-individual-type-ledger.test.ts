@@ -21,6 +21,11 @@ const baseEntry: BigBookEntry = {
   currency_code: "IDR",
   remark: null,
   responsible_actor_id: "actor-1",
+  is_credit: false,
+  settles_entry_id: null,
+  settlement_conversion_rate: null,
+  settlement_amount_in_credit_currency: null,
+  settlement_note: null,
   created_by: null,
   updated_by: null,
   created_at: "2026-01-01T00:00:00Z",
@@ -36,7 +41,12 @@ const baseEntry: BigBookEntry = {
   actor_display_name: "Actor A",
   creator_display_name: "-",
   updater_display_name: "-",
-  attachments: []
+  attachments: [],
+  total_settled: 0,
+  outstanding: 0,
+  credit_status: null,
+  settlements: [],
+  settles_entry: null
 };
 
 describe("individual type ledger utils", () => {

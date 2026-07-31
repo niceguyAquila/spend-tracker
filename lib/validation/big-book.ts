@@ -92,7 +92,10 @@ const optionalUuidOrEmpty = (message: string) =>
     .or(z.literal(""))
     .transform((value) => (value && value.length ? value : null));
 
-export const bigBookEntryInputSchema = z.object({
+export const bigBookCreditStatusSchema = z.enum(["open", "partial", "settled"]);
+export const bigBookCreditFlagSchema = z.enum(["credit", "settlement", "none"]);
+
+const bigBookEntryBaseSchema = z.object({
   entry_date: z.string().min(1, "Date is required"),
   entry_direction: bigBookEntryDirectionSchema,
   entry_type_id: z.string().uuid("Type is required"),
@@ -104,20 +107,65 @@ export const bigBookEntryInputSchema = z.object({
   amount: z.coerce.number().positive("Amount must be greater than 0"),
   currency_code: bigBookCurrencySchema,
   remark: z.string().max(1000).optional().or(z.literal("")),
-  responsible_actor_id: z.string().uuid("Responsible actor is required")
+  responsible_actor_id: z.string().uuid("Responsible actor is required"),
+  is_credit: z.boolean().optional().default(false),
+  settles_entry_id: optionalUuidOrEmpty("Settlement target must be a valid id"),
+  settlement_conversion_rate: z.coerce.number().positive().nullable().optional(),
+  settlement_note: z
+    .string()
+    .max(1000)
+    .optional()
+    .or(z.literal(""))
+    .transform((value) => (value && value.length ? value : null))
 });
 
-export const bigBookEntryUpdateSchema = bigBookEntryInputSchema.extend({
-  id: z.string().uuid()
+function refineBigBookEntryCreditFields<
+  T extends {
+    is_credit?: boolean;
+    settles_entry_id?: string | null;
+    settlement_conversion_rate?: number | null;
+  }
+>(value: T, ctx: z.RefinementCtx) {
+  if (value.is_credit && value.settles_entry_id) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "A settlement entry cannot also be marked as credit.",
+      path: ["is_credit"]
+    });
+  }
+  if (value.settles_entry_id && value.settlement_conversion_rate == null) {
+    // Conversion rate is required when linking a settlement; same-currency
+    // settlements force rate = 1 in the API before insert.
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Conversion rate is required when settling a credit.",
+      path: ["settlement_conversion_rate"]
+    });
+  }
+}
+
+export const bigBookEntryInputSchema = bigBookEntryBaseSchema.superRefine(refineBigBookEntryCreditFields);
+
+export const bigBookEntryUpdateSchema = bigBookEntryBaseSchema
+  .extend({
+    id: z.string().uuid()
+  })
+  .superRefine(refineBigBookEntryCreditFields);
+
+const bigBookGroupEntryInputSchema = bigBookEntryBaseSchema.omit({
+  is_credit: true,
+  settles_entry_id: true,
+  settlement_conversion_rate: true,
+  settlement_note: true
 });
 
 export const bigBookGroupCreateSchema = z.object({
   label: z.string().trim().min(2).max(200),
   remark: z.string().max(1000).optional().or(z.literal("")),
-  entries: z.array(bigBookEntryInputSchema).min(2).max(50)
+  entries: z.array(bigBookGroupEntryInputSchema).min(2).max(50)
 });
 
-export const bigBookGroupEntryUpdateSchema = bigBookEntryInputSchema.extend({
+export const bigBookGroupEntryUpdateSchema = bigBookGroupEntryInputSchema.extend({
   id: z.string().uuid().optional()
 });
 
@@ -174,11 +222,18 @@ export const bigBookEntriesQuerySchema = z.object({
   vendorTypeId: normalizeMultiSelect(z.string().uuid()),
   vendorId: normalizeMultiSelect(z.string().uuid()),
   pocketId: normalizeMultiSelect(z.string().uuid()),
+  creditFlag: normalizeMultiSelect(bigBookCreditFlagSchema),
+  creditStatus: normalizeMultiSelect(bigBookCreditStatusSchema),
   dateFrom: optionalString,
   dateTo: optionalString,
   query: z.string().max(200).optional().or(z.literal("")).transform((v) => (v ? v : undefined)),
   page: z.coerce.number().int().min(0).default(0),
   pageSize: z.coerce.number().int().min(1).max(200).default(20)
+});
+
+export const bigBookCreditsPickerQuerySchema = z.object({
+  query: z.string().max(200).optional().or(z.literal("")).transform((v) => (v ? v : undefined)),
+  limit: z.coerce.number().int().min(1).max(200).default(50)
 });
 
 export type BigBookEntriesQuery = z.infer<typeof bigBookEntriesQuerySchema>;
