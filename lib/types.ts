@@ -265,6 +265,25 @@ export type BigBookActorCurrencyMetrics = {
   };
 };
 
+export type BigBookPocketMetrics = {
+  pocket_id: string;
+  pocket_code: string;
+  pocket_name: string;
+  is_active: boolean;
+  inflow: number;
+  outflow: number;
+  net: number;
+  entry_count: number;
+};
+
+export type BigBookActorPocketMetrics = {
+  actor_id: string;
+  actor_code: "A" | "B";
+  actor_display_name: string;
+  pockets: BigBookPocketMetrics[];
+  total_net: number;
+};
+
 export type BigBookMonthlyCurrencyRow = {
   month_index: number;
   month_label: string;

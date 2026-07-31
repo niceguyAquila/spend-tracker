@@ -6,6 +6,7 @@ import type {
   BigBookActor,
   BigBookActorCurrencyMetrics,
   BigBookActorPocket,
+  BigBookActorPocketMetrics,
   BigBookEntry,
   BigBookLedgerSubType,
   BigBookLedgerType,
@@ -33,6 +34,7 @@ type Props = {
   initialEntries: BigBookEntry[];
   initialTotalCount: number;
   initialActorMetrics: BigBookActorCurrencyMetrics[];
+  initialActorPocketMetrics: BigBookActorPocketMetrics[];
 };
 
 type EntryFormState = {
@@ -116,7 +118,8 @@ export function BigBookPanel({
   initialActors,
   initialEntries,
   initialTotalCount,
-  initialActorMetrics
+  initialActorMetrics,
+  initialActorPocketMetrics
 }: Props) {
   const router = useRouter();
   const [isRefreshing, startTransition] = useTransition();
@@ -1064,6 +1067,61 @@ export function BigBookPanel({
           ))}
           {!actorCurrencyMetrics.length ? (
             <p className="text-sm text-slate-600">No actor totals yet.</p>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="card">
+        <h2 className="text-lg font-semibold">Pocket Totals by Actor (All Time)</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Net IDR movement per pocket across all Big Book records. Each pocket is listed under the actor who owns it.
+        </p>
+        <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
+          {initialActorPocketMetrics.map((group) => (
+            <article
+              key={group.actor_id}
+              className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-4"
+            >
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p className="font-semibold">{group.actor_display_name}</p>
+                <p className={`text-sm font-medium ${getAmountColorClass(group.total_net)}`}>
+                  IDR {formatAmount(group.total_net, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
+                </p>
+              </div>
+              <div className="mt-3 space-y-2 text-sm">
+                {group.pockets.map((pocket) => (
+                  <div
+                    key={pocket.pocket_id}
+                    className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2"
+                  >
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <span className="flex items-center gap-2">
+                        {pocket.pocket_name}
+                        <span className="text-xs text-[rgb(var(--text-muted))]">{pocket.pocket_code}</span>
+                        {!pocket.is_active ? (
+                          <span className="inline-flex rounded bg-slate-200 px-1.5 py-0.5 text-xs font-medium text-slate-700">
+                            Inactive
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className={`font-medium ${getAmountColorClass(pocket.net)}`}>
+                        {formatAmount(pocket.net, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-[rgb(var(--text-muted))]">
+                      In {formatAmount(pocket.inflow, { minimumFractionDigits: 0, maximumFractionDigits: 4 })} · Out{" "}
+                      {formatAmount(pocket.outflow, { minimumFractionDigits: 0, maximumFractionDigits: 4 })} ·{" "}
+                      {pocket.entry_count} {pocket.entry_count === 1 ? "entry" : "entries"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </article>
+          ))}
+          {!initialActorPocketMetrics.length ? (
+            <p className="text-sm text-slate-600">
+              No pockets yet. Add one under Big Book Settings to start tracking pocket totals.
+            </p>
           ) : null}
         </div>
       </section>

@@ -1,6 +1,7 @@
 import {
   getBigBookActors,
   getBigBookActorCurrencyMetrics,
+  getBigBookActorPocketMetrics,
   getBigBookActorPockets,
   getBigBookEntriesPaged,
   getBigBookLedgerSubTypes,
@@ -13,7 +14,17 @@ import { DEFAULT_PAGE_SIZE } from "@/lib/table-pagination";
 
 export default async function BigBookPage() {
   try {
-    const [types, subTypes, vendorTypes, vendors, pockets, actors, entriesPage, actorMetrics] = await Promise.all([
+    const [
+      types,
+      subTypes,
+      vendorTypes,
+      vendors,
+      pockets,
+      actors,
+      entriesPage,
+      actorMetrics,
+      actorPocketMetrics
+    ] = await Promise.all([
       getBigBookLedgerTypes({ includeInactive: true }),
       getBigBookLedgerSubTypes({ includeInactive: true }),
       getBigBookVendorTypes({ includeInactive: true }),
@@ -21,7 +32,8 @@ export default async function BigBookPage() {
       getBigBookActorPockets({ includeInactive: true }),
       getBigBookActors(),
       getBigBookEntriesPaged({ page: 0, pageSize: DEFAULT_PAGE_SIZE }),
-      getBigBookActorCurrencyMetrics()
+      getBigBookActorCurrencyMetrics(),
+      getBigBookActorPocketMetrics()
     ]);
 
     return (
@@ -44,6 +56,7 @@ export default async function BigBookPage() {
           initialEntries={entriesPage.rows}
           initialTotalCount={entriesPage.totalCount}
           initialActorMetrics={actorMetrics}
+          initialActorPocketMetrics={actorPocketMetrics}
         />
       </div>
     );

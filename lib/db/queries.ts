@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   BigBookActor,
   BigBookActorPocket,
+  BigBookActorPocketMetrics,
   BigBookAllowedUserOption,
   BigBookActorCurrencyMetrics,
   BigBookAttachment,
@@ -717,6 +718,90 @@ export async function getBigBookActorCurrencyMetrics(): Promise<BigBookActorCurr
     const signedAmount = row.entry_direction === "spending" ? -Math.abs(Number(row.amount)) : Math.abs(Number(row.amount));
     existing.totals[row.currency_code] += signedAmount;
     byActor.set(actorId, existing);
+  }
+
+  return [...byActor.values()].sort((a, b) => a.actor_code.localeCompare(b.actor_code));
+}
+
+export async function getBigBookActorPocketMetrics(): Promise<BigBookActorPocketMetrics[]> {
+  const [actors, pockets] = await Promise.all([
+    getBigBookActors(),
+    getBigBookActorPockets({ includeInactive: true })
+  ]);
+
+  if (!pockets.length) return [];
+
+  const supabase = await createClient();
+  const pageSize = 1000;
+  let offset = 0;
+  const rows: Array<{
+    pocket_id: string | null;
+    entry_direction: "spending" | "profit";
+    amount: number;
+  }> = [];
+
+  // Only pocket-tagged rows are relevant, so this scan stays far smaller than
+  // the all-entries scan in getBigBookActorCurrencyMetrics.
+  while (true) {
+    const { data, error } = await supabase
+      .from("business_ledger_entries")
+      .select("pocket_id, entry_direction, amount")
+      .not("pocket_id", "is", null)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + pageSize - 1);
+
+    if (error) throw error;
+    const batch = (data ?? []) as typeof rows;
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  const byPocket = new Map<string, { inflow: number; outflow: number; entry_count: number }>();
+  for (const row of rows) {
+    if (!row.pocket_id) continue;
+    const bucket = byPocket.get(row.pocket_id) ?? { inflow: 0, outflow: 0, entry_count: 0 };
+    const amount = Math.abs(Number(row.amount));
+    if (row.entry_direction === "spending") {
+      bucket.outflow += amount;
+    } else {
+      bucket.inflow += amount;
+    }
+    bucket.entry_count += 1;
+    byPocket.set(row.pocket_id, bucket);
+  }
+
+  const actorById = new Map(actors.map((actor) => [actor.id, actor]));
+  const byActor = new Map<string, BigBookActorPocketMetrics>();
+
+  // Driven by the pocket list, not the entries, so a pocket with no activity
+  // still renders with zeroed totals.
+  for (const pocket of pockets) {
+    const actor = actorById.get(pocket.actor_id);
+    const group =
+      byActor.get(pocket.actor_id) ??
+      ({
+        actor_id: pocket.actor_id,
+        actor_code: (actor?.actor_code ?? "A") as "A" | "B",
+        actor_display_name: actor?.display_name ?? "Unknown Actor",
+        pockets: [],
+        total_net: 0
+      } as BigBookActorPocketMetrics);
+
+    const bucket = byPocket.get(pocket.id) ?? { inflow: 0, outflow: 0, entry_count: 0 };
+    const net = bucket.inflow - bucket.outflow;
+    group.pockets.push({
+      pocket_id: pocket.id,
+      pocket_code: pocket.code,
+      pocket_name: pocket.name,
+      is_active: pocket.is_active,
+      inflow: bucket.inflow,
+      outflow: bucket.outflow,
+      net,
+      entry_count: bucket.entry_count
+    });
+    group.total_net += net;
+    byActor.set(pocket.actor_id, group);
   }
 
   return [...byActor.values()].sort((a, b) => a.actor_code.localeCompare(b.actor_code));
