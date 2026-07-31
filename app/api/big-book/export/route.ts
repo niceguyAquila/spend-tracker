@@ -14,7 +14,8 @@ const EXPORT_HEADERS = [
   "amount",
   "currency_code",
   "remark",
-  "actor_name"
+  "actor_name",
+  "pocket_name"
 ] as const;
 
 function escapeCsvCell(value: string | null | undefined): string {
@@ -44,6 +45,9 @@ export async function GET(request: Request) {
     currencyCode: searchParams.getAll("currencyCode"),
     direction: searchParams.getAll("direction"),
     actorId: searchParams.getAll("actorId"),
+    vendorTypeId: searchParams.getAll("vendorTypeId"),
+    vendorId: searchParams.getAll("vendorId"),
+    pocketId: searchParams.getAll("pocketId"),
     dateFrom: searchParams.get("dateFrom") ?? "",
     dateTo: searchParams.get("dateTo") ?? "",
     query: searchParams.get("query") ?? "",
@@ -60,6 +64,9 @@ export async function GET(request: Request) {
       currencyCode: parsed.data.currencyCode,
       direction: parsed.data.direction,
       actorId: parsed.data.actorId,
+      vendorTypeId: parsed.data.vendorTypeId,
+      vendorId: parsed.data.vendorId,
+      pocketId: parsed.data.pocketId,
       dateFrom: parsed.data.dateFrom,
       dateTo: parsed.data.dateTo,
       query: parsed.data.query,
@@ -80,7 +87,8 @@ export async function GET(request: Request) {
         formatAmountForCsv(entry.amount),
         entry.currency_code,
         entry.remark ?? "",
-        entry.actor_display_name
+        entry.actor_display_name,
+        entry.pocket_name ?? ""
       ].map(escapeCsvCell);
       lines.push(cells.join(","));
     }

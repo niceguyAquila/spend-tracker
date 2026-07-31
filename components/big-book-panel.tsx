@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type {
   BigBookActor,
   BigBookActorCurrencyMetrics,
+  BigBookActorPocket,
   BigBookEntry,
   BigBookLedgerSubType,
   BigBookLedgerType,
@@ -27,6 +28,7 @@ type Props = {
   initialSubTypes: BigBookLedgerSubType[];
   initialVendorTypes: BigBookVendorType[];
   initialVendors: BigBookVendor[];
+  initialPockets: BigBookActorPocket[];
   initialActors: BigBookActor[];
   initialEntries: BigBookEntry[];
   initialTotalCount: number;
@@ -40,6 +42,7 @@ type EntryFormState = {
   entry_sub_type_id: string;
   vendor_type_id: string;
   vendor_id: string;
+  pocket_id: string;
   explanation: string;
   amount: string;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
@@ -109,6 +112,7 @@ export function BigBookPanel({
   initialSubTypes,
   initialVendorTypes,
   initialVendors,
+  initialPockets,
   initialActors,
   initialEntries,
   initialTotalCount,
@@ -125,6 +129,9 @@ export function BigBookPanel({
   const [currencyFilter, setCurrencyFilter] = useState<string[]>([]);
   const [actorFilter, setActorFilter] = useState<string[]>([]);
   const [directionFilter, setDirectionFilter] = useState<string[]>([]);
+  const [vendorTypeFilter, setVendorTypeFilter] = useState<string[]>([]);
+  const [vendorFilter, setVendorFilter] = useState<string[]>([]);
+  const [pocketFilter, setPocketFilter] = useState<string[]>([]);
   // Draft filter state: drives the inputs. Filters only run after "Apply Filters".
   const [draftQuery, setDraftQuery] = useState("");
   const [draftDateFrom, setDraftDateFrom] = useState("");
@@ -133,6 +140,9 @@ export function BigBookPanel({
   const [draftCurrencyFilter, setDraftCurrencyFilter] = useState<string[]>([]);
   const [draftActorFilter, setDraftActorFilter] = useState<string[]>([]);
   const [draftDirectionFilter, setDraftDirectionFilter] = useState<string[]>([]);
+  const [draftVendorTypeFilter, setDraftVendorTypeFilter] = useState<string[]>([]);
+  const [draftVendorFilter, setDraftVendorFilter] = useState<string[]>([]);
+  const [draftPocketFilter, setDraftPocketFilter] = useState<string[]>([]);
   const [openActionMenu, setOpenActionMenu] = useState<{
     id: string;
     top: number;
@@ -155,6 +165,7 @@ export function BigBookPanel({
     entry_sub_type_id: "",
     vendor_type_id: "",
     vendor_id: "",
+    pocket_id: "",
     explanation: "",
     amount: "",
     currency_code: "IDR",
@@ -203,6 +214,28 @@ export function BigBookPanel({
     ],
     []
   );
+  const vendorTypeOptions = useMemo(
+    () => initialVendorTypes.map((vendorType) => ({ value: vendorType.id, label: vendorType.name })),
+    [initialVendorTypes]
+  );
+  const vendorOptions = useMemo(() => {
+    const scoped =
+      draftVendorTypeFilter.length > 0
+        ? initialVendors.filter((vendor) => draftVendorTypeFilter.includes(vendor.vendor_type_id))
+        : initialVendors;
+    return scoped.map((vendor) => ({ value: vendor.id, label: vendor.name }));
+  }, [initialVendors, draftVendorTypeFilter]);
+  const pocketOptions = useMemo(() => {
+    const scoped =
+      draftActorFilter.length > 0
+        ? initialPockets.filter((pocket) => draftActorFilter.includes(pocket.actor_id))
+        : initialPockets;
+    return scoped.map((pocket) => {
+      const actor = initialActors.find((row) => row.id === pocket.actor_id);
+      const label = actor ? `${pocket.name} (${actor.display_name})` : pocket.name;
+      return { value: pocket.id, label };
+    });
+  }, [initialPockets, draftActorFilter, initialActors]);
   const today = new Date().toISOString().slice(0, 10);
 
   const [entryForm, setEntryForm] = useState<EntryFormState>({
@@ -212,6 +245,7 @@ export function BigBookPanel({
     entry_sub_type_id: "",
     vendor_type_id: "",
     vendor_id: "",
+    pocket_id: "",
     explanation: "",
     amount: "",
     currency_code: "IDR",
@@ -241,12 +275,45 @@ export function BigBookPanel({
     () => activeVendors.filter((row) => row.vendor_type_id === editForm.vendor_type_id),
     [activeVendors, editForm.vendor_type_id]
   );
+  const activePockets = useMemo(() => initialPockets.filter((row) => row.is_active), [initialPockets]);
+  const pocketsForCreateForm = useMemo(
+    () =>
+      activePockets.filter(
+        (row) =>
+          row.actor_id === entryForm.responsible_actor_id &&
+          row.currency_code === entryForm.currency_code
+      ),
+    [activePockets, entryForm.responsible_actor_id, entryForm.currency_code]
+  );
+  const pocketsForEditForm = useMemo(
+    () =>
+      activePockets.filter(
+        (row) =>
+          row.actor_id === editForm.responsible_actor_id &&
+          row.currency_code === editForm.currency_code
+      ),
+    [activePockets, editForm.responsible_actor_id, editForm.currency_code]
+  );
+  const createPocketDisabled = entryForm.currency_code !== "IDR" || !pocketsForCreateForm.length;
+  const editPocketDisabled = editForm.currency_code !== "IDR" || !pocketsForEditForm.length;
+  const createPocketHint =
+    entryForm.currency_code !== "IDR"
+      ? "Pockets are IDR-only"
+      : !pocketsForCreateForm.length
+        ? "No pockets for this actor yet"
+        : null;
+  const editPocketHint =
+    editForm.currency_code !== "IDR"
+      ? "Pockets are IDR-only"
+      : !pocketsForEditForm.length
+        ? "No pockets for this actor yet"
+        : null;
 
   const ledgerPagination = useTablePagination(totalCount);
 
   useEffect(() => {
     ledgerPagination.setPage(0);
-  }, [query, dateFrom, dateTo, typeFilter, currencyFilter, actorFilter, directionFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [query, dateFrom, dateTo, typeFilter, currencyFilter, actorFilter, directionFilter, vendorTypeFilter, vendorFilter, pocketFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Race-safe request token: ignore stale fetch responses.
   const loadRequestIdRef = useRef(0);
@@ -270,6 +337,9 @@ export function BigBookPanel({
       for (const currencyCode of currencyFilter) params.append("currencyCode", currencyCode);
       for (const actorId of actorFilter) params.append("actorId", actorId);
       for (const direction of directionFilter) params.append("direction", direction);
+      for (const vendorTypeId of vendorTypeFilter) params.append("vendorTypeId", vendorTypeId);
+      for (const vendorId of vendorFilter) params.append("vendorId", vendorId);
+      for (const pocketId of pocketFilter) params.append("pocketId", pocketId);
 
       const response = await fetch(`/api/big-book/entries?${params.toString()}`);
       if (handleUnauthorizedResponse(response)) return;
@@ -298,7 +368,10 @@ export function BigBookPanel({
     typeFilter,
     currencyFilter,
     actorFilter,
-    directionFilter
+    directionFilter,
+    vendorTypeFilter,
+    vendorFilter,
+    pocketFilter
   ]);
 
   useEffect(() => {
@@ -316,7 +389,10 @@ export function BigBookPanel({
     !arraysEqual(draftTypeFilter, typeFilter) ||
     !arraysEqual(draftCurrencyFilter, currencyFilter) ||
     !arraysEqual(draftActorFilter, actorFilter) ||
-    !arraysEqual(draftDirectionFilter, directionFilter);
+    !arraysEqual(draftDirectionFilter, directionFilter) ||
+    !arraysEqual(draftVendorTypeFilter, vendorTypeFilter) ||
+    !arraysEqual(draftVendorFilter, vendorFilter) ||
+    !arraysEqual(draftPocketFilter, pocketFilter);
 
   const filtersActive =
     Boolean(query) ||
@@ -325,7 +401,10 @@ export function BigBookPanel({
     Boolean(typeFilter.length) ||
     Boolean(currencyFilter.length) ||
     Boolean(actorFilter.length) ||
-    Boolean(directionFilter.length);
+    Boolean(directionFilter.length) ||
+    Boolean(vendorTypeFilter.length) ||
+    Boolean(vendorFilter.length) ||
+    Boolean(pocketFilter.length);
 
   const draftFiltersActive =
     Boolean(draftQuery) ||
@@ -334,7 +413,10 @@ export function BigBookPanel({
     Boolean(draftTypeFilter.length) ||
     Boolean(draftCurrencyFilter.length) ||
     Boolean(draftActorFilter.length) ||
-    Boolean(draftDirectionFilter.length);
+    Boolean(draftDirectionFilter.length) ||
+    Boolean(draftVendorTypeFilter.length) ||
+    Boolean(draftVendorFilter.length) ||
+    Boolean(draftPocketFilter.length);
 
   function applyFilters() {
     setQuery(draftQuery);
@@ -344,6 +426,9 @@ export function BigBookPanel({
     setCurrencyFilter(draftCurrencyFilter);
     setActorFilter(draftActorFilter);
     setDirectionFilter(draftDirectionFilter);
+    setVendorTypeFilter(draftVendorTypeFilter);
+    setVendorFilter(draftVendorFilter);
+    setPocketFilter(draftPocketFilter);
   }
 
   function resetFilters() {
@@ -354,6 +439,9 @@ export function BigBookPanel({
     setDraftCurrencyFilter([]);
     setDraftActorFilter([]);
     setDraftDirectionFilter([]);
+    setDraftVendorTypeFilter([]);
+    setDraftVendorFilter([]);
+    setDraftPocketFilter([]);
     setQuery("");
     setDateFrom("");
     setDateTo("");
@@ -361,6 +449,9 @@ export function BigBookPanel({
     setCurrencyFilter([]);
     setActorFilter([]);
     setDirectionFilter([]);
+    setVendorTypeFilter([]);
+    setVendorFilter([]);
+    setPocketFilter([]);
   }
 
   // Totals reflect ALL ledger rows in the database (computed server-side in
@@ -473,6 +564,7 @@ export function BigBookPanel({
           entry_sub_type_id: entryForm.entry_sub_type_id || null,
           vendor_type_id: entryForm.vendor_type_id || null,
           vendor_id: entryForm.vendor_id || null,
+          pocket_id: entryForm.pocket_id || null,
           amount: amountValue
         })
       });
@@ -537,7 +629,13 @@ export function BigBookPanel({
         remark: "",
         ...(keepModalOpen
           ? {}
-          : { currency_code: "IDR", entry_sub_type_id: "", vendor_type_id: "", vendor_id: "" })
+          : {
+              currency_code: "IDR",
+              entry_sub_type_id: "",
+              vendor_type_id: "",
+              vendor_id: "",
+              pocket_id: ""
+            })
       }));
       triggerRefresh();
     } catch {
@@ -667,6 +765,9 @@ export function BigBookPanel({
       for (const currencyCode of currencyFilter) params.append("currencyCode", currencyCode);
       for (const actorId of actorFilter) params.append("actorId", actorId);
       for (const direction of directionFilter) params.append("direction", direction);
+      for (const vendorTypeId of vendorTypeFilter) params.append("vendorTypeId", vendorTypeId);
+      for (const vendorId of vendorFilter) params.append("vendorId", vendorId);
+      for (const pocketId of pocketFilter) params.append("pocketId", pocketId);
 
       const url = `/api/big-book/export${params.toString() ? `?${params.toString()}` : ""}`;
       const response = await fetch(url);
@@ -711,6 +812,7 @@ export function BigBookPanel({
       entry_sub_type_id: row.entry_sub_type_id ?? "",
       vendor_type_id: row.vendor_type_id ?? "",
       vendor_id: row.vendor_id ?? "",
+      pocket_id: row.pocket_id ?? "",
       explanation: row.explanation,
       amount: formatAmountInput(String(row.amount)),
       currency_code: row.currency_code,
@@ -741,6 +843,7 @@ export function BigBookPanel({
           entry_sub_type_id: editForm.entry_sub_type_id || null,
           vendor_type_id: editForm.vendor_type_id || null,
           vendor_id: editForm.vendor_id || null,
+          pocket_id: editForm.pocket_id || null,
           amount: amountValue
         })
       });
@@ -977,7 +1080,7 @@ export function BigBookPanel({
             applyFilters();
           }}
         >
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
             <label className="text-sm text-slate-700 md:col-span-2 xl:col-span-2 2xl:col-span-2">
               <span className="mb-1 block">Search</span>
               <input
@@ -1033,7 +1136,16 @@ export function BigBookPanel({
                 label="Actor"
                 selectedValues={draftActorFilter}
                 options={actorOptions}
-                onChange={setDraftActorFilter}
+                onChange={(next) => {
+                  setDraftActorFilter(next);
+                  if (!next.length) return;
+                  setDraftPocketFilter((prev) =>
+                    prev.filter((pocketId) => {
+                      const pocket = initialPockets.find((row) => row.id === pocketId);
+                      return pocket ? next.includes(pocket.actor_id) : false;
+                    })
+                  );
+                }}
                 searchPlaceholder="Search actor..."
               />
             </div>
@@ -1045,6 +1157,45 @@ export function BigBookPanel({
                 options={directionOptions}
                 onChange={setDraftDirectionFilter}
                 searchPlaceholder="Search direction..."
+              />
+            </div>
+            <div className="text-sm text-slate-700">
+              <span className="mb-1 block">Vendor Type</span>
+              <SearchableMultiSelect
+                label="Vendor Type"
+                selectedValues={draftVendorTypeFilter}
+                options={vendorTypeOptions}
+                onChange={(next) => {
+                  setDraftVendorTypeFilter(next);
+                  if (!next.length) return;
+                  setDraftVendorFilter((prev) =>
+                    prev.filter((vendorId) => {
+                      const vendor = initialVendors.find((row) => row.id === vendorId);
+                      return vendor ? next.includes(vendor.vendor_type_id) : false;
+                    })
+                  );
+                }}
+                searchPlaceholder="Search vendor type..."
+              />
+            </div>
+            <div className="text-sm text-slate-700">
+              <span className="mb-1 block">Vendor Name</span>
+              <SearchableMultiSelect
+                label="Vendor Name"
+                selectedValues={draftVendorFilter}
+                options={vendorOptions}
+                onChange={setDraftVendorFilter}
+                searchPlaceholder="Search vendor name..."
+              />
+            </div>
+            <div className="text-sm text-slate-700">
+              <span className="mb-1 block">Pocket</span>
+              <SearchableMultiSelect
+                label="Pocket"
+                selectedValues={draftPocketFilter}
+                options={pocketOptions}
+                onChange={setDraftPocketFilter}
+                searchPlaceholder="Search pocket..."
               />
             </div>
           </div>
@@ -1066,7 +1217,7 @@ export function BigBookPanel({
           </div>
         </form>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1520px] text-sm">
+          <table className="w-full min-w-[1660px] text-sm">
             <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
               <tr>
                 <th className="px-3 py-2">Date</th>
@@ -1078,6 +1229,7 @@ export function BigBookPanel({
                 <th className="px-3 py-2">Explanation</th>
                 <th className="px-3 py-2">Amount</th>
                 <th className="px-3 py-2">Actor</th>
+                <th className="px-3 py-2">Pocket</th>
                 <th className="px-3 py-2">Remark</th>
                 <th className="px-3 py-2">Attachments</th>
                 <th className="px-3 py-2">Actions</th>
@@ -1100,6 +1252,7 @@ export function BigBookPanel({
                       <td className="px-3 py-2"><div className="h-4 w-56 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-28 rounded bg-[rgb(var(--surface-muted))]" /></td>
+                      <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-20 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-16 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-8 w-20 rounded bg-[rgb(var(--surface-muted))]" /></td>
@@ -1150,6 +1303,13 @@ export function BigBookPanel({
                       </td>
                       <td className="px-3 py-2">
                         {row.actor_display_name}
+                      </td>
+                      <td className="px-3 py-2">
+                        {row.pocket_name ? (
+                          row.pocket_name
+                        ) : (
+                          <span className="text-xs text-slate-500">-</span>
+                        )}
                       </td>
                       <td className="px-3 py-2">
                         {row.remark ? (
@@ -1207,7 +1367,7 @@ export function BigBookPanel({
                   ))}
               {!entries.length && !entriesLoading ? (
                 <tr>
-                  <td className="px-3 py-4 text-center text-slate-600" colSpan={12}>
+                  <td className="px-3 py-4 text-center text-slate-600" colSpan={13}>
                     No records match the current filters.
                   </td>
                 </tr>
@@ -1504,7 +1664,13 @@ export function BigBookPanel({
             <select
               className="field mt-1"
               value={entryForm.responsible_actor_id}
-              onChange={(event) => setEntryForm((prev) => ({ ...prev, responsible_actor_id: event.target.value }))}
+              onChange={(event) =>
+                setEntryForm((prev) => ({
+                  ...prev,
+                  responsible_actor_id: event.target.value,
+                  pocket_id: ""
+                }))
+              }
             >
               {initialActors.map((actor) => (
                 <option key={actor.id} value={actor.id}>
@@ -1519,7 +1685,11 @@ export function BigBookPanel({
               className="field mt-1"
               value={entryForm.currency_code}
               onChange={(event) =>
-                setEntryForm((prev) => ({ ...prev, currency_code: event.target.value as EntryFormState["currency_code"] }))
+                setEntryForm((prev) => ({
+                  ...prev,
+                  currency_code: event.target.value as EntryFormState["currency_code"],
+                  pocket_id: ""
+                }))
               }
             >
               {currencies.map((currency) => (
@@ -1528,6 +1698,23 @@ export function BigBookPanel({
                 </option>
               ))}
             </select>
+          </label>
+          <label className="text-sm">
+            Pocket
+            <select
+              className="field mt-1"
+              value={entryForm.pocket_id}
+              onChange={(event) => setEntryForm((prev) => ({ ...prev, pocket_id: event.target.value }))}
+              disabled={createPocketDisabled}
+            >
+              <option value="">(none)</option>
+              {pocketsForCreateForm.map((pocket) => (
+                <option key={pocket.id} value={pocket.id}>
+                  {pocket.name}
+                </option>
+              ))}
+            </select>
+            {createPocketHint ? <span className="mt-1 block text-xs text-slate-500">{createPocketHint}</span> : null}
           </label>
           <label className="text-sm lg:col-span-2">
             Explanation *
@@ -1750,7 +1937,13 @@ export function BigBookPanel({
             <select
               className="field mt-1"
               value={editForm.responsible_actor_id}
-              onChange={(event) => setEditForm((prev) => ({ ...prev, responsible_actor_id: event.target.value }))}
+              onChange={(event) =>
+                setEditForm((prev) => ({
+                  ...prev,
+                  responsible_actor_id: event.target.value,
+                  pocket_id: ""
+                }))
+              }
             >
               {initialActors.map((actor) => (
                 <option key={actor.id} value={actor.id}>
@@ -1765,7 +1958,11 @@ export function BigBookPanel({
               className="field mt-1"
               value={editForm.currency_code}
               onChange={(event) =>
-                setEditForm((prev) => ({ ...prev, currency_code: event.target.value as EntryFormState["currency_code"] }))
+                setEditForm((prev) => ({
+                  ...prev,
+                  currency_code: event.target.value as EntryFormState["currency_code"],
+                  pocket_id: ""
+                }))
               }
             >
               {currencies.map((currency) => (
@@ -1774,6 +1971,23 @@ export function BigBookPanel({
                 </option>
               ))}
             </select>
+          </label>
+          <label className="text-sm">
+            Pocket
+            <select
+              className="field mt-1"
+              value={editForm.pocket_id}
+              onChange={(event) => setEditForm((prev) => ({ ...prev, pocket_id: event.target.value }))}
+              disabled={editPocketDisabled}
+            >
+              <option value="">(none)</option>
+              {pocketsForEditForm.map((pocket) => (
+                <option key={pocket.id} value={pocket.id}>
+                  {pocket.name}
+                </option>
+              ))}
+            </select>
+            {editPocketHint ? <span className="mt-1 block text-xs text-slate-500">{editPocketHint}</span> : null}
           </label>
           <label className="text-sm lg:col-span-2">
             Explanation *

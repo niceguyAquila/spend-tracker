@@ -84,6 +84,29 @@ export const bigBookActorUpdateSchema = z.object({
   user_id: z.string().uuid().nullable().optional()
 });
 
+export const bigBookPocketCurrencySchema = z.enum(["IDR"]);
+export type BigBookPocketCurrencyCode = z.infer<typeof bigBookPocketCurrencySchema>;
+
+export const bigBookPocketCreateSchema = z.object({
+  actor_id: z.string().uuid("Actor is required"),
+  code: z
+    .string()
+    .trim()
+    .min(2)
+    .max(64)
+    .regex(/^[A-Z0-9_]+$/, "Code must use uppercase letters, numbers, and underscores."),
+  name: z.string().trim().min(2).max(100),
+  currency_code: bigBookPocketCurrencySchema.default("IDR"),
+  sort_order: z.coerce.number().int().min(0).max(9999).optional()
+});
+
+export const bigBookPocketUpdateSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().trim().min(2).max(100).optional(),
+  is_active: z.boolean().optional(),
+  sort_order: z.coerce.number().int().min(0).max(9999).optional()
+});
+
 const optionalUuidOrEmpty = (message: string) =>
   z
     .string()
@@ -100,6 +123,7 @@ export const bigBookEntryInputSchema = z.object({
   entry_sub_type_id: optionalUuidOrEmpty("Sub-Type must be a valid id"),
   vendor_type_id: optionalUuidOrEmpty("Vendor Type must be a valid id"),
   vendor_id: optionalUuidOrEmpty("Vendor Name must be a valid id"),
+  pocket_id: optionalUuidOrEmpty("Pocket must be a valid id"),
   explanation: z.string().trim().min(2).max(500),
   amount: z.coerce.number().positive("Amount must be greater than 0"),
   currency_code: bigBookCurrencySchema,
@@ -139,6 +163,9 @@ export const bigBookEntriesQuerySchema = z.object({
   currencyCode: normalizeMultiSelect(bigBookCurrencySchema),
   direction: normalizeMultiSelect(bigBookEntryDirectionSchema),
   actorId: normalizeMultiSelect(z.string().uuid()),
+  vendorTypeId: normalizeMultiSelect(z.string().uuid()),
+  vendorId: normalizeMultiSelect(z.string().uuid()),
+  pocketId: normalizeMultiSelect(z.string().uuid()),
   dateFrom: optionalString,
   dateTo: optionalString,
   query: z.string().max(200).optional().or(z.literal("")).transform((v) => (v ? v : undefined)),

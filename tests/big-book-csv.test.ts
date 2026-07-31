@@ -16,6 +16,7 @@ describe("parseBigBookCsv", () => {
     expect(result.rows[0].sub_type_name).toBeNull();
     expect(result.rows[0].vendor_type_name).toBeNull();
     expect(result.rows[0].vendor_name).toBeNull();
+    expect(result.rows[0].pocket_name).toBeNull();
     expect(result.rows[1].remark).toBeNull();
     expect(result.rows[1].sub_type_name).toBeNull();
   });
@@ -59,6 +60,29 @@ describe("parseBigBookCsv", () => {
     const result = parseBigBookCsv(csv);
     expect(result.rows).toHaveLength(0);
     expect(result.errors.some((item) => item.includes("vendor_type_name is required"))).toBe(true);
+  });
+
+  it("rejects pocket_name on non-IDR rows", () => {
+    const csv = [
+      "entry_date,entry_direction,type_name,explanation,amount,currency_code,remark,actor_name,pocket_name",
+      "2026-04-25,spending,Office Supplies,Printer ink,350000,MYR,Restock,Actor A,Petty Cash"
+    ].join("\n");
+
+    const result = parseBigBookCsv(csv);
+    expect(result.rows).toHaveLength(0);
+    expect(result.errors.some((item) => item.includes("pocket_name is only allowed on IDR rows"))).toBe(true);
+  });
+
+  it("parses pocket_name on IDR rows", () => {
+    const csv = [
+      "entry_date,entry_direction,type_name,explanation,amount,currency_code,remark,actor_name,pocket_name",
+      "2026-04-25,spending,Office Supplies,Printer ink,350000,IDR,Restock,Actor A,Petty Cash"
+    ].join("\n");
+
+    const result = parseBigBookCsv(csv);
+    expect(result.errors).toEqual([]);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].pocket_name).toBe("Petty Cash");
   });
 
   it("parses dates in YYYY-MMM-DD format", () => {
@@ -113,7 +137,8 @@ describe("buildBigBookImportTemplateCsv", () => {
       amount: 350000,
       currency_code: "IDR",
       remark: "Restock",
-      actor_name: "Actor A"
+      actor_name: "Actor A",
+      pocket_name: "Petty Cash"
     });
   });
 });

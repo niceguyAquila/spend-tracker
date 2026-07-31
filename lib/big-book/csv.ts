@@ -11,7 +11,7 @@ const REQUIRED_HEADERS = [
   "actor_name"
 ] as const;
 
-const OPTIONAL_HEADERS = ["sub_type_name", "vendor_type_name", "vendor_name"] as const;
+const OPTIONAL_HEADERS = ["sub_type_name", "vendor_type_name", "vendor_name", "pocket_name"] as const;
 
 /** Full import/export column order (required + optional). */
 export const BIG_BOOK_CSV_HEADERS = [
@@ -25,7 +25,8 @@ export const BIG_BOOK_CSV_HEADERS = [
   "amount",
   "currency_code",
   "remark",
-  "actor_name"
+  "actor_name",
+  "pocket_name"
 ] as const;
 
 export function buildBigBookImportTemplateCsv(): string {
@@ -40,7 +41,8 @@ export function buildBigBookImportTemplateCsv(): string {
     "350000",
     "IDR",
     "Restock",
-    "Actor A"
+    "Actor A",
+    "Petty Cash"
   ];
   // UTF-8 BOM helps Excel on Windows keep columns when opening the template.
   return `\uFEFF${[BIG_BOOK_CSV_HEADERS.join(","), exampleRow.join(",")].join("\r\n")}\r\n`;
@@ -61,6 +63,7 @@ export type ParsedBigBookCsvRow = {
   currency_code: AllowedCurrency;
   remark: string | null;
   actor_name: string;
+  pocket_name: string | null;
 };
 
 export type ParseBigBookCsvResult = {
@@ -249,6 +252,7 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
     const currencyRaw = normalizeRequired(get("currency_code")).toUpperCase();
     const remark = normalizeOptional(get("remark"));
     const actorName = normalizeRequired(get("actor_name"));
+    const pocketName = normalizeOptional(get("pocket_name"));
 
     if (!entryDateRaw || !entryDirectionRaw || !typeName || !explanation || !amountRaw || !currencyRaw || !actorName) {
       errors.push(`Row ${lineNumber}: required fields must not be empty.`);
@@ -284,6 +288,11 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
       continue;
     }
 
+    if (pocketName && currencyParsed.data !== "IDR") {
+      errors.push(`Row ${lineNumber}: pocket_name is only allowed on IDR rows.`);
+      continue;
+    }
+
     parsedRows.push({
       entry_date: entryDate,
       entry_direction: directionParsed.data,
@@ -295,7 +304,8 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
       amount,
       currency_code: currencyParsed.data,
       remark,
-      actor_name: actorName
+      actor_name: actorName,
+      pocket_name: pocketName
     });
   }
 

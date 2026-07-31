@@ -21,6 +21,9 @@ export async function GET(request: Request) {
     currencyCode: searchParams.getAll("currencyCode"),
     direction: searchParams.getAll("direction"),
     actorId: searchParams.getAll("actorId"),
+    vendorTypeId: searchParams.getAll("vendorTypeId"),
+    vendorId: searchParams.getAll("vendorId"),
+    pocketId: searchParams.getAll("pocketId"),
     dateFrom: searchParams.get("dateFrom") ?? "",
     dateTo: searchParams.get("dateTo") ?? "",
     query: searchParams.get("query") ?? "",
@@ -69,6 +72,7 @@ export async function POST(request: Request) {
       entry_sub_type_id: payload.entry_sub_type_id ?? null,
       vendor_type_id: payload.vendor_type_id ?? null,
       vendor_id: payload.vendor_id ?? null,
+      pocket_id: payload.pocket_id ?? null,
       explanation: payload.explanation,
       amount: payload.amount,
       currency_code: payload.currency_code,
@@ -111,6 +115,7 @@ export async function PATCH(request: Request) {
       entry_sub_type_id: payload.entry_sub_type_id ?? null,
       vendor_type_id: payload.vendor_type_id ?? null,
       vendor_id: payload.vendor_id ?? null,
+      pocket_id: payload.pocket_id ?? null,
       remark: payload.remark || null,
       updated_by: authCheck.user.id
     })

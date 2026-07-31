@@ -192,6 +192,18 @@ export type BigBookActor = {
   user_id: string | null;
 };
 
+export type BigBookActorPocket = {
+  id: string;
+  actor_id: string;
+  code: string;
+  name: string;
+  currency_code: "IDR";
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type BigBookAttachment = {
   id: string;
   ledger_entry_id: string;
@@ -211,6 +223,7 @@ export type BigBookEntry = {
   entry_sub_type_id: string | null;
   vendor_type_id: string | null;
   vendor_id: string | null;
+  pocket_id: string | null;
   explanation: string;
   amount: number;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
@@ -226,6 +239,7 @@ export type BigBookEntry = {
   sub_type_code: string | null;
   vendor_type_name: string | null;
   vendor_name: string | null;
+  pocket_name: string | null;
   actor_code: "A" | "B";
   actor_display_name: string;
   creator_display_name: string;

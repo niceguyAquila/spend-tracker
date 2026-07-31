@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type {
   BigBookActor,
+  BigBookActorPocket,
   BigBookAllowedUserOption,
   BigBookLedgerSubType,
   BigBookLedgerType,
@@ -23,6 +24,7 @@ type Props = {
   initialSubTypes: BigBookLedgerSubType[];
   initialVendorTypes: BigBookVendorType[];
   initialVendors: BigBookVendor[];
+  initialPockets: BigBookActorPocket[];
   initialActors: BigBookActor[];
   allowedUsers: BigBookAllowedUserOption[];
 };
@@ -57,6 +59,7 @@ export function BigBookSettingsPanel({
   initialSubTypes,
   initialVendorTypes,
   initialVendors,
+  initialPockets,
   initialActors,
   allowedUsers
 }: Props) {
@@ -107,6 +110,16 @@ export function BigBookSettingsPanel({
   const [pendingDeleteVendor, setPendingDeleteVendor] = useState<BigBookVendor | null>(null);
   const [vendorDeleting, setVendorDeleting] = useState(false);
 
+  const [pocketParentActorId, setPocketParentActorId] = useState<string>(() => initialActors[0]?.id ?? "");
+  const [newPocketCode, setNewPocketCode] = useState("");
+  const [newPocketName, setNewPocketName] = useState("");
+  const [pendingAddPocketConfirm, setPendingAddPocketConfirm] = useState(false);
+  const [pocketSubmitting, setPocketSubmitting] = useState(false);
+  const [pendingTogglePocket, setPendingTogglePocket] = useState<BigBookActorPocket | null>(null);
+  const [togglePocketSubmitting, setTogglePocketSubmitting] = useState(false);
+  const [pendingDeletePocket, setPendingDeletePocket] = useState<BigBookActorPocket | null>(null);
+  const [pocketDeleting, setPocketDeleting] = useState(false);
+
   const subTypesForSelectedType = useMemo(
     () => initialSubTypes.filter((row) => row.entry_type_id === subTypeParentTypeId),
     [initialSubTypes, subTypeParentTypeId]
@@ -117,6 +130,11 @@ export function BigBookSettingsPanel({
     [initialVendors, vendorParentTypeId]
   );
 
+  const pocketsForSelectedActor = useMemo(
+    () => initialPockets.filter((row) => row.actor_id === pocketParentActorId),
+    [initialPockets, pocketParentActorId]
+  );
+
   const [typeQuery, setTypeQuery] = useState("");
   const [typeStatusFilter, setTypeStatusFilter] = useState<StatusFilter>("all");
   const [subTypeQuery, setSubTypeQuery] = useState("");
@@ -125,6 +143,8 @@ export function BigBookSettingsPanel({
   const [vendorTypeStatusFilter, setVendorTypeStatusFilter] = useState<StatusFilter>("all");
   const [vendorQuery, setVendorQuery] = useState("");
   const [vendorStatusFilter, setVendorStatusFilter] = useState<StatusFilter>("all");
+  const [pocketQuery, setPocketQuery] = useState("");
+  const [pocketStatusFilter, setPocketStatusFilter] = useState<StatusFilter>("all");
 
   const filteredTypes = useMemo(() => {
     const needle = typeQuery.trim().toLowerCase();
@@ -178,10 +198,24 @@ export function BigBookSettingsPanel({
     });
   }, [vendorsForSelectedType, vendorQuery, vendorStatusFilter]);
 
+  const filteredPockets = useMemo(() => {
+    const needle = pocketQuery.trim().toLowerCase();
+    return pocketsForSelectedActor.filter((row) => {
+      if (pocketStatusFilter === "active" && !row.is_active) return false;
+      if (pocketStatusFilter === "inactive" && row.is_active) return false;
+      if (!needle) return true;
+      return (
+        row.name.toLowerCase().includes(needle) ||
+        row.code.toLowerCase().includes(needle)
+      );
+    });
+  }, [pocketsForSelectedActor, pocketQuery, pocketStatusFilter]);
+
   const typePagination = useTablePagination(filteredTypes.length, 10);
   const subTypePagination = useTablePagination(filteredSubTypes.length, 10);
   const vendorTypePagination = useTablePagination(filteredVendorTypes.length, 10);
   const vendorPagination = useTablePagination(filteredVendors.length, 10);
+  const pocketPagination = useTablePagination(filteredPockets.length, 10);
 
   // Reset to page 0 whenever the filtered set's identity changes due to filter
   // input changes — useTablePagination already clamps to a valid page when the
@@ -206,6 +240,11 @@ export function BigBookSettingsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendorQuery, vendorStatusFilter, vendorParentTypeId]);
 
+  useEffect(() => {
+    pocketPagination.setPage(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pocketQuery, pocketStatusFilter, pocketParentActorId]);
+
   const pagedTypes = useMemo(
     () => sliceForPage(filteredTypes, typePagination.page, typePagination.pageSize),
     [filteredTypes, typePagination.page, typePagination.pageSize]
@@ -222,6 +261,10 @@ export function BigBookSettingsPanel({
     () => sliceForPage(filteredVendors, vendorPagination.page, vendorPagination.pageSize),
     [filteredVendors, vendorPagination.page, vendorPagination.pageSize]
   );
+  const pagedPockets = useMemo(
+    () => sliceForPage(filteredPockets, pocketPagination.page, pocketPagination.pageSize),
+    [filteredPockets, pocketPagination.page, pocketPagination.pageSize]
+  );
 
   const criticalPending =
     typeSubmitting ||
@@ -234,7 +277,10 @@ export function BigBookSettingsPanel({
     toggleVendorTypeSubmitting ||
     vendorSubmitting ||
     toggleVendorSubmitting ||
-    vendorDeleting;
+    vendorDeleting ||
+    pocketSubmitting ||
+    togglePocketSubmitting ||
+    pocketDeleting;
 
   function triggerRefresh() {
     startTransition(() => {
@@ -544,6 +590,98 @@ export function BigBookSettingsPanel({
       setError("Failed to delete vendor due to a network error.");
     } finally {
       setVendorDeleting(false);
+    }
+  }
+
+  async function addPocket() {
+    if (!pocketParentActorId) {
+      setError("Select an actor first.");
+      return;
+    }
+    setPocketSubmitting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await secureFetch("/api/big-book/pockets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actor_id: pocketParentActorId,
+          code: newPocketCode.trim().toUpperCase(),
+          name: newPocketName.trim(),
+          currency_code: "IDR"
+        })
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(extractApiError(data.error, "Failed to add pocket."));
+        return;
+      }
+      setMessage("Pocket added.");
+      setPendingAddPocketConfirm(false);
+      setNewPocketCode("");
+      setNewPocketName("");
+      triggerRefresh();
+    } catch {
+      setError("Failed to add pocket due to a network error.");
+    } finally {
+      setPocketSubmitting(false);
+    }
+  }
+
+  async function togglePocket() {
+    if (!pendingTogglePocket) return;
+    setTogglePocketSubmitting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await secureFetch("/api/big-book/pockets", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: pendingTogglePocket.id,
+          is_active: !pendingTogglePocket.is_active
+        })
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(extractApiError(data.error, "Failed to update pocket."));
+        return;
+      }
+      setMessage(`Pocket ${pendingTogglePocket.is_active ? "deactivated" : "activated"}.`);
+      setPendingTogglePocket(null);
+      triggerRefresh();
+    } catch {
+      setError("Failed to update pocket due to a network error.");
+    } finally {
+      setTogglePocketSubmitting(false);
+    }
+  }
+
+  async function deletePocket() {
+    if (!pendingDeletePocket) return;
+    setPocketDeleting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await secureFetch(`/api/big-book/pockets?id=${pendingDeletePocket.id}`, {
+        method: "DELETE"
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(extractApiError(data.error, "Failed to delete pocket."));
+        return;
+      }
+      setMessage("Pocket deleted.");
+      setPendingDeletePocket(null);
+      triggerRefresh();
+    } catch {
+      setError("Failed to delete pocket due to a network error.");
+    } finally {
+      setPocketDeleting(false);
     }
   }
 
@@ -1117,6 +1255,163 @@ export function BigBookSettingsPanel({
         />
       </section>
 
+      <section className="card relative" aria-busy={pocketSubmitting || togglePocketSubmitting || pocketDeleting}>
+        <BlockingOverlay
+          active={pocketSubmitting || togglePocketSubmitting || pocketDeleting}
+          label="Processing pockets..."
+        />
+        <h2 className="text-lg font-semibold">Actor Pockets</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Manage spending pockets per actor. Pockets are always IDR and optional on ledger entries.
+        </p>
+        <div className="mt-4 grid grid-cols-1 gap-2 lg:grid-cols-4">
+          <select
+            className="field"
+            value={pocketParentActorId}
+            onChange={(event) => setPocketParentActorId(event.target.value)}
+            aria-label="Parent actor"
+          >
+            <option value="" disabled>
+              Select actor
+            </option>
+            {initialActors.map((actor) => (
+              <option key={actor.id} value={actor.id}>
+                {actor.display_name} (Actor {actor.actor_code})
+              </option>
+            ))}
+          </select>
+          <input
+            className="field"
+            placeholder="Code (e.g. PETTY_CASH)"
+            value={newPocketCode}
+            onChange={(event) => setNewPocketCode(event.target.value)}
+          />
+          <input
+            className="field"
+            placeholder="Pocket Name"
+            value={newPocketName}
+            onChange={(event) => setNewPocketName(event.target.value)}
+          />
+          <button
+            className="btn"
+            disabled={
+              !pocketParentActorId ||
+              !newPocketCode.trim() ||
+              !newPocketName.trim() ||
+              pocketSubmitting
+            }
+            onClick={() => setPendingAddPocketConfirm(true)}
+          >
+            Add Pocket
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-slate-500">Currency is fixed to IDR for all pockets.</p>
+        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <label className="text-sm text-slate-700 sm:col-span-2">
+            <span className="mb-1 block">Search</span>
+            <input
+              className="field w-full"
+              placeholder="Search by name or code..."
+              value={pocketQuery}
+              onChange={(event) => setPocketQuery(event.target.value)}
+              disabled={!pocketParentActorId}
+            />
+          </label>
+          <label className="text-sm text-slate-700">
+            <span className="mb-1 block">Status</span>
+            <select
+              className="field w-full"
+              value={pocketStatusFilter}
+              onChange={(event) => setPocketStatusFilter(event.target.value as StatusFilter)}
+              disabled={!pocketParentActorId}
+            >
+              <option value="all">All</option>
+              <option value="active">Active only</option>
+              <option value="inactive">Inactive only</option>
+            </select>
+          </label>
+        </div>
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[780px] text-sm">
+            <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
+              <tr>
+                <th className="px-3 py-2">Code</th>
+                <th className="px-3 py-2">Name</th>
+                <th className="px-3 py-2">Currency</th>
+                <th className="px-3 py-2">Sort</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {!pocketParentActorId ? (
+                <tr>
+                  <td className="px-3 py-4 text-center text-slate-600" colSpan={6}>
+                    Select an actor to view their pockets.
+                  </td>
+                </tr>
+              ) : pagedPockets.length ? (
+                pagedPockets.map((pocket) => (
+                  <tr key={pocket.id} className="border-b border-[rgb(var(--border))] align-middle">
+                    <td className="px-3 py-2 font-mono text-xs">{pocket.code}</td>
+                    <td className="px-3 py-2 font-medium">{pocket.name}</td>
+                    <td className="px-3 py-2 text-xs">{pocket.currency_code}</td>
+                    <td className="px-3 py-2 text-xs text-[rgb(var(--text-muted))]">{pocket.sort_order}</td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${
+                          pocket.is_active
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-slate-200 text-slate-700"
+                        }`}
+                      >
+                        {pocket.is_active ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <button
+                          className="btn-secondary btn-sm"
+                          onClick={() => setPendingTogglePocket(pocket)}
+                          disabled={togglePocketSubmitting || pocketDeleting}
+                        >
+                          {pocket.is_active ? "Deactivate" : "Activate"}
+                        </button>
+                        <button
+                          className="btn-secondary btn-sm !border-rose-300 !text-rose-700 hover:!bg-rose-50"
+                          onClick={() => setPendingDeletePocket(pocket)}
+                          disabled={togglePocketSubmitting || pocketDeleting}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td className="px-3 py-4 text-center text-slate-600" colSpan={6}>
+                    {pocketsForSelectedActor.length
+                      ? "No pockets match the current filters."
+                      : "No pockets for this actor yet."}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <TablePaginationBar
+          totalCount={filteredPockets.length}
+          page={pocketPagination.page}
+          setPage={pocketPagination.setPage}
+          pageSize={pocketPagination.pageSize}
+          setPageSize={pocketPagination.setPageSize}
+          pageCount={pocketPagination.pageCount}
+          rangeLabel={pocketPagination.rangeLabel}
+          show={Boolean(pocketParentActorId)}
+        />
+      </section>
+
       <section className="card">
         <h2 className="text-lg font-semibold">Actor A/B Mapping</h2>
         <p className="mt-1 text-sm text-slate-600">Both actors share the same authority level and are fixed globally.</p>
@@ -1290,6 +1585,44 @@ export function BigBookSettingsPanel({
         variant="danger"
         closeOnBackdrop={false}
         onConfirm={deleteVendor}
+      />
+
+      <ConfirmDialog
+        open={pendingAddPocketConfirm}
+        onOpenChange={setPendingAddPocketConfirm}
+        title="Add new pocket?"
+        description="The new IDR pocket will be available under the selected actor."
+        confirmLabel="Add Pocket"
+        confirming={pocketSubmitting}
+        closeOnBackdrop={false}
+        onConfirm={addPocket}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingTogglePocket)}
+        onOpenChange={(open) => {
+          if (!open && !togglePocketSubmitting) setPendingTogglePocket(null);
+        }}
+        title={pendingTogglePocket?.is_active ? "Deactivate pocket?" : "Activate pocket?"}
+        description="Changing active state affects whether this pocket can be selected in new records."
+        confirmLabel={pendingTogglePocket?.is_active ? "Deactivate" : "Activate"}
+        confirming={togglePocketSubmitting}
+        closeOnBackdrop={false}
+        onConfirm={togglePocket}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingDeletePocket)}
+        onOpenChange={(open) => {
+          if (!open && !pocketDeleting) setPendingDeletePocket(null);
+        }}
+        title="Delete pocket?"
+        description="This will permanently remove the pocket. Existing entries that reference it will have their pocket cleared."
+        confirmLabel="Delete"
+        confirming={pocketDeleting}
+        variant="danger"
+        closeOnBackdrop={false}
+        onConfirm={deletePocket}
       />
 
       <ConfirmDialog

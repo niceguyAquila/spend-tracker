@@ -95,7 +95,8 @@ describe("big book entries route", () => {
     expect(insertMock.mock.calls[0][0]).toMatchObject({
       entry_sub_type_id: null,
       vendor_type_id: null,
-      vendor_id: null
+      vendor_id: null,
+      pocket_id: null
     });
   });
 
@@ -148,6 +149,31 @@ describe("big book entries route", () => {
     expect(insertMock.mock.calls[0][0]).toMatchObject({
       vendor_type_id: "66666666-6666-4666-8666-666666666666",
       vendor_id: "77777777-7777-4777-8777-777777777777"
+    });
+  });
+
+  it("persists pocket_id on create when provided", async () => {
+    const { POST } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_date: "2026-04-23",
+        entry_direction: "spending",
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        pocket_id: "88888888-8888-4888-8888-888888888888",
+        explanation: "Petty cash spend",
+        amount: 50000,
+        currency_code: "IDR",
+        remark: "",
+        responsible_actor_id: "22222222-2222-4222-8222-222222222222"
+      })
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    expect(insertMock.mock.calls[0][0]).toMatchObject({
+      pocket_id: "88888888-8888-4888-8888-888888888888"
     });
   });
 
@@ -206,6 +232,32 @@ describe("big book entries route", () => {
     });
   });
 
+  it("persists pocket_id on patch when provided", async () => {
+    const { PATCH } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: "55555555-5555-4555-8555-555555555555",
+        entry_date: "2026-04-23",
+        entry_direction: "spending",
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        pocket_id: "88888888-8888-4888-8888-888888888888",
+        explanation: "Petty cash spend",
+        amount: 50000,
+        currency_code: "IDR",
+        remark: "",
+        responsible_actor_id: "22222222-2222-4222-8222-222222222222"
+      })
+    });
+
+    const response = await PATCH(request);
+    expect(response.status).toBe(200);
+    expect(updateMock.mock.calls[0][0]).toMatchObject({
+      pocket_id: "88888888-8888-4888-8888-888888888888"
+    });
+  });
+
   it("returns 403 when non-admin tries to create entry", async () => {
     requireAdminApiMock.mockResolvedValueOnce({
       ok: false,
@@ -226,7 +278,7 @@ describe("big book entries route", () => {
   it("parses repeated categorical query params for GET list", async () => {
     const { GET } = await import("@/app/api/big-book/entries/route");
     const request = new Request(
-      "https://app.localhost/api/big-book/entries?page=1&pageSize=25&typeId=11111111-1111-4111-8111-111111111111&typeId=22222222-2222-4222-8222-222222222222&currencyCode=USDT&currencyCode=IDR&actorId=33333333-3333-4333-8333-333333333333&direction=profit&direction=spending&query=test"
+      "https://app.localhost/api/big-book/entries?page=1&pageSize=25&typeId=11111111-1111-4111-8111-111111111111&typeId=22222222-2222-4222-8222-222222222222&currencyCode=USDT&currencyCode=IDR&actorId=33333333-3333-4333-8333-333333333333&direction=profit&direction=spending&vendorTypeId=66666666-6666-4666-8666-666666666666&vendorId=77777777-7777-4777-8777-777777777777&pocketId=88888888-8888-4888-8888-888888888888&query=test"
     );
 
     const response = await GET(request);
@@ -239,6 +291,9 @@ describe("big book entries route", () => {
         currencyCode: ["USDT", "IDR"],
         actorId: ["33333333-3333-4333-8333-333333333333"],
         direction: ["profit", "spending"],
+        vendorTypeId: ["66666666-6666-4666-8666-666666666666"],
+        vendorId: ["77777777-7777-4777-8777-777777777777"],
+        pocketId: ["88888888-8888-4888-8888-888888888888"],
         query: "test"
       })
     );
