@@ -868,6 +868,9 @@ export async function getBigBookActorCurrencyMetrics(): Promise<BigBookActorCurr
         big_book_actors(actor_code, display_name)
       `
       )
+      // Pocket-tagged entries belong to the pocket's own total, not the actor's
+      // headline currency totals, so they are excluded here.
+      .is("pocket_id", null)
       .order("created_at", { ascending: false })
       .range(offset, offset + pageSize - 1);
 

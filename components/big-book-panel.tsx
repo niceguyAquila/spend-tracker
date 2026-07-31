@@ -465,8 +465,13 @@ export function BigBookPanel({
       actorId: string,
       actorDisplayName: string,
       currency: "IDR" | "MYR" | "USDT" | "TRX",
-      delta: number
+      delta: number,
+      pocketId: string | null
     ) => {
+      // Pocket-tagged entries never move the actor's currency totals; they are
+      // excluded server-side too, so applying a delta here would only show a
+      // wrong number until the refresh lands.
+      if (pocketId) return;
       // eslint-disable-next-line no-console
       console.log("[BigBook DEBUG] applyMetricDelta called", { actorId, actorDisplayName, currency, delta });
       setActorCurrencyMetrics((prev) => {
@@ -614,7 +619,8 @@ export function BigBookPanel({
           payload.responsible_actor_id,
           actor?.display_name ?? "Unknown Actor",
           payload.currency_code,
-          payload.entry_direction === "spending" ? -payload.amount : payload.amount
+          payload.entry_direction === "spending" ? -payload.amount : payload.amount,
+          payload.pocket_id
         );
       }
       resetGroupCreateForm();
@@ -705,7 +711,8 @@ export function BigBookPanel({
         entryForm.responsible_actor_id,
         createdActor?.display_name ?? "Unknown Actor",
         entryForm.currency_code,
-        createdDelta
+        createdDelta,
+        entryForm.pocket_id || null
       );
       setEntryForm((prev) => ({
         ...prev,
@@ -779,7 +786,8 @@ export function BigBookPanel({
         pendingDeleteEntry.responsible_actor_id,
         pendingDeleteEntry.actor_display_name,
         pendingDeleteEntry.currency_code,
-        deletedDelta
+        deletedDelta,
+        pendingDeleteEntry.pocket_id
       );
       setPendingDeleteEntry(null);
       triggerRefresh();
@@ -1011,7 +1019,8 @@ export function BigBookPanel({
             entry.responsible_actor_id,
             entry.actor_display_name,
             entry.currency_code,
-            entry.entry_direction === "spending" ? amount : -amount
+            entry.entry_direction === "spending" ? amount : -amount,
+            entry.pocket_id
           );
         }
         setMessage("Grouped transaction deleted.");
@@ -1343,7 +1352,8 @@ export function BigBookPanel({
       <section className="card">
         <h2 className="text-lg font-semibold">Grand Total by Actor (All Time)</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Total amount grouped by actor and currency across all Big Book records.
+          Total amount grouped by actor and currency across all Big Book records. Pocket transactions are excluded
+          here and counted under Pocket Totals instead.
         </p>
         <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
           {actorCurrencyMetrics.map((metric) => (
