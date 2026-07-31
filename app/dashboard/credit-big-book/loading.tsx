@@ -6,9 +6,9 @@ export default function CreditBigBookLoading() {
       <section className="card">
         <LoadingIndicator label="Loading Credit Big Book data..." />
       </section>
-      <section className="card h-40 animate-pulse bg-slate-100" />
-      <section className="card h-72 animate-pulse bg-slate-100" />
-      <section className="card h-80 animate-pulse bg-slate-100" />
+      <section className="card h-40 animate-pulse bg-[rgb(var(--surface-muted))]" />
+      <section className="card h-72 animate-pulse bg-[rgb(var(--surface-muted))]" />
+      <section className="card h-80 animate-pulse bg-[rgb(var(--surface-muted))]" />
     </div>
   );
 }

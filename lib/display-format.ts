@@ -19,9 +19,9 @@ export function formatAmount(value: number, options?: AmountFormatOptions) {
 }
 
 export function getAmountColorClass(value: number) {
-  if (value > 0) return "text-blue-600";
-  if (value < 0) return "text-rose-600";
-  return "text-slate-700";
+  if (value > 0) return "text-[rgb(var(--info))]";
+  if (value < 0) return "text-[rgb(var(--danger))]";
+  return "text-muted";
 }
 
 function parseDisplayDateValue(value: string | Date) {

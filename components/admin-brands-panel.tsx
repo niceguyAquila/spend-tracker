@@ -114,22 +114,22 @@ export function AdminBrandsPanel() {
           <p className="text-sm text-muted">Loading brands...</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-[760px] text-sm">
-              <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
+            <table className="data-table data-table-zebra min-w-[760px]">
+              <thead>
                 <tr>
-                  <th className="px-3 py-2">Code</th>
-                  <th className="px-3 py-2">Name</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2">Action</th>
+                  <th>Code</th>
+                  <th>Name</th>
+                  <th>Status</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {pagedBrands.map((brand) => (
-                  <tr key={brand.id} className="border-b border-[rgb(var(--border))]">
-                    <td className="px-3 py-2">{brand.code}</td>
-                    <td className="px-3 py-2">{brand.name}</td>
-                    <td className="px-3 py-2">{brand.is_active ? "Active" : "Inactive"}</td>
-                    <td className="px-3 py-2">
+                  <tr key={brand.id}>
+                    <td>{brand.code}</td>
+                    <td>{brand.name}</td>
+                    <td>{brand.is_active ? "Active" : "Inactive"}</td>
+                    <td>
                       <button
                         className="btn-secondary"
                         onClick={() => void setBrandActive(brand, !brand.is_active)}

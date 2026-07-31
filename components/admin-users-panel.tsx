@@ -6,6 +6,7 @@ import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Modal } from "@/components/ui/modal";
+import { TableEmptyState } from "@/components/ui/table-empty-state";
 
 type AllowedUser = {
   id: string;
@@ -392,44 +393,40 @@ export function AdminUsersPanel() {
           <p className="text-sm text-muted">Loading users...</p>
         ) : (
           <div className="w-full overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
+            <table className="data-table data-table-zebra min-w-[900px]">
+              <thead>
                 <tr>
-                  <th className="px-3 py-2">Email</th>
-                  <th className="px-3 py-2">Display Name</th>
-                  <th className="px-3 py-2">Role</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2">Brand Access</th>
-                  <th className="px-3 py-2">Actions</th>
+                  <th>Email</th>
+                  <th>Display Name</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Brand Access</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {pagedUsers.length === 0 ? (
-                  <tr>
-                    <td className="px-3 py-4 text-sm text-muted" colSpan={6}>
-                      No users match the current search/filter.
-                    </td>
-                  </tr>
+                  <TableEmptyState colSpan={6} message="No users match the current search/filter." />
                 ) : null}
                 {pagedUsers.map((user) => (
-                  <tr key={user.id} className="border-b border-[rgb(var(--border))]">
-                    <td className="px-3 py-2">{user.email}</td>
-                    <td className="px-3 py-2">{user.display_name ?? "-"}</td>
-                    <td className="px-3 py-2">{user.role}</td>
-                    <td className="px-3 py-2">{user.is_active ? "Active" : "Inactive"}</td>
-                    <td className="px-3 py-2">
+                  <tr key={user.id}>
+                    <td>{user.email}</td>
+                    <td>{user.display_name ?? "-"}</td>
+                    <td>{user.role}</td>
+                    <td>{user.is_active ? "Active" : "Inactive"}</td>
+                    <td>
                       <div className="grid gap-1 text-xs">
                         {brands.map((brand) => (
                           <div key={brand.id} className="flex items-center justify-between gap-2">
                             <span>{brand.name}</span>
-                            <span className="rounded bg-slate-100 px-2 py-0.5 text-slate-900">
+                            <span className="rounded bg-[rgb(var(--surface-muted))] px-2 py-0.5 text-[rgb(var(--text))]">
                               {getUserBrandRole(user, brand.id)}
                             </span>
                           </div>
                         ))}
                       </div>
                     </td>
-                    <td className="px-3 py-2">
+                    <td>
                       <div className="relative inline-block">
                         <button
                           className="btn-secondary"
@@ -513,7 +510,7 @@ export function AdminUsersPanel() {
         confirmLabel={authMethod === "password" ? "Create user" : "Send invite"}
         description={
           <ul className="list-inside list-disc space-y-1">
-            <li className="break-all font-medium text-slate-900">{email}</li>
+            <li className="break-all font-medium text-[rgb(var(--text))]">{email}</li>
             <li>Role: {role}</li>
             <li>Brands: {selectedBrandIds.length}</li>
             <li>{authMethod === "password" ? "Sign-in: password (temporary password will be set)" : "Sign-in: magic link email"}</li>
@@ -535,7 +532,7 @@ export function AdminUsersPanel() {
         description={
           statusConfirmUser ? (
             <ul className="list-inside list-disc space-y-1">
-              <li className="break-all font-medium text-slate-900">{statusConfirmUser.email}</li>
+              <li className="break-all font-medium text-[rgb(var(--text))]">{statusConfirmUser.email}</li>
               <li>
                 {statusConfirmUser.is_active
                   ? "This user will be blocked from signing in and API access."

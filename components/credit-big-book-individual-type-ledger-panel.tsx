@@ -11,6 +11,8 @@ import {
 } from "@/lib/credit-big-book-individual-type-ledger";
 import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
 import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
+import { TableEmptyState } from "@/components/ui/table-empty-state";
+import { rowStripeClass } from "@/lib/ui/table";
 
 type Props = {
   types: CreditBookLedgerType[];
@@ -120,7 +122,7 @@ export function CreditBigBookIndividualTypeLedgerPanel({ types, entries }: Props
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Individual Type Ledger</h2>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-muted">
               {selectedType ? `Showing records for type: ${selectedType.name}` : "Select a type to start."}
             </p>
           </div>
@@ -155,7 +157,7 @@ export function CreditBigBookIndividualTypeLedgerPanel({ types, entries }: Props
           </label>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[680px] text-sm">
+          <table className="data-table min-w-[680px]">
             <thead className="border-b text-left bg-[rgb(var(--surface-muted))] text-[rgb(var(--text))]">
               <tr>
                 <th className="px-3 py-2">Month</th>
@@ -165,20 +167,8 @@ export function CreditBigBookIndividualTypeLedgerPanel({ types, entries }: Props
               </tr>
             </thead>
             <tbody>
-              <tr className="border-b font-semibold bg-[rgb(var(--surface-muted))/0.65] text-[rgb(var(--text))]">
-                <td className="px-3 py-2">Total ({selectedYear})</td>
-                <td className={`px-3 py-2 ${getAmountColorClass(grandTotals.IDR)}`}>
-                  {formatSignedAmount(grandTotals.IDR, "IDR")}
-                </td>
-                <td className={`px-3 py-2 ${getAmountColorClass(grandTotals.MYR)}`}>
-                  {formatSignedAmount(grandTotals.MYR, "MYR")}
-                </td>
-                <td className={`px-3 py-2 ${getAmountColorClass(grandTotals.USDT)}`}>
-                  {formatSignedAmount(grandTotals.USDT, "USDT")}
-                </td>
-              </tr>
-              {pagedMonthlyRows.map((row) => (
-                <tr key={row.month_label} className="border-b">
+              {pagedMonthlyRows.map((row, index) => (
+                <tr key={row.month_label} className={`border-b ${rowStripeClass(index)}`}>
                   <td className="px-3 py-2 font-medium">{row.month_label}</td>
                   <td className={`px-3 py-2 ${getAmountColorClass(row.totals.IDR)}`}>
                     {formatSignedAmount(row.totals.IDR, "IDR")}
@@ -192,6 +182,20 @@ export function CreditBigBookIndividualTypeLedgerPanel({ types, entries }: Props
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr className="border-t font-semibold bg-[rgb(var(--surface-muted)/0.65)] text-[rgb(var(--text))]">
+                <td className="px-3 py-2">Total ({selectedYear})</td>
+                <td className={`px-3 py-2 ${getAmountColorClass(grandTotals.IDR)}`}>
+                  {formatSignedAmount(grandTotals.IDR, "IDR")}
+                </td>
+                <td className={`px-3 py-2 ${getAmountColorClass(grandTotals.MYR)}`}>
+                  {formatSignedAmount(grandTotals.MYR, "MYR")}
+                </td>
+                <td className={`px-3 py-2 ${getAmountColorClass(grandTotals.USDT)}`}>
+                  {formatSignedAmount(grandTotals.USDT, "USDT")}
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
         <TablePaginationBar
@@ -239,20 +243,20 @@ export function CreditBigBookIndividualTypeLedgerPanel({ types, entries }: Props
         </div>
 
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[900px] text-sm">
-            <thead className="border-b text-left bg-[rgb(var(--surface-muted))] text-[rgb(var(--text))]">
+          <table className="data-table data-table-zebra min-w-[900px]">
+            <thead className="text-[rgb(var(--text))]">
               <tr>
-                <th className="px-3 py-2">Date</th>
-                <th className="px-3 py-2">Cash Flow</th>
-                <th className="px-3 py-2">Type</th>
-                <th className="px-3 py-2">Explanation</th>
-                <th className="px-3 py-2">Amount</th>
-                <th className="px-3 py-2">Actor</th>
+                <th>Date</th>
+                <th>Cash Flow</th>
+                <th>Type</th>
+                <th>Explanation</th>
+                <th>Amount</th>
+                <th>Actor</th>
               </tr>
             </thead>
             <tbody>
               {pagedVisibleEntries.map((entry) => (
-                <tr key={entry.id} className="border-b">
+                <tr key={entry.id}>
                   <td className="px-3 py-2">{formatDateDisplay(entry.entry_date)}</td>
                   <td className="px-3 py-2">{entry.entry_direction === "credit" ? "Credit" : "Debt"}</td>
                   <td className="px-3 py-2">{entry.type_name}</td>
@@ -266,11 +270,12 @@ export function CreditBigBookIndividualTypeLedgerPanel({ types, entries }: Props
                 </tr>
               ))}
               {!visibleEntries.length ? (
-                <tr>
-                  <td className="px-3 py-4 text-center text-muted" colSpan={6}>
-                    {selectedType ? "No records found for this type and filters." : "No type selected. Click Select Type to begin."}
-                  </td>
-                </tr>
+                <TableEmptyState
+                  colSpan={6}
+                  message={
+                    selectedType ? "No records found for this type and filters." : "No type selected. Click Select Type to begin."
+                  }
+                />
               ) : null}
             </tbody>
           </table>
@@ -310,7 +315,7 @@ export function CreditBigBookIndividualTypeLedgerPanel({ types, entries }: Props
           </button>
         }
       >
-        <label className="text-sm text-slate-700">
+        <label className="text-sm text-muted">
           <span className="mb-1 block">Ledger Type</span>
           <select className="field w-full" value={pendingTypeId} onChange={(event) => setPendingTypeId(event.target.value)}>
             <option value="">Select type...</option>

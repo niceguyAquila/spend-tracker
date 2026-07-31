@@ -8,6 +8,7 @@ import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { Modal } from "@/components/ui/modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { TableEmptyState } from "@/components/ui/table-empty-state";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 
 type Props = {
@@ -42,8 +43,8 @@ function parseNumberInput(value: string, fallback = 0) {
 
 function getTypeColorClass(type: string) {
   const normalized = type.trim().toLowerCase();
-  if (normalized === "payout") return "text-rose-600";
-  if (normalized === "payin") return "text-blue-600";
+  if (normalized === "payout") return "text-[rgb(var(--danger))]";
+  if (normalized === "payin") return "text-[rgb(var(--info))]";
   return "";
 }
 
@@ -224,8 +225,8 @@ export function WebTransactionsTable({ rows, sourceSystem, canManage }: Props) {
         </div>
       ) : null}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1040px] text-sm">
-          <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
+        <table className="data-table data-table-zebra min-w-[1040px]">
+          <thead>
             <tr>
               <th className="px-3 py-2">Create Time</th>
               <th className="px-3 py-2">Transaction No</th>
@@ -243,7 +244,7 @@ export function WebTransactionsTable({ rows, sourceSystem, canManage }: Props) {
             {pagedRows.map((row) => {
               const netAmount = row.amount - Math.abs(row.merchant_fee ?? 0);
               return (
-                <tr key={row.id} className="border-b border-[rgb(var(--border))]">
+                <tr key={row.id}>
                   <td className="px-3 py-2">{formatDateTimeDisplay(row.create_time)}</td>
                   <td className="px-3 py-2 font-mono text-xs">{row.external_txn_no}</td>
                   <td className="px-3 py-2">{row.canonical_status}</td>
@@ -251,7 +252,7 @@ export function WebTransactionsTable({ rows, sourceSystem, canManage }: Props) {
                   <td className={`px-3 py-2 font-medium ${getTypeAmountColorClass(row.canonical_type, row.amount)}`}>
                     {row.currency_code} {formatAmount(row.amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                   </td>
-                  <td className="px-3 py-2 font-medium text-rose-600">
+                  <td className="px-3 py-2 font-medium text-[rgb(var(--danger))]">
                     {row.merchant_fee === null
                       ? "-"
                       : formatAmount(row.merchant_fee, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
@@ -292,7 +293,7 @@ export function WebTransactionsTable({ rows, sourceSystem, canManage }: Props) {
                             </button>
                             <button
                               role="menuitem"
-                              className="block w-full rounded px-2 py-1 text-left text-sm text-rose-600 hover:bg-[rgb(var(--surface-muted))]"
+                              className="block w-full rounded px-2 py-1 text-left text-sm text-[rgb(var(--danger))] hover:bg-[rgb(var(--danger)/0.12)]"
                               onClick={() => openDelete(row)}
                             >
                               Delete
@@ -306,11 +307,7 @@ export function WebTransactionsTable({ rows, sourceSystem, canManage }: Props) {
               );
             })}
             {!rows.length ? (
-              <tr>
-                <td className="px-3 py-4 text-center text-muted" colSpan={emptyColSpan}>
-                  No web transactions match current filters.
-                </td>
-              </tr>
+              <TableEmptyState colSpan={emptyColSpan} message="No web transactions match current filters." />
             ) : null}
           </tbody>
         </table>

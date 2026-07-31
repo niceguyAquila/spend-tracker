@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { TableEmptyState } from "@/components/ui/table-empty-state";
 import type { CreditBookEntry, CreditBookSettlement } from "@/lib/types";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { formatAmount, formatDateDisplay } from "@/lib/display-format";
@@ -144,8 +145,8 @@ export function CreditBigBookSettlementHistoryModal({ entry, open, onOpenChange,
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-sm text-[rgb(var(--text))]">
-              <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
+            <table className="data-table data-table-zebra min-w-[640px] text-[rgb(var(--text))]">
+              <thead>
                 <tr>
                   <th className="px-3 py-2">Date</th>
                   <th className="px-3 py-2">Amount</th>
@@ -169,7 +170,7 @@ export function CreditBigBookSettlementHistoryModal({ entry, open, onOpenChange,
                   settlements.map((s) => {
                     const crossCurrency = s.settlement_currency_code !== entry.currency_code;
                     return (
-                    <tr key={s.id} className="border-b border-[rgb(var(--border))] align-top">
+                    <tr key={s.id} className="align-top">
                       <td className="px-3 py-2">{formatDateDisplay(s.settlement_date)}</td>
                       <td className="px-3 py-2">
                         <div>
@@ -210,7 +211,7 @@ export function CreditBigBookSettlementHistoryModal({ entry, open, onOpenChange,
                             {s.attachments.map((attachment) => (
                               <li key={attachment.id}>
                                 <button
-                                  className="text-xs text-blue-600 underline hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300"
+                                  className="text-xs text-[rgb(var(--info))] underline hover:opacity-80"
                                   onClick={() => void viewAttachment(attachment.id)}
                                   disabled={viewingAttachmentId === attachment.id}
                                 >
@@ -228,7 +229,7 @@ export function CreditBigBookSettlementHistoryModal({ entry, open, onOpenChange,
                       <td className="px-3 py-2">{s.creator_display_name}</td>
                       <td className="px-3 py-2">
                         <button
-                          className="text-xs text-rose-600 underline dark:text-rose-400"
+                          className="text-xs text-[rgb(var(--danger))] underline"
                           onClick={() => setPendingDeleteSettlementId(s.id)}
                           disabled={deleting}
                         >
@@ -239,20 +240,13 @@ export function CreditBigBookSettlementHistoryModal({ entry, open, onOpenChange,
                     );
                   })
                 ) : (
-                  <tr>
-                    <td
-                      className="px-3 py-3 text-center text-[rgb(var(--text-muted))]"
-                      colSpan={6}
-                    >
-                      No settlements recorded yet.
-                    </td>
-                  </tr>
+                  <TableEmptyState colSpan={6} message="No settlements recorded yet." />
                 )}
               </tbody>
             </table>
           </div>
 
-          {error ? <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p> : null}
+          {error ? <p className="text-sm text-[rgb(var(--danger))]">{error}</p> : null}
         </div>
       </Modal>
 

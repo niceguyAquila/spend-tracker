@@ -5,6 +5,8 @@ import type { BigBookEntry, BigBookTypeCashflowByCurrency, CreditBookTypeCashflo
 import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
 import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
+import { TableEmptyState } from "@/components/ui/table-empty-state";
+import { rowStripeClass } from "@/lib/ui/table";
 
 type CashflowSummary = {
   inflow: number;
@@ -33,7 +35,7 @@ export function MasterDashboardCashflowTable({ sourceRowsByCurrency }: MasterDas
   return (
     <>
       <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[980px] text-sm">
+        <table className="data-table min-w-[980px]">
           <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
             <tr>
               <th className="px-3 py-2">Currency</th>
@@ -47,32 +49,27 @@ export function MasterDashboardCashflowTable({ sourceRowsByCurrency }: MasterDas
           <tbody>
             {paged.map((row, index) => (
               <Fragment key={row.currency}>
-                <tr className="border-b border-[rgb(var(--border))]">
-                  <td className="px-3 py-2">{row.currency}</td>
-                  <td className="px-3 py-2">Web Spending</td>
-                  <td className={`px-3 py-2 ${getAmountColorClass(row.webSpending.inflow)}`}>
-                    {row.currency} {formatAmount(row.webSpending.inflow)}
-                  </td>
-                  <td className={`px-3 py-2 ${getAmountColorClass(-row.webSpending.outflow)}`}>
-                    {row.currency} {formatAmount(row.webSpending.outflow)}
-                  </td>
-                  <td className={`px-3 py-2 ${getAmountColorClass(row.webSpending.net)}`}>
-                    {row.currency} {formatAmount(row.webSpending.net)}
-                  </td>
-                </tr>
-                <tr className="border-b border-[rgb(var(--border))]">
-                  <td className="px-3 py-2">{row.currency}</td>
-                  <td className="px-3 py-2">Big Book</td>
-                  <td className={`px-3 py-2 ${getAmountColorClass(row.bigBook.inflow)}`}>
-                    {row.currency} {formatAmount(row.bigBook.inflow)}
-                  </td>
-                  <td className={`px-3 py-2 ${getAmountColorClass(-row.bigBook.outflow)}`}>
-                    {row.currency} {formatAmount(row.bigBook.outflow)}
-                  </td>
-                  <td className={`px-3 py-2 ${getAmountColorClass(row.bigBook.net)}`}>
-                    {row.currency} {formatAmount(row.bigBook.net)}
-                  </td>
-                </tr>
+                {[
+                  { label: "Web Spending", summary: row.webSpending },
+                  { label: "Big Book", summary: row.bigBook }
+                ].map((detail, detailIndex) => (
+                  <tr
+                    key={detail.label}
+                    className={`border-b border-[rgb(var(--border))] ${rowStripeClass(detailIndex)}`}
+                  >
+                    <td className="px-3 py-2">{row.currency}</td>
+                    <td className="px-3 py-2">{detail.label}</td>
+                    <td className={`px-3 py-2 ${getAmountColorClass(detail.summary.inflow)}`}>
+                      {row.currency} {formatAmount(detail.summary.inflow)}
+                    </td>
+                    <td className={`px-3 py-2 ${getAmountColorClass(-detail.summary.outflow)}`}>
+                      {row.currency} {formatAmount(detail.summary.outflow)}
+                    </td>
+                    <td className={`px-3 py-2 ${getAmountColorClass(detail.summary.net)}`}>
+                      {row.currency} {formatAmount(detail.summary.net)}
+                    </td>
+                  </tr>
+                ))}
                 <tr className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-[rgb(var(--text))]">
                   <td className="px-3 py-2">{row.currency}</td>
                   <td className="px-3 py-2 font-semibold">Combined</td>
@@ -88,7 +85,7 @@ export function MasterDashboardCashflowTable({ sourceRowsByCurrency }: MasterDas
                 </tr>
                 {index < paged.length - 1 ? (
                   <tr aria-hidden="true">
-                    <td className="p-0" colSpan={5}>
+                    <td className="!p-0" colSpan={6}>
                       <div className="h-4" />
                     </td>
                   </tr>
@@ -127,22 +124,22 @@ export function MasterDashboardBigBookEntriesTable({ entries }: MasterDashboardB
   return (
     <>
       <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[1180px] text-sm">
-          <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
+        <table className="data-table data-table-zebra min-w-[1180px]">
+          <thead>
             <tr>
-              <th className="px-3 py-2">Date</th>
-              <th className="px-3 py-2">Cash Flow</th>
-              <th className="px-3 py-2">Type</th>
-              <th className="px-3 py-2">Vendor Type</th>
-              <th className="px-3 py-2">Vendor Name</th>
-              <th className="px-3 py-2">Explanation</th>
-              <th className="px-3 py-2">Amount</th>
-              <th className="px-3 py-2">Actor</th>
+              <th>Date</th>
+              <th>Cash Flow</th>
+              <th>Type</th>
+              <th>Vendor Type</th>
+              <th>Vendor Name</th>
+              <th>Explanation</th>
+              <th>Amount</th>
+              <th>Actor</th>
             </tr>
           </thead>
           <tbody>
             {pagedEntries.map((entry) => (
-              <tr key={entry.id} className="border-b border-[rgb(var(--border))]">
+              <tr key={entry.id}>
                 <td className="px-3 py-2">{formatDateDisplay(entry.entry_date)}</td>
                 <td className="px-3 py-2">{entry.entry_direction === "profit" ? "In" : "Out"}</td>
                 <td className="px-3 py-2">{entry.type_name}</td>
@@ -156,11 +153,7 @@ export function MasterDashboardBigBookEntriesTable({ entries }: MasterDashboardB
               </tr>
             ))}
             {!entries.length ? (
-              <tr>
-                <td className="px-3 py-4 text-center text-muted" colSpan={8}>
-                  No Big Book entries found for this brand type mapping.
-                </td>
-              </tr>
+              <TableEmptyState colSpan={8} message="No Big Book entries found for this brand type mapping." />
             ) : null}
           </tbody>
         </table>
@@ -184,16 +177,16 @@ type MasterDashboardBigBookTypeCashflowTableProps = {
 };
 
 function getBlueOrNeutralClass(value: number) {
-  return value > 0 ? "text-blue-600" : "text-[rgb(var(--text-muted))]";
+  return value > 0 ? "text-[rgb(var(--info))]" : "text-[rgb(var(--text-muted))]";
 }
 
 function getRedOrNeutralClass(value: number) {
-  return value > 0 ? "text-rose-600" : "text-[rgb(var(--text-muted))]";
+  return value > 0 ? "text-[rgb(var(--danger))]" : "text-[rgb(var(--text-muted))]";
 }
 
 function getNetBlueRedNeutralClass(value: number) {
-  if (value > 0) return "text-blue-600";
-  if (value < 0) return "text-rose-600";
+  if (value > 0) return "text-[rgb(var(--info))]";
+  if (value < 0) return "text-[rgb(var(--danger))]";
   return "text-[rgb(var(--text-muted))]";
 }
 
@@ -207,7 +200,7 @@ export function MasterDashboardBigBookTypeCashflowTable({
 
   return (
     <div className="mt-4 overflow-x-auto">
-      <table className="w-full min-w-[980px] text-sm">
+      <table className="data-table min-w-[980px]">
         <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
           <tr>
             <th className="px-3 py-2">Currency</th>
@@ -221,8 +214,11 @@ export function MasterDashboardBigBookTypeCashflowTable({
         <tbody>
           {visibleRowsByCurrency.map((currencyRow, index) => (
             <Fragment key={currencyRow.currency}>
-              {currencyRow.rows.map((row) => (
-                <tr key={`${currencyRow.currency}:${row.row_key}`} className="border-b border-[rgb(var(--border))]">
+              {currencyRow.rows.map((row, rowIndex) => (
+                <tr
+                  key={`${currencyRow.currency}:${row.row_key}`}
+                  className={`border-b border-[rgb(var(--border))] ${rowStripeClass(rowIndex)}`}
+                >
                   <td className="px-3 py-2">{currencyRow.currency}</td>
                   <td className="px-3 py-2">{row.actor_display_name}</td>
                   <td className="px-3 py-2">{row.type_name}</td>
@@ -252,7 +248,7 @@ export function MasterDashboardBigBookTypeCashflowTable({
               </tr>
               {index < visibleRowsByCurrency.length - 1 ? (
                 <tr aria-hidden="true">
-                  <td className="p-0" colSpan={6}>
+                  <td className="!p-0" colSpan={6}>
                     <div className="h-4" />
                   </td>
                 </tr>
@@ -260,11 +256,7 @@ export function MasterDashboardBigBookTypeCashflowTable({
             </Fragment>
           ))}
           {!visibleRowsByCurrency.length ? (
-            <tr>
-              <td className="px-3 py-4 text-center text-muted" colSpan={6}>
-                No Big Book cashflow data matches the selected filters.
-              </td>
-            </tr>
+            <TableEmptyState colSpan={6} message="No Big Book cashflow data matches the selected filters." />
           ) : null}
         </tbody>
       </table>
@@ -286,7 +278,7 @@ export function MasterDashboardCreditBookTypeCashflowTable({
 
   return (
     <div className="mt-4 overflow-x-auto">
-      <table className="w-full min-w-[1080px] text-sm">
+      <table className="data-table min-w-[1080px]">
         <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
           <tr>
             <th className="px-3 py-2">Currency</th>
@@ -301,8 +293,11 @@ export function MasterDashboardCreditBookTypeCashflowTable({
         <tbody>
           {visibleRowsByCurrency.map((currencyRow, index) => (
             <Fragment key={currencyRow.currency}>
-              {currencyRow.rows.map((row) => (
-                <tr key={`${currencyRow.currency}:${row.row_key}`} className="border-b border-[rgb(var(--border))]">
+              {currencyRow.rows.map((row, rowIndex) => (
+                <tr
+                  key={`${currencyRow.currency}:${row.row_key}`}
+                  className={`border-b border-[rgb(var(--border))] ${rowStripeClass(rowIndex)}`}
+                >
                   <td className="px-3 py-2">{currencyRow.currency}</td>
                   <td className="px-3 py-2">{row.actor_display_name}</td>
                   <td className="px-3 py-2">{row.type_name}</td>
@@ -338,7 +333,7 @@ export function MasterDashboardCreditBookTypeCashflowTable({
               </tr>
               {index < visibleRowsByCurrency.length - 1 ? (
                 <tr aria-hidden="true">
-                  <td className="p-0" colSpan={7}>
+                  <td className="!p-0" colSpan={7}>
                     <div className="h-4" />
                   </td>
                 </tr>
@@ -346,11 +341,10 @@ export function MasterDashboardCreditBookTypeCashflowTable({
             </Fragment>
           ))}
           {!visibleRowsByCurrency.length ? (
-            <tr>
-              <td className="px-3 py-4 text-center text-muted" colSpan={7}>
-                No Credit Big Book cashflow data matches the selected filters.
-              </td>
-            </tr>
+            <TableEmptyState
+              colSpan={7}
+              message="No Credit Big Book cashflow data matches the selected filters."
+            />
           ) : null}
         </tbody>
       </table>

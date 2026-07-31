@@ -1,6 +1,9 @@
 import { WebTransactionImport } from "@/components/web-transaction-import";
 import { WebTransactionsFilters } from "@/components/web-transactions-filters";
 import { WebTransactionsTable } from "@/components/web-transactions-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { SetupRequiredCard } from "@/components/ui/setup-required-card";
+import { StatTile, StatTileGrid } from "@/components/ui/stat-tile";
 import { buildWebTransactionMetrics, getWebTransactions } from "@/lib/db/queries";
 import { requireAllowedUser } from "@/lib/auth";
 import { formatAmount, getAmountColorClass } from "@/lib/display-format";
@@ -62,68 +65,70 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
 
     return (
       <div className="space-y-6">
+        <PageHeader title="Web Transactions" description="Import and review web transaction activity." />
+
         <WebTransactionImport canImport={hasFinanceAccess} sourceSystem={sourceSystem} sourceLabel={sourceLabel} />
 
-        <section
-          className={`grid grid-cols-1 gap-4 lg:grid-cols-2 ${
+        <StatTileGrid
+          className={
             sourceSystem === "backoffice"
-              ? "2xl:grid-cols-7"
+              ? "lg:grid-cols-2 2xl:grid-cols-7"
               : sourceSystem === "payment_gateway"
-                ? "2xl:grid-cols-6"
-                : "2xl:grid-cols-5"
-          }`}
+                ? "lg:grid-cols-2 2xl:grid-cols-6"
+                : "lg:grid-cols-2 2xl:grid-cols-5"
+          }
         >
-          <article className="card">
-            <p className="text-xs uppercase text-muted">Total Transactions</p>
-            <p className="mt-1 text-2xl font-semibold">{metrics.total_count.toLocaleString("id-ID")}</p>
-          </article>
-          <article className="card">
-            <p className="text-xs uppercase text-muted">Successful</p>
-            <p className="mt-1 text-2xl font-semibold">{metrics.successful_count.toLocaleString("id-ID")}</p>
-          </article>
-          <article className="card">
-            <p className="text-xs uppercase text-muted">Success Rate</p>
-            <p className="mt-1 text-2xl font-semibold">{successRate.toFixed(2)}%</p>
-          </article>
-          <article className="card">
-            <p className="text-xs uppercase text-muted">Gross Amount</p>
-            <p className={`mt-1 text-2xl font-semibold ${getAmountColorClass(metrics.gross_amount)}`}>
-              Rp {formatAmount(metrics.gross_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-            </p>
-          </article>
-          <article className="card">
-            <p className="text-xs uppercase text-muted">Net (Amount - Fee)</p>
-            <p className={`mt-1 text-2xl font-semibold ${getAmountColorClass(metrics.net_amount)}`}>
-              Rp {formatAmount(metrics.net_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-            </p>
-          </article>
+          <StatTile label="Total Transactions" value={metrics.total_count.toLocaleString("id-ID")} />
+          <StatTile label="Successful" value={metrics.successful_count.toLocaleString("id-ID")} />
+          <StatTile label="Success Rate" value={`${successRate.toFixed(2)}%`} />
+          <StatTile
+            label="Gross Amount"
+            value={
+              <span className={getAmountColorClass(metrics.gross_amount)}>
+                Rp {formatAmount(metrics.gross_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+              </span>
+            }
+          />
+          <StatTile
+            label="Net (Amount - Fee)"
+            value={
+              <span className={getAmountColorClass(metrics.net_amount)}>
+                Rp {formatAmount(metrics.net_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+              </span>
+            }
+          />
           {sourceSystem === "payment_gateway" ? (
-            <article className="card">
-              <p className="text-xs uppercase text-muted">Fee Amount (Abs)</p>
-              <p className="mt-1 text-2xl font-semibold">
-                Rp {formatAmount(Math.abs(metrics.fee_amount), { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-              </p>
-            </article>
+            <StatTile
+              label="Fee Amount (Abs)"
+              value={`Rp ${formatAmount(Math.abs(metrics.fee_amount), {
+                minimumFractionDigits: 3,
+                maximumFractionDigits: 3
+              })}`}
+            />
           ) : null}
           {sourceSystem === "backoffice" ? (
             <>
-              <article className="card">
-                <p className="text-xs uppercase text-muted">Payin Count / Amount</p>
-                <p className="mt-1 text-2xl font-semibold">{metrics.payin_count.toLocaleString("id-ID")}</p>
-                <p className={`mt-1 text-sm ${getAmountColorClass(metrics.payin_amount)}`}>
-                  Rp {formatAmount(metrics.payin_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-                </p>
-              </article>
-              <article className="card">
-                <p className="text-xs uppercase text-muted">Payout Count / Amount</p>
-                <p className="mt-1 text-2xl font-semibold">{metrics.payout_count.toLocaleString("id-ID")}</p>
-                <p className={`mt-1 text-sm ${getAmountColorClass(metrics.payout_amount)}`}>
-                  Rp {formatAmount(metrics.payout_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-                </p>
-              </article>
+              <StatTile
+                label="Payin Count / Amount"
+                value={metrics.payin_count.toLocaleString("id-ID")}
+                sublabel={
+                  <p className={`text-sm ${getAmountColorClass(metrics.payin_amount)}`}>
+                    Rp {formatAmount(metrics.payin_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                  </p>
+                }
+              />
+              <StatTile
+                label="Payout Count / Amount"
+                value={metrics.payout_count.toLocaleString("id-ID")}
+                sublabel={
+                  <p className={`text-sm ${getAmountColorClass(metrics.payout_amount)}`}>
+                    Rp {formatAmount(metrics.payout_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                  </p>
+                }
+              />
             </>
           ) : null}
-        </section>
+        </StatTileGrid>
 
         <WebTransactionsFilters
           sourceSystem={sourceSystem}
@@ -157,15 +162,11 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
     }
 
     return (
-      <section className="card">
-        <h2 className="mb-2 text-lg font-semibold">Web Transactions setup required</h2>
-        <p className="text-sm text-muted">
-          The app cannot read web transactions yet. Apply SQL migrations and check your Supabase env keys.
-        </p>
-        <p className="mt-2 text-xs text-muted">
-          Error: {errorText}
-        </p>
-      </section>
+      <SetupRequiredCard
+        title="Web Transactions setup required"
+        message="The app cannot read web transactions yet. Apply SQL migrations and check your Supabase env keys."
+        error={errorText}
+      />
     );
   }
 }

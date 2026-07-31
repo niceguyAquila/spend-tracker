@@ -1,4 +1,5 @@
 import { AdminBrandsPanel } from "@/components/admin-brands-panel";
+import { PageHeader } from "@/components/ui/page-header";
 import { requireAllowedUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
 
@@ -10,10 +11,10 @@ export default async function AdminBrandsPage() {
 
   return (
     <div className="space-y-6">
-      <section className="card">
-        <h1 className="text-xl font-semibold">Brand Configuration Administration</h1>
-        <p className="text-sm text-muted">Only admins can create and manage brands.</p>
-      </section>
+      <PageHeader
+        title="Brand Configuration Administration"
+        description="Only admins can create and manage brands."
+      />
       <AdminBrandsPanel />
     </div>
   );

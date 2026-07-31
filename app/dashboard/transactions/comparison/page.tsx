@@ -3,6 +3,8 @@ import { requireAllowedUser } from "@/lib/auth";
 import type { WebTransactionComparisonOutcome } from "@/lib/types";
 import { WebTransactionsComparisonFilters } from "@/components/web-transactions-comparison-filters";
 import { WebTransactionComparisonTable } from "@/components/web-transaction-comparison-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatTile, StatTileGrid } from "@/components/ui/stat-tile";
 import { formatAmount, getAmountColorClass } from "@/lib/display-format";
 
 type SearchParamValue = string | string[] | undefined;
@@ -46,12 +48,10 @@ export default async function TransactionsComparisonPage({ searchParams }: Compa
 
   return (
     <div className="space-y-6">
-      <section className="card space-y-2">
-        <h2 className="text-lg font-semibold">Backoffice vs Payment Gateway Comparison</h2>
-        <p className="text-sm text-[rgb(var(--text-muted))]">
-          Reconciliation key: Transaction No + Type. Amount comparison uses exact value equality.
-        </p>
-      </section>
+      <PageHeader
+        title="Backoffice vs Payment Gateway Comparison"
+        description="Reconciliation key: Transaction No + Type. Amount comparison uses exact value equality."
+      />
 
       <WebTransactionsComparisonFilters
         outcomeOptions={OUTCOME_OPTIONS}
@@ -64,66 +64,82 @@ export default async function TransactionsComparisonPage({ searchParams }: Compa
       />
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <article className="card">
-          <p className="text-xs uppercase text-[rgb(var(--text-muted))]">Backoffice Total Transactions / Amount</p>
-          <p className="mt-1 text-2xl font-semibold">{comparison.metrics.backoffice.total_count.toLocaleString("id-ID")}</p>
-          <p className={`mt-1 text-sm ${getAmountColorClass(comparison.metrics.backoffice.total_amount)}`}>
-            Rp {formatAmount(comparison.metrics.backoffice.total_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-          </p>
-          <p className="mt-3 text-xs text-[rgb(var(--text-muted))]">
-            Payin: {comparison.metrics.backoffice.payin_count.toLocaleString("id-ID")} / Rp{" "}
-            {formatAmount(comparison.metrics.backoffice.payin_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-          </p>
-          <p className="text-xs text-[rgb(var(--text-muted))]">
-            Payout: {comparison.metrics.backoffice.payout_count.toLocaleString("id-ID")} / Rp{" "}
-            {formatAmount(comparison.metrics.backoffice.payout_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-          </p>
-        </article>
+        <StatTile
+          label="Backoffice Total Transactions / Amount"
+          value={comparison.metrics.backoffice.total_count.toLocaleString("id-ID")}
+          sublabel={
+            <>
+              <p className={`text-sm ${getAmountColorClass(comparison.metrics.backoffice.total_amount)}`}>
+                Rp{" "}
+                {formatAmount(comparison.metrics.backoffice.total_amount, {
+                  minimumFractionDigits: 3,
+                  maximumFractionDigits: 3
+                })}
+              </p>
+              <p className="mt-3">
+                Payin: {comparison.metrics.backoffice.payin_count.toLocaleString("id-ID")} / Rp{" "}
+                {formatAmount(comparison.metrics.backoffice.payin_amount, {
+                  minimumFractionDigits: 3,
+                  maximumFractionDigits: 3
+                })}
+              </p>
+              <p>
+                Payout: {comparison.metrics.backoffice.payout_count.toLocaleString("id-ID")} / Rp{" "}
+                {formatAmount(comparison.metrics.backoffice.payout_amount, {
+                  minimumFractionDigits: 3,
+                  maximumFractionDigits: 3
+                })}
+              </p>
+            </>
+          }
+        />
 
-        <article className="card">
-          <p className="text-xs uppercase text-[rgb(var(--text-muted))]">Payment Gateway Total Transactions / Amount</p>
-          <p className="mt-1 text-2xl font-semibold">
-            {comparison.metrics.payment_gateway.total_count.toLocaleString("id-ID")}
-          </p>
-          <p className={`mt-1 text-sm ${getAmountColorClass(comparison.metrics.payment_gateway.total_amount)}`}>
-            Rp{" "}
-            {formatAmount(comparison.metrics.payment_gateway.total_amount, {
-              minimumFractionDigits: 3,
-              maximumFractionDigits: 3
-            })}
-          </p>
-          <p className="mt-3 text-xs text-[rgb(var(--text-muted))]">
-            Payin: {comparison.metrics.payment_gateway.payin_count.toLocaleString("id-ID")} / Rp{" "}
-            {formatAmount(comparison.metrics.payment_gateway.payin_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-          </p>
-          <p className="text-xs text-[rgb(var(--text-muted))]">
-            Payout: {comparison.metrics.payment_gateway.payout_count.toLocaleString("id-ID")} / Rp{" "}
-            {formatAmount(comparison.metrics.payment_gateway.payout_amount, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-          </p>
-        </article>
+        <StatTile
+          label="Payment Gateway Total Transactions / Amount"
+          value={comparison.metrics.payment_gateway.total_count.toLocaleString("id-ID")}
+          sublabel={
+            <>
+              <p className={`text-sm ${getAmountColorClass(comparison.metrics.payment_gateway.total_amount)}`}>
+                Rp{" "}
+                {formatAmount(comparison.metrics.payment_gateway.total_amount, {
+                  minimumFractionDigits: 3,
+                  maximumFractionDigits: 3
+                })}
+              </p>
+              <p className="mt-3">
+                Payin: {comparison.metrics.payment_gateway.payin_count.toLocaleString("id-ID")} / Rp{" "}
+                {formatAmount(comparison.metrics.payment_gateway.payin_amount, {
+                  minimumFractionDigits: 3,
+                  maximumFractionDigits: 3
+                })}
+              </p>
+              <p>
+                Payout: {comparison.metrics.payment_gateway.payout_count.toLocaleString("id-ID")} / Rp{" "}
+                {formatAmount(comparison.metrics.payment_gateway.payout_amount, {
+                  minimumFractionDigits: 3,
+                  maximumFractionDigits: 3
+                })}
+              </p>
+            </>
+          }
+        />
       </section>
 
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-4">
-        <article className="card">
-          <p className="text-xs uppercase text-[rgb(var(--text-muted))]">Matched</p>
-          <p className="mt-1 text-2xl font-semibold">{comparison.metrics.matched_count.toLocaleString("id-ID")}</p>
-        </article>
-        <article className="card">
-          <p className="text-xs uppercase text-[rgb(var(--text-muted))]">Mismatched</p>
-          <p className="mt-1 text-2xl font-semibold">{comparison.metrics.mismatched_count.toLocaleString("id-ID")}</p>
-        </article>
-        <article className="card">
-          <p className="text-xs uppercase text-[rgb(var(--text-muted))]">Missing in Backoffice</p>
-          <p className="mt-1 text-2xl font-semibold">{comparison.metrics.missing_in_backoffice_count.toLocaleString("id-ID")}</p>
-        </article>
-        <article className="card">
-          <p className="text-xs uppercase text-[rgb(var(--text-muted))]">Missing in Payment Gateway</p>
-          <p className="mt-1 text-2xl font-semibold">{comparison.metrics.missing_in_gateway_count.toLocaleString("id-ID")}</p>
-        </article>
-      </section>
+      <StatTileGrid>
+        <StatTile label="Matched" value={comparison.metrics.matched_count.toLocaleString("id-ID")} />
+        <StatTile label="Mismatched" value={comparison.metrics.mismatched_count.toLocaleString("id-ID")} />
+        <StatTile
+          label="Missing in Backoffice"
+          value={comparison.metrics.missing_in_backoffice_count.toLocaleString("id-ID")}
+        />
+        <StatTile
+          label="Missing in Payment Gateway"
+          value={comparison.metrics.missing_in_gateway_count.toLocaleString("id-ID")}
+        />
+      </StatTileGrid>
 
       <section className="card">
-        <h3 className="mb-3 text-lg font-semibold">Reconciliation Rows ({comparison.rows.length.toLocaleString("id-ID")})</h3>
+        <h2 className="mb-3 text-lg font-semibold">Reconciliation Rows ({comparison.rows.length.toLocaleString("id-ID")})</h2>
         <WebTransactionComparisonTable rows={comparison.rows} />
       </section>
     </div>

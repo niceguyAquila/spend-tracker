@@ -14,6 +14,11 @@
     --primary: 59 130 246;
     --primary-strong: 79 70 229;
     --focus: 96 165 250;
+    --success: 5 150 105;
+    --danger: 220 38 38;
+    --warning: 217 119 6;
+    --info: 37 99 235;
+    --stripe: 241 245 249;
   }
 
   .dark {
@@ -27,6 +32,11 @@
     --primary: 96 165 250;
     --primary-strong: 129 140 248;
     --focus: 125 211 252;
+    --success: 52 211 153;
+    --danger: 248 113 113;
+    --warning: 251 191 36;
+    --info: 96 165 250;
+    --stripe: 30 41 59;
   }
 
   body {
@@ -86,4 +96,35 @@ body {
 
 .field-compact {
   @apply px-2.5 py-1.5 text-xs;
+}
+
+.data-table {
+  @apply w-full text-sm;
+}
+
+.data-table thead {
+  @apply border-b bg-[rgb(var(--surface-muted))] text-left;
+  border-color: rgb(var(--border));
+}
+
+.data-table th,
+.data-table td {
+  @apply px-3 py-2;
+}
+
+.data-table tbody tr {
+  @apply border-b;
+  border-color: rgb(var(--border));
+}
+
+.data-table-zebra tbody tr:nth-child(even) {
+  background-color: rgb(var(--stripe) / 0.55);
+}
+
+.row-stripe {
+  background-color: rgb(var(--stripe) / 0.55);
+}
+
+.data-table tbody tr:hover {
+  background-color: rgb(var(--primary) / 0.06);
 }

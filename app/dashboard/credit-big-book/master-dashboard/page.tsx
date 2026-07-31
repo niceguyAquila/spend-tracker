@@ -1,5 +1,7 @@
 import { MasterDashboardCreditBookTypeCashflowTable } from "@/components/master-dashboard-tables";
 import { CreditBigBookTypeCashflowFilters } from "@/components/credit-big-book-type-cashflow-filters";
+import { PageHeader } from "@/components/ui/page-header";
+import { SetupRequiredCard } from "@/components/ui/setup-required-card";
 import {
   getCreditBookActors,
   getCreditBookLedgerTypes,
@@ -56,18 +58,14 @@ export default async function CreditBigBookMasterDashboardPage({ searchParams }:
 
     return (
       <div className="space-y-6">
-        <section className="card">
-          <div>
-            <h1 className="text-xl font-semibold">Master Dashboard</h1>
-            <p className="text-sm text-slate-600">
-              Cashflow summary by ledger type across each currency.
-            </p>
-          </div>
-        </section>
+        <PageHeader
+          title="Master Dashboard"
+          description="Cashflow summary by ledger type across each currency."
+        />
 
         <section className="card">
           <h2 className="text-lg font-semibold">Cashflow by Type and Currency</h2>
-          <p className="mt-1 text-sm text-slate-600">
+          <p className="mt-1 text-sm text-muted">
             Each row is grouped by Actor + Type. Inflow (credit) is blue, outflow (debt) is red, and net follows its value sign.
           </p>
           <CreditBigBookTypeCashflowFilters
@@ -96,13 +94,11 @@ export default async function CreditBigBookMasterDashboardPage({ searchParams }:
     }
 
     return (
-      <section className="card">
-        <h2 className="mb-2 text-lg font-semibold">Credit Big Book setup required</h2>
-        <p className="text-sm text-slate-700">
-          The app cannot read Credit Big Book tables yet. Apply SQL migrations in `supabase/migrations` and refresh.
-        </p>
-        <p className="mt-2 text-xs text-slate-500">Error: {errorText}</p>
-      </section>
+      <SetupRequiredCard
+        title="Credit Big Book setup required"
+        message="The app cannot read Credit Big Book tables yet. Apply SQL migrations in `supabase/migrations` and refresh."
+        error={errorText}
+      />
     );
   }
 }

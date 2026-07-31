@@ -46,7 +46,7 @@ export function ConfirmDialog({
 
   const confirmClass =
     variant === "danger"
-      ? "rounded-md bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+      ? "rounded-md bg-[rgb(var(--danger))] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
       : "btn";
 
   return (

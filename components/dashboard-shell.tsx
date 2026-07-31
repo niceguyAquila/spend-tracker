@@ -125,17 +125,16 @@ export function DashboardShell({
                 >
                   <HamburgerIcon />
                 </button>
-                <div className="max-w-3xl space-y-1">
+                <div className="max-w-3xl">
                   <DashboardHeaderTitle activeBrandName={activeBrandName} />
-                  <p className="text-sm text-muted">
-                    Unified workspace for spending, transactions, big book ledgers, and admin controls.
-                  </p>
                 </div>
               </div>
               <div className="flex flex-col items-end text-right">
                 <div className="flex items-start gap-2">
-                  <div>
-                    <p className="text-sm text-muted">{userEmail}</p>
+                  <div className="max-w-[220px]">
+                    <p className="truncate text-sm text-muted" title={userEmail}>
+                      {userEmail}
+                    </p>
                     <p className="mt-1 text-xs uppercase text-muted">{role}</p>
                   </div>
                 </div>

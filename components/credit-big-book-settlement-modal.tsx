@@ -492,7 +492,7 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
                     </span>
                     <button
                       type="button"
-                      className="text-rose-600 underline dark:text-rose-400"
+                      className="text-[rgb(var(--danger))] underline"
                       onClick={() => removeFileAt(index)}
                     >
                       Remove
@@ -503,7 +503,7 @@ export function CreditBigBookSettlementModal({ entry, open, onOpenChange, onSucc
             ) : null}
           </label>
 
-          {error ? <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p> : null}
+          {error ? <p className="text-sm text-[rgb(var(--danger))]">{error}</p> : null}
         </div>
       </Modal>
 

@@ -120,7 +120,7 @@ export function Modal({
         <h2 id={titleId} className="mb-3 text-lg font-semibold">
           {title}
         </h2>
-        <div className="text-sm text-slate-700">{children}</div>
+        <div className="text-sm text-[rgb(var(--text))]">{children}</div>
         {footer ? <div className="mt-4 flex flex-wrap justify-end gap-2 pt-4">{footer}</div> : null}
       </div>
     </div>,

@@ -1,6 +1,8 @@
 "use client";
 
 import { Fragment } from "react";
+import { TableEmptyState } from "@/components/ui/table-empty-state";
+import { rowStripeClass } from "@/lib/ui/table";
 
 type PivotRow = {
   categoryId: string;
@@ -58,11 +60,11 @@ export function DashboardReportTable({
     <section className="card">
       <div className="mb-4">
         <h2 className="text-lg font-semibold">{title}</h2>
-        {description ? <p className="mt-1 text-sm text-slate-600">{description}</p> : null}
+        {description ? <p className="mt-1 text-sm text-muted">{description}</p> : null}
       </div>
 
       <div className="w-full overflow-x-auto">
-        <table className="w-full min-w-[980px] text-sm">
+        <table className="data-table min-w-[980px]">
           <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
             <tr>
               <th className="px-3 py-2">Category</th>
@@ -86,7 +88,9 @@ export function DashboardReportTable({
                   {categoryRows.map((row, index) => (
                         <tr
                           key={`${row.categoryId}:${row.subcategoryId}`}
-                          className={`border-b border-[rgb(var(--border))] ${rowBackgroundColor ? "text-[rgb(var(--text))]" : ""}`}
+                          className={`border-b border-[rgb(var(--border))] ${
+                            rowBackgroundColor ? "text-[rgb(var(--text))]" : rowStripeClass(index)
+                          }`}
                           style={rowBackgroundColor ? { backgroundColor: rowBackgroundColor } : undefined}
                         >
                           <td className="px-3 py-2 font-medium">
@@ -114,19 +118,18 @@ export function DashboardReportTable({
                         ))}
                       </tr>
                       {!isLastCategory ? (
-                        <tr>
-                          <td colSpan={monthColumns.length + 2} className="h-3 p-0" />
+                        <tr aria-hidden="true">
+                          <td colSpan={monthColumns.length + 2} className="h-3 !p-0" />
                         </tr>
                       ) : null}
                 </Fragment>
               );
             })}
             {!rows.length ? (
-              <tr>
-                <td colSpan={monthColumns.length + 2} className="px-3 py-6 text-center text-[rgb(var(--text-muted))]">
-                  No data found for the current filters.
-                </td>
-              </tr>
+              <TableEmptyState
+                colSpan={monthColumns.length + 2}
+                message="No data found for the current filters."
+              />
             ) : null}
           </tbody>
           <tfoot style={{ backgroundColor: "rgb(var(--primary-strong))" }} className="text-white">

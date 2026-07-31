@@ -94,7 +94,7 @@ export function PromptDialog({
         disabled={submitting}
       />
       {error ? (
-        <p id={errorId} className="mt-2 text-sm text-rose-600" role="alert">
+        <p id={errorId} className="mt-2 text-sm text-[rgb(var(--danger))]" role="alert">
           {error}
         </p>
       ) : null}

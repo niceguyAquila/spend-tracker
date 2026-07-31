@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { DashboardReportFilters } from "@/components/dashboard-report-filters";
 import { DashboardReportTable } from "@/components/dashboard-report-table";
+import { PageHeader } from "@/components/ui/page-header";
+import { SetupRequiredCard } from "@/components/ui/setup-required-card";
 import { getCategories, getDashboardReportRows, getSubcategories } from "@/lib/db/queries";
 import { requireAllowedUser } from "@/lib/auth";
 
@@ -156,6 +158,8 @@ export default async function SpendingOverviewPage({ searchParams }: DashboardPa
 
     return (
       <div className="space-y-6">
+        <PageHeader title="Spending Overview" description="Monthly and category spending reports." />
+
         <DashboardReportFilters
           key={filterKey}
           categories={categories.map((item) => ({ value: item.id, label: item.name }))}
@@ -177,7 +181,7 @@ export default async function SpendingOverviewPage({ searchParams }: DashboardPa
         />
 
         {rangeHasNoOverlap ? (
-          <p className="rounded-md border border-amber-300 bg-amber-100 px-3 py-2 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+          <p className="rounded-md border border-[rgb(var(--warning)/0.35)] bg-[rgb(var(--warning)/0.12)] px-3 py-2 text-sm text-[rgb(var(--warning))]">
             No months fall in the selected range for the current category filters. Adjust From/To or clear the month
             range.
           </p>
@@ -204,13 +208,11 @@ export default async function SpendingOverviewPage({ searchParams }: DashboardPa
     }
 
     return (
-      <section className="card">
-        <h2 className="mb-2 text-lg font-semibold">Dashboard setup required</h2>
-        <p className="text-sm text-muted">
-          The app cannot read spending tables yet. Apply SQL migrations in `supabase/migrations` and refresh.
-        </p>
-        <p className="mt-2 text-xs text-muted">Error: {errorText}</p>
-      </section>
+      <SetupRequiredCard
+        title="Dashboard setup required"
+        message="The app cannot read spending tables yet. Apply SQL migrations in `supabase/migrations` and refresh."
+        error={errorText}
+      />
     );
   }
 }

@@ -22,6 +22,8 @@ import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
 import { CreditBigBookSettlementModal } from "@/components/credit-big-book-settlement-modal";
 import { CreditBigBookSettlementHistoryModal } from "@/components/credit-big-book-settlement-history-modal";
+import { rowStripeClass } from "@/lib/ui/table";
+import { TableEmptyState } from "@/components/ui/table-empty-state";
 
 type Props = {
   initialTypes: CreditBookLedgerType[];
@@ -103,9 +105,9 @@ const SUPPORTED_CURRENCIES: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR
 const LEDGER_SKELETON_ROW_COUNT = 6;
 
 function getStatusChipClass(status: CreditBookEntryStatus) {
-  if (status === "settled") return "bg-emerald-100 text-emerald-700";
-  if (status === "partial") return "bg-blue-100 text-blue-700";
-  return "bg-amber-100 text-amber-700";
+  if (status === "settled") return "bg-[rgb(var(--success)/0.15)] text-[rgb(var(--success))]";
+  if (status === "partial") return "bg-[rgb(var(--info)/0.15)] text-[rgb(var(--info))]";
+  return "bg-[rgb(var(--warning)/0.15)] text-[rgb(var(--warning))]";
 }
 
 function formatStatusLabel(status: CreditBookEntryStatus) {
@@ -980,7 +982,7 @@ export function CreditBigBookPanel({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Create Ledger Entry</h2>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-muted">
               Add credit/debt records from a dedicated popup form.
             </p>
           </div>
@@ -1054,14 +1056,14 @@ export function CreditBigBookPanel({
             </article>
           ))}
           {!actorCurrencyMetrics.length ? (
-            <p className="text-sm text-slate-600">No actor totals yet.</p>
+            <p className="text-sm text-muted">No actor totals yet.</p>
           ) : null}
         </div>
       </section>
 
       <section className="card">
         <h2 className="text-lg font-semibold">Outstanding by Actor (All Time)</h2>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-muted">
           Unsettled amount remaining on credit/debt records grouped by actor and currency.
         </p>
         <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
@@ -1100,7 +1102,7 @@ export function CreditBigBookPanel({
             </article>
           ))}
           {!actorOutstandingMetrics.length ? (
-            <p className="text-sm text-slate-600">No outstanding balances.</p>
+            <p className="text-sm text-muted">No outstanding balances.</p>
           ) : null}
         </div>
       </section>
@@ -1118,7 +1120,7 @@ export function CreditBigBookPanel({
           }}
         >
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
-            <label className="text-sm text-slate-700 md:col-span-2 xl:col-span-2 2xl:col-span-2">
+            <label className="text-sm text-muted md:col-span-2 xl:col-span-2 2xl:col-span-2">
               <span className="mb-1 block">Search</span>
               <input
                 className="field w-full"
@@ -1127,7 +1129,7 @@ export function CreditBigBookPanel({
                 onChange={(event) => setDraftQuery(event.target.value)}
               />
             </label>
-            <label className="text-sm text-slate-700">
+            <label className="text-sm text-muted">
               <span className="mb-1 block">Date From:</span>
               <input
                 className="field w-full"
@@ -1137,7 +1139,7 @@ export function CreditBigBookPanel({
                 aria-label="Filter from date"
               />
             </label>
-            <label className="text-sm text-slate-700">
+            <label className="text-sm text-muted">
               <span className="mb-1 block">Date To:</span>
               <input
                 className="field w-full"
@@ -1147,7 +1149,7 @@ export function CreditBigBookPanel({
                 aria-label="Filter to date"
               />
             </label>
-            <div className="text-sm text-slate-700">
+            <div className="text-sm text-muted">
               <span className="mb-1 block">Type</span>
               <SearchableMultiSelect
                 label="Type"
@@ -1157,7 +1159,7 @@ export function CreditBigBookPanel({
                 searchPlaceholder="Search type..."
               />
             </div>
-            <div className="text-sm text-slate-700">
+            <div className="text-sm text-muted">
               <span className="mb-1 block">Currency</span>
               <SearchableMultiSelect
                 label="Currency"
@@ -1167,7 +1169,7 @@ export function CreditBigBookPanel({
                 searchPlaceholder="Search currency..."
               />
             </div>
-            <div className="text-sm text-slate-700">
+            <div className="text-sm text-muted">
               <span className="mb-1 block">Actor</span>
               <SearchableMultiSelect
                 label="Actor"
@@ -1177,7 +1179,7 @@ export function CreditBigBookPanel({
                 searchPlaceholder="Search actor..."
               />
             </div>
-            <div className="text-sm text-slate-700">
+            <div className="text-sm text-muted">
               <span className="mb-1 block">Cash Flow</span>
               <SearchableMultiSelect
                 label="Cash Flow"
@@ -1187,7 +1189,7 @@ export function CreditBigBookPanel({
                 searchPlaceholder="Search direction..."
               />
             </div>
-            <div className="text-sm text-slate-700">
+            <div className="text-sm text-muted">
               <span className="mb-1 block">Status</span>
               <SearchableMultiSelect
                 label="Status"
@@ -1200,7 +1202,7 @@ export function CreditBigBookPanel({
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             {filtersDirty ? (
-              <span className="mr-auto text-xs text-amber-700">Filters changed — click Apply Filters to update results.</span>
+              <span className="mr-auto text-xs text-[rgb(var(--warning))]">Filters changed — click Apply Filters to update results.</span>
             ) : null}
             <button
               type="button"
@@ -1216,7 +1218,7 @@ export function CreditBigBookPanel({
           </div>
         </form>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1440px] text-sm">
+          <table className="data-table min-w-[1440px]">
             <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
               <tr>
                 <th className="px-3 py-2">Date</th>
@@ -1255,15 +1257,18 @@ export function CreditBigBookPanel({
                       <td className="px-3 py-2"><div className="h-8 w-20 rounded bg-[rgb(var(--surface-muted))]" /></td>
                     </tr>
                   ))
-                : entries.map((row) => (
-                    <tr key={row.id} className="border-b border-[rgb(var(--border))] align-top">
+                : entries.map((row, index) => (
+                    <tr
+                      key={row.id}
+                      className={`border-b border-[rgb(var(--border))] align-top ${rowStripeClass(index)}`}
+                    >
                       <td className="px-3 py-2">{formatDateDisplay(row.entry_date)}</td>
                       <td className="px-3 py-2">
                         <span
                           className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${
                             row.entry_direction === "credit"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-amber-100 text-amber-700"
+                              ? "bg-[rgb(var(--success)/0.15)] text-[rgb(var(--success))]"
+                              : "bg-[rgb(var(--warning)/0.15)] text-[rgb(var(--warning))]"
                           }`}
                         >
                           {row.entry_direction === "credit" ? "Credit" : "Debt"}
@@ -1287,7 +1292,7 @@ export function CreditBigBookPanel({
                         {row.sub_type_name ? (
                           row.sub_type_name
                         ) : (
-                          <span className="text-xs text-slate-500">-</span>
+                          <span className="text-xs text-muted">-</span>
                         )}
                       </td>
                       <td className="px-3 py-2">{row.explanation}</td>
@@ -1305,7 +1310,7 @@ export function CreditBigBookPanel({
                           <div className="flex max-w-[260px] items-start gap-2">
                             <span className="truncate">{row.remark}</span>
                             <button
-                              className="shrink-0 text-xs text-blue-700 underline"
+                              className="shrink-0 text-xs text-[rgb(var(--info))] underline"
                               type="button"
                               onClick={() => setViewingRemark({ entryId: row.id, text: row.remark ?? "" })}
                             >
@@ -1319,12 +1324,12 @@ export function CreditBigBookPanel({
                       <td className="px-3 py-2">
                         {row.attachments.length ? (
                           <div className="space-y-1">
-                            <p className="text-xs text-slate-600">{row.attachments.length} file(s)</p>
+                            <p className="text-xs text-muted">{row.attachments.length} file(s)</p>
                             <ul className="space-y-1">
                               {row.attachments.map((attachment) => (
                                 <li key={attachment.id}>
                                   <button
-                                    className="text-xs text-blue-700 underline"
+                                    className="text-xs text-[rgb(var(--info))] underline"
                                     onClick={() => void viewAttachment(attachment.id)}
                                     disabled={attachmentViewingId === attachment.id}
                                   >
@@ -1335,7 +1340,7 @@ export function CreditBigBookPanel({
                             </ul>
                           </div>
                         ) : (
-                          <span className="text-xs text-slate-500">No files</span>
+                          <span className="text-xs text-muted">No files</span>
                         )}
                       </td>
                       <td className="px-3 py-2">
@@ -1369,11 +1374,7 @@ export function CreditBigBookPanel({
                     </tr>
                   ))}
               {!entries.length && !entriesLoading ? (
-                <tr>
-                  <td className="px-3 py-4 text-center text-slate-600" colSpan={12}>
-                    No records match the current filters.
-                  </td>
-                </tr>
+                <TableEmptyState colSpan={12} message="No records match the current filters." />
               ) : null}
             </tbody>
           </table>
@@ -1389,14 +1390,14 @@ export function CreditBigBookPanel({
         />
       </section>
 
-      {error ? <p className="text-sm text-rose-600">{error}</p> : null}
-      {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
+      {error ? <p className="text-sm text-[rgb(var(--danger))]">{error}</p> : null}
+      {message ? <p className="text-sm text-[rgb(var(--success))]">{message}</p> : null}
 
       {openActionMenu ? (
         <div
           ref={actionMenuRef}
           role="menu"
-          className="absolute z-50 w-44 rounded-md border border-slate-200 bg-white p-1 text-slate-900 shadow-lg"
+          className="absolute z-50 w-44 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-1 text-[rgb(var(--text))] shadow-lg"
           style={{ top: openActionMenu.top, left: openActionMenu.left }}
         >
           {(() => {
@@ -1405,21 +1406,21 @@ export function CreditBigBookPanel({
             return (
               <>
                 <button
-                  className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-slate-100"
+                  className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
                   role="menuitem"
                   onClick={() => startEditEntry(targetRow)}
                 >
                   Edit record
                 </button>
                 <button
-                  className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-slate-100"
+                  className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
                   role="menuitem"
                   onClick={() => openManageAttachments(targetRow)}
                 >
                   Manage attachments
                 </button>
                 <button
-                  className="block w-full rounded px-2 py-1 text-left text-sm text-rose-600 hover:bg-slate-100"
+                  className="block w-full rounded px-2 py-1 text-left text-sm text-[rgb(var(--danger))] hover:bg-[rgb(var(--surface-muted))]"
                   role="menuitem"
                   onClick={() => {
                     setOpenActionMenu(null);
@@ -1438,7 +1439,7 @@ export function CreditBigBookPanel({
         <div
           ref={settlementMenuRef}
           role="menu"
-          className="absolute z-50 w-44 rounded-md border border-slate-200 bg-white p-1 text-slate-900 shadow-lg"
+          className="absolute z-50 w-44 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-1 text-[rgb(var(--text))] shadow-lg"
           style={{ top: openSettlementMenu.top, left: openSettlementMenu.left }}
         >
           {(() => {
@@ -1450,8 +1451,8 @@ export function CreditBigBookPanel({
             return (
               <>
                 <button
-                  className={`block w-full rounded px-2 py-1 text-left text-sm hover:bg-slate-100 ${
-                    settleDisabled ? "cursor-not-allowed text-slate-400 hover:bg-transparent" : ""
+                  className={`block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))] ${
+                    settleDisabled ? "cursor-not-allowed text-muted opacity-60 hover:bg-transparent" : ""
                   }`}
                   role="menuitem"
                   disabled={settleDisabled}
@@ -1464,8 +1465,8 @@ export function CreditBigBookPanel({
                   {settleLabel}
                 </button>
                 <button
-                  className={`block w-full rounded px-2 py-1 text-left text-sm hover:bg-slate-100 ${
-                    historyDisabled ? "cursor-not-allowed text-slate-400 hover:bg-transparent" : ""
+                  className={`block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))] ${
+                    historyDisabled ? "cursor-not-allowed text-muted opacity-60 hover:bg-transparent" : ""
                   }`}
                   role="menuitem"
                   disabled={historyDisabled}
@@ -1519,15 +1520,15 @@ export function CreditBigBookPanel({
         <div className="space-y-4">
           <div>
             <div>
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-muted">
                 Download the template, fill multiple rows, then import all at once.
               </p>
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-muted">
                 Type name and actor name must match currently available values in Credit Big Book.
               </p>
             </div>
           </div>
-          <label className="text-sm text-slate-700">
+          <label className="text-sm text-muted">
             <span className="mb-1 block">CSV File</span>
             <input
               className="field"
@@ -1541,7 +1542,7 @@ export function CreditBigBookPanel({
             />
           </label>
           {importErrors.length ? (
-            <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+            <div className="rounded-md border border-[rgb(var(--danger)/0.35)] bg-[rgb(var(--danger)/0.12)] p-3 text-sm text-[rgb(var(--danger))]">
               <p className="font-medium">Import validation errors:</p>
               <ul className="mt-1 list-disc pl-5">
                 {importErrors.map((item, index) => (
@@ -1565,7 +1566,7 @@ export function CreditBigBookPanel({
           </button>
         }
       >
-        <p className="text-sm text-slate-700">
+        <p className="text-sm text-muted">
           Imported {importSuccessCount ?? 0} ledger row{(importSuccessCount ?? 0) === 1 ? "" : "s"} successfully.
         </p>
       </Modal>
@@ -1729,7 +1730,7 @@ export function CreditBigBookPanel({
               onChange={(event) => setCreateAttachmentFiles(Array.from(event.target.files ?? []))}
             />
             {createAttachmentFiles.length > 0 ? (
-              <ul className="mt-2 space-y-1 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-900">
+              <ul className="mt-2 space-y-1 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-2 text-xs text-[rgb(var(--text))]">
                 {createAttachmentFiles.map((file, index) => (
                   <li key={`${file.name}-${file.size}-${index}`} className="flex items-center justify-between gap-2">
                     <span className="truncate">
@@ -1737,7 +1738,7 @@ export function CreditBigBookPanel({
                     </span>
                     <button
                       type="button"
-                      className="text-rose-600 underline"
+                      className="text-[rgb(var(--danger))] underline"
                       onClick={() => removeCreateAttachmentAt(index)}
                     >
                       Remove
@@ -1993,7 +1994,7 @@ export function CreditBigBookPanel({
       >
         {manageAttachmentsEntry ? (
           <div className="space-y-3">
-            <p className="text-xs text-slate-600">
+            <p className="text-xs text-muted">
               {formatDateDisplay(manageAttachmentsEntry.entry_date)} · {manageAttachmentsEntry.type_name} · {manageAttachmentsEntry.explanation}
             </p>
             <input
@@ -2004,7 +2005,7 @@ export function CreditBigBookPanel({
               onChange={(event) => setManageAttachmentFiles(Array.from(event.target.files ?? []))}
             />
             {manageAttachmentFiles.length ? (
-              <ul className="space-y-1 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-900">
+              <ul className="space-y-1 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-2 text-xs text-[rgb(var(--text))]">
                 {manageAttachmentFiles.map((file, index) => (
                   <li key={`${file.name}-${file.size}-${index}`}>{file.name}</li>
                 ))}
@@ -2014,17 +2015,17 @@ export function CreditBigBookPanel({
               {manageAttachmentsEntry.attachments.map((attachment) => (
                 <li
                   key={attachment.id}
-                  className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-[rgb(var(--surface))] p-2"
+                  className="flex items-center justify-between gap-2 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2"
                 >
                   <button
-                    className="truncate text-left text-xs text-blue-700 underline"
+                    className="truncate text-left text-xs text-[rgb(var(--info))] underline"
                     onClick={() => void viewAttachment(attachment.id)}
                     disabled={attachmentViewingId === attachment.id}
                   >
                     {attachmentViewingId === attachment.id ? "Loading..." : attachment.file_name}
                   </button>
                   <button
-                    className="text-xs text-rose-600 underline"
+                    className="text-xs text-[rgb(var(--danger))] underline"
                     onClick={() => setPendingDeleteAttachmentId(attachment.id)}
                     disabled={attachmentDeleting}
                   >
@@ -2033,7 +2034,7 @@ export function CreditBigBookPanel({
                 </li>
               ))}
               {!manageAttachmentsEntry.attachments.length ? (
-                <li className="text-xs text-slate-500">No attachments yet.</li>
+                <li className="text-xs text-muted">No attachments yet.</li>
               ) : null}
             </ul>
           </div>

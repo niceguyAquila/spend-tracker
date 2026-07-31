@@ -284,9 +284,9 @@ export function TransactionForm({
         </button>
       </div>
 
-      <div className="mt-5 rounded-md border border-slate-200 p-4">
+      <div className="mt-5 rounded-md border border-[rgb(var(--border))] p-4">
         <p className="text-sm font-medium">Create sub-category inline</p>
-        <p className="mt-1 text-xs text-slate-600">
+        <p className="mt-1 text-xs text-muted">
           Choose the target category for this new sub-category.
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
@@ -313,8 +313,8 @@ export function TransactionForm({
         </div>
       </div>
 
-      {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
-      {success ? <p className="mt-3 text-sm text-emerald-600">{success}</p> : null}
+      {error ? <p className="mt-3 text-sm text-[rgb(var(--danger))]">{error}</p> : null}
+      {success ? <p className="mt-3 text-sm text-[rgb(var(--success))]">{success}</p> : null}
     </section>
   );
 }

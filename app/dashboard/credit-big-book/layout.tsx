@@ -11,5 +11,5 @@ export default async function CreditBigBookLayout({
     redirect("/dashboard");
   }
 
-  return <div className="space-y-6">{children}</div>;
+  return <>{children}</>;
 }

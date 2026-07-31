@@ -91,7 +91,7 @@ export function BigBookTypeCashflowFilters({
   return (
     <form className="mt-4 flex flex-col gap-3" onSubmit={applyFilters}>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-        <div className="text-sm text-slate-700">
+        <div className="text-sm text-muted">
           <span className="mb-1 block">Actor</span>
           <SearchableMultiSelect
             label="Actor"
@@ -101,7 +101,7 @@ export function BigBookTypeCashflowFilters({
             searchPlaceholder="Search actor..."
           />
         </div>
-        <div className="text-sm text-slate-700">
+        <div className="text-sm text-muted">
           <span className="mb-1 block">Currency</span>
           <SearchableMultiSelect
             label="Currency"
@@ -111,7 +111,7 @@ export function BigBookTypeCashflowFilters({
             searchPlaceholder="Search currency..."
           />
         </div>
-        <div className="text-sm text-slate-700">
+        <div className="text-sm text-muted">
           <span className="mb-1 block">Type</span>
           <SearchableMultiSelect
             label="Type"
@@ -121,7 +121,7 @@ export function BigBookTypeCashflowFilters({
             searchPlaceholder="Search type..."
           />
         </div>
-        <label className="text-sm text-slate-700">
+        <label className="text-sm text-muted">
           <span className="mb-1 block">Date From</span>
           <input
             className="field w-full"
@@ -131,7 +131,7 @@ export function BigBookTypeCashflowFilters({
             aria-label="Filter from date"
           />
         </label>
-        <label className="text-sm text-slate-700">
+        <label className="text-sm text-muted">
           <span className="mb-1 block">Date To</span>
           <input
             className="field w-full"

@@ -12,6 +12,7 @@ import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
+import { TableEmptyState } from "@/components/ui/table-empty-state";
 import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
 
 type StatusFilter = "all" | "active" | "inactive";
@@ -342,7 +343,7 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
       <section className="card relative" aria-busy={criticalPending}>
         <BlockingOverlay active={criticalPending} label="Processing settings..." />
         <h2 className="text-lg font-semibold">Type Management</h2>
-        <p className="mt-1 text-sm text-slate-600">Add new types and activate/deactivate existing ones.</p>
+        <p className="mt-1 text-sm text-muted">Add new types and activate/deactivate existing ones.</p>
         <div className="mt-4 grid grid-cols-1 gap-2 lg:grid-cols-3">
           <input
             className="field"
@@ -365,7 +366,7 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
           </button>
         </div>
         <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <label className="text-sm text-slate-700 sm:col-span-2">
+          <label className="text-sm text-muted sm:col-span-2">
             <span className="mb-1 block">Search</span>
             <input
               className="field w-full"
@@ -374,7 +375,7 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
               onChange={(event) => setTypeQuery(event.target.value)}
             />
           </label>
-          <label className="text-sm text-slate-700">
+          <label className="text-sm text-muted">
             <span className="mb-1 block">Status</span>
             <select
               className="field w-full"
@@ -388,20 +389,20 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
           </label>
         </div>
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
+          <table className="data-table data-table-zebra min-w-[640px]">
+            <thead>
               <tr>
-                <th className="px-3 py-2">Code</th>
-                <th className="px-3 py-2">Name</th>
-                <th className="px-3 py-2">Sort</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2 text-right">Actions</th>
+                <th>Code</th>
+                <th>Name</th>
+                <th>Sort</th>
+                <th>Status</th>
+                <th className="text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {pagedTypes.length ? (
                 pagedTypes.map((type) => (
-                  <tr key={type.id} className="border-b border-[rgb(var(--border))] align-middle">
+                  <tr key={type.id} className="align-middle">
                     <td className="px-3 py-2 font-mono text-xs">{type.code}</td>
                     <td className="px-3 py-2 font-medium">{type.name}</td>
                     <td className="px-3 py-2 text-xs text-[rgb(var(--text-muted))]">{type.sort_order}</td>
@@ -409,8 +410,8 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
                       <span
                         className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${
                           type.is_active
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-slate-200 text-slate-700"
+                            ? "bg-[rgb(var(--success)/0.15)] text-[rgb(var(--success))]"
+                            : "bg-[rgb(var(--surface-muted))] text-muted"
                         }`}
                       >
                         {type.is_active ? "Active" : "Inactive"}
@@ -428,13 +429,14 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
                   </tr>
                 ))
               ) : (
-                <tr>
-                  <td className="px-3 py-4 text-center text-slate-600" colSpan={5}>
-                    {initialTypes.length
+                <TableEmptyState
+                  colSpan={5}
+                  message={
+                    initialTypes.length
                       ? "No types match the current filters."
-                      : "No types yet. Use the form above to add one."}
-                  </td>
-                </tr>
+                      : "No types yet. Use the form above to add one."
+                  }
+                />
               )}
             </tbody>
           </table>
@@ -456,7 +458,7 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
           label="Processing sub-types..."
         />
         <h2 className="text-lg font-semibold">Sub-Type Management</h2>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-muted">
           Manage sub-types per parent type. Sub-Types are optional on ledger entries and can be left empty.
         </p>
         <div className="mt-4 grid grid-cols-1 gap-2 lg:grid-cols-4">
@@ -501,7 +503,7 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
           </button>
         </div>
         <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <label className="text-sm text-slate-700 sm:col-span-2">
+          <label className="text-sm text-muted sm:col-span-2">
             <span className="mb-1 block">Search</span>
             <input
               className="field w-full"
@@ -511,7 +513,7 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
               disabled={!subTypeParentTypeId}
             />
           </label>
-          <label className="text-sm text-slate-700">
+          <label className="text-sm text-muted">
             <span className="mb-1 block">Status</span>
             <select
               className="field w-full"
@@ -526,26 +528,22 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
           </label>
         </div>
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
-            <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
+          <table className="data-table data-table-zebra min-w-[720px]">
+            <thead>
               <tr>
-                <th className="px-3 py-2">Code</th>
-                <th className="px-3 py-2">Name</th>
-                <th className="px-3 py-2">Sort</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2 text-right">Actions</th>
+                <th>Code</th>
+                <th>Name</th>
+                <th>Sort</th>
+                <th>Status</th>
+                <th className="text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {!subTypeParentTypeId ? (
-                <tr>
-                  <td className="px-3 py-4 text-center text-slate-600" colSpan={5}>
-                    Select a parent type to view its sub-types.
-                  </td>
-                </tr>
+                <TableEmptyState colSpan={5} message="Select a parent type to view its sub-types." />
               ) : pagedSubTypes.length ? (
                 pagedSubTypes.map((subType) => (
-                  <tr key={subType.id} className="border-b border-[rgb(var(--border))] align-middle">
+                  <tr key={subType.id} className="align-middle">
                     <td className="px-3 py-2 font-mono text-xs">{subType.code}</td>
                     <td className="px-3 py-2 font-medium">{subType.name}</td>
                     <td className="px-3 py-2 text-xs text-[rgb(var(--text-muted))]">{subType.sort_order}</td>
@@ -553,8 +551,8 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
                       <span
                         className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${
                           subType.is_active
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-slate-200 text-slate-700"
+                            ? "bg-[rgb(var(--success)/0.15)] text-[rgb(var(--success))]"
+                            : "bg-[rgb(var(--surface-muted))] text-muted"
                         }`}
                       >
                         {subType.is_active ? "Active" : "Inactive"}
@@ -570,7 +568,7 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
                           {subType.is_active ? "Deactivate" : "Activate"}
                         </button>
                         <button
-                          className="btn-secondary btn-sm !border-rose-300 !text-rose-700 hover:!bg-rose-50"
+                          className="btn-secondary btn-sm !border-[rgb(var(--danger)/0.35)] !text-[rgb(var(--danger))] hover:!bg-[rgb(var(--danger)/0.12)]"
                           onClick={() => setPendingDeleteSubType(subType)}
                           disabled={toggleSubTypeSubmitting || subTypeDeleting}
                         >
@@ -581,13 +579,14 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
                   </tr>
                 ))
               ) : (
-                <tr>
-                  <td className="px-3 py-4 text-center text-slate-600" colSpan={5}>
-                    {subTypesForSelectedType.length
+                <TableEmptyState
+                  colSpan={5}
+                  message={
+                    subTypesForSelectedType.length
                       ? "No sub-types match the current filters."
-                      : "No sub-types for this type yet."}
-                  </td>
-                </tr>
+                      : "No sub-types for this type yet."
+                  }
+                />
               )}
             </tbody>
           </table>
@@ -606,10 +605,10 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
 
       <section className="card">
         <h2 className="text-lg font-semibold">Actor A/B Mapping</h2>
-        <p className="mt-1 text-sm text-slate-600">Both actors share the same authority level and are fixed globally.</p>
+        <p className="mt-1 text-sm text-muted">Both actors share the same authority level and are fixed globally.</p>
         <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
           {initialActors.map((actor) => (
-            <div key={actor.id} className="rounded-md border border-slate-200 p-3">
+            <div key={actor.id} className="rounded-md border border-[rgb(var(--border))] p-3">
               <p className="font-medium">Actor {actor.actor_code}</p>
               <label className="mt-2 block text-sm">
                 Display Name
@@ -652,8 +651,8 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
         </div>
       </section>
 
-      {error ? <p className="text-sm text-rose-600">{error}</p> : null}
-      {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
+      {error ? <p className="text-sm text-[rgb(var(--danger))]">{error}</p> : null}
+      {message ? <p className="text-sm text-[rgb(var(--success))]">{message}</p> : null}
 
       <ConfirmDialog
         open={pendingAddTypeConfirm}

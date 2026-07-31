@@ -276,7 +276,7 @@ export function BigBookEntryFields({
             </option>
           ))}
         </select>
-        {pocketHint ? <span className="mt-1 block text-xs text-slate-500">{pocketHint}</span> : null}
+        {pocketHint ? <span className="mt-1 block text-xs text-muted">{pocketHint}</span> : null}
       </label>
       <label className="text-sm lg:col-span-2">
         Explanation *
@@ -308,7 +308,7 @@ export function BigBookEntryFields({
             onChange={(event) => onAttachmentFilesChange?.(Array.from(event.target.files ?? []))}
           />
           {attachmentFiles.length > 0 ? (
-            <ul className="mt-2 space-y-1 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-900">
+            <ul className="mt-2 space-y-1 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-2 text-xs text-[rgb(var(--text))]">
               {attachmentFiles.map((file, index) => (
                 <li key={`${file.name}-${file.size}-${index}`} className="flex items-center justify-between gap-2">
                   <span className="truncate">
@@ -316,7 +316,7 @@ export function BigBookEntryFields({
                   </span>
                   <button
                     type="button"
-                    className="text-rose-600 underline"
+                    className="text-[rgb(var(--danger))] underline"
                     onClick={() => onRemoveAttachmentAt?.(index)}
                   >
                     Remove

@@ -6,8 +6,8 @@ export default function CreditBigBookSettingsLoading() {
       <section className="card">
         <LoadingIndicator label="Loading Credit Big Book settings..." />
       </section>
-      <section className="card h-56 animate-pulse bg-slate-100" />
-      <section className="card h-56 animate-pulse bg-slate-100" />
+      <section className="card h-56 animate-pulse bg-[rgb(var(--surface-muted))]" />
+      <section className="card h-56 animate-pulse bg-[rgb(var(--surface-muted))]" />
     </div>
   );
 }

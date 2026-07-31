@@ -2,6 +2,9 @@ import { redirect } from "next/navigation";
 import { requireAllowedUser } from "@/lib/auth";
 import { DashboardReportTable } from "@/components/dashboard-report-table";
 import { MasterDashboardBigBookEntriesTable, MasterDashboardCashflowTable } from "@/components/master-dashboard-tables";
+import { PageHeader } from "@/components/ui/page-header";
+import { SetupRequiredCard } from "@/components/ui/setup-required-card";
+import { StatTile, StatTileGrid } from "@/components/ui/stat-tile";
 import { formatAmount, getAmountColorClass } from "@/lib/display-format";
 import { getBigBookEntries, getBigBookLedgerTypeByCode, getDashboardReportRows } from "@/lib/db/queries";
 
@@ -207,13 +210,14 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
 
     return (
       <div className="space-y-6">
+        <PageHeader
+          title="Master Dashboard"
+          description="Dashboard to view combined financial statistics of a brand."
+        />
+
         <section className="card">
-          <h1 className="text-xl font-semibold">Master Dashboard</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Dashboard to view combined financial statistics of a brand.
-          </p>
-          <form className="mt-4 flex flex-wrap items-end gap-3" method="get">
-            <label className="text-sm text-slate-700">
+          <form className="flex flex-wrap items-end gap-3" method="get">
+            <label className="text-sm text-muted">
               <span className="mb-1 block">Brand</span>
               <select className="field min-w-[240px]" name="brandId" defaultValue={selectedBrand.id}>
                 {brandRoles.map((role) => (
@@ -223,11 +227,11 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
                 ))}
               </select>
             </label>
-            <label className="text-sm text-slate-700">
+            <label className="text-sm text-muted">
               <span className="mb-1 block">Date From</span>
               <input className="field" type="date" name="dateFrom" defaultValue={dateFrom ?? ""} />
             </label>
-            <label className="text-sm text-slate-700">
+            <label className="text-sm text-muted">
               <span className="mb-1 block">Date To</span>
               <input className="field" type="date" name="dateTo" defaultValue={dateTo ?? ""} />
             </label>
@@ -242,37 +246,35 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
 
         <section className="card">
           <h2 className="text-lg font-semibold">Aggregated Cashflow (Web Spending + Big Book)</h2>
-          <p className="mt-1 text-sm text-slate-600">
+          <p className="mt-1 text-sm text-muted">
             Unified rule: cash out is negative, cash in is positive. Web Spending contributes to outflow; Big Book
             contributes both inflow and outflow.
           </p>
-          <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-4">
+          <StatTileGrid className="mt-4">
             {perCurrency.map((item) => (
-              <article key={item.currency} className="rounded-md border border-slate-200 p-3">
-                <p className="text-sm font-semibold">{item.currency}</p>
-                <div className="mt-2 space-y-1 text-sm">
-                  <p>
-                    <span className="text-slate-500">In:</span>{" "}
-                    <span className={getAmountColorClass(item.inflow)}>
-                      {item.currency} {formatAmount(item.inflow)}
-                    </span>
-                  </p>
-                  <p>
-                    <span className="text-slate-500">Out:</span>{" "}
-                    <span className={getAmountColorClass(-item.outflow)}>
-                      {item.currency} {formatAmount(item.outflow)}
-                    </span>
-                  </p>
-                  <p>
-                    <span className="text-slate-500">Net:</span>{" "}
-                    <span className={getAmountColorClass(item.net)}>
-                      {item.currency} {formatAmount(item.net)}
-                    </span>
-                  </p>
-                </div>
-              </article>
+              <StatTile
+                key={item.currency}
+                label={`${item.currency} Net`}
+                value={<span className={getAmountColorClass(item.net)}>{formatAmount(item.net)}</span>}
+                sublabel={
+                  <div className="space-y-1">
+                    <p>
+                      In:{" "}
+                      <span className={getAmountColorClass(item.inflow)}>
+                        {item.currency} {formatAmount(item.inflow)}
+                      </span>
+                    </p>
+                    <p>
+                      Out:{" "}
+                      <span className={getAmountColorClass(-item.outflow)}>
+                        {item.currency} {formatAmount(item.outflow)}
+                      </span>
+                    </p>
+                  </div>
+                }
+              />
             ))}
-          </div>
+          </StatTileGrid>
 
           <MasterDashboardCashflowTable sourceRowsByCurrency={sourceRowsByCurrency} />
         </section>
@@ -288,11 +290,11 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
 
         <section className="card">
           <h2 className="text-lg font-semibold">Big Book Ledger for Brand Type</h2>
-          <p className="mt-1 text-sm text-slate-600">
+          <p className="mt-1 text-sm text-muted">
             Mapping rule: <code>{selectedBrand.code}</code> brand code must equal Big Book ledger type code.
           </p>
           {!ledgerType || !hasValidLedgerTypeId ? (
-            <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <div className="mt-3 rounded-md border border-[rgb(var(--warning)/0.35)] bg-[rgb(var(--warning)/0.12)] px-3 py-2 text-sm text-[rgb(var(--warning))]">
               <p>
                 No valid Big Book ledger type mapping is available for brand code <strong>{selectedBrand.code}</strong>.
               </p>
@@ -304,7 +306,7 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
               ) : null}
             </div>
           ) : (
-            <p className="mt-3 text-sm text-slate-700">
+            <p className="mt-3 text-sm text-muted">
               Showing type: <strong>{ledgerType.code}</strong> - {ledgerType.name}
             </p>
           )}
@@ -325,21 +327,18 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
       }
     }
 
+    const uuidDiagnostic = errorText.includes("invalid input syntax for type uuid")
+      ? ` Diagnostic: a non-UUID value was used where UUID is required. Requested brandId from URL is ${
+          requestedBrandIdRaw ?? "(empty)"
+        }. If this is not a UUID, remove the \`brandId\` query param or choose a valid brand from the brand selector.`
+      : "";
+
     return (
-      <section className="card">
-        <h2 className="mb-2 text-lg font-semibold">Master Dashboard setup required</h2>
-        <p className="text-sm text-slate-700">
-          The app cannot read required tables yet. Apply SQL migrations in `supabase/migrations` and refresh.
-        </p>
-        {errorText.includes("invalid input syntax for type uuid") ? (
-          <p className="mt-2 text-xs text-amber-700">
-            Diagnostic: a non-UUID value was used where UUID is required. Requested brandId from URL is{" "}
-            <code>{requestedBrandIdRaw ?? "(empty)"}</code>. If this is not a UUID, remove the `brandId` query param
-            or choose a valid brand from the brand selector.
-          </p>
-        ) : null}
-        <p className="mt-2 text-xs text-slate-500">Error: {errorText}</p>
-      </section>
+      <SetupRequiredCard
+        title="Master Dashboard setup required"
+        message={`The app cannot read required tables yet. Apply SQL migrations in \`supabase/migrations\` and refresh.${uuidDiagnostic}`}
+        error={errorText}
+      />
     );
   }
 }

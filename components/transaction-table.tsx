@@ -8,6 +8,7 @@ import type { ExpenseCategory, ExpenseSubcategory, ExpenseWithNames } from "@/li
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
+import { TableEmptyState } from "@/components/ui/table-empty-state";
 import { formatAmount, formatDateDisplay } from "@/lib/display-format";
 
 type Props = {
@@ -400,8 +401,8 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
         </label>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1040px] text-sm">
-          <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
+        <table className="data-table data-table-zebra min-w-[1040px]">
+          <thead>
             <tr>
               <th className="px-3 py-2">
                 <button className="font-medium" disabled={criticalPending} onClick={() => toggleSort("expense_date")}>
@@ -434,7 +435,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
               const isEditing = editingId === row.id;
               const allowedSubs = subcategories.filter((item) => item.category_id === draft.category_id);
               return (
-                <tr key={row.id} className="border-b">
+                <tr key={row.id}>
                   <td className="px-3 py-2">
                     {isEditing ? (
                       <input
@@ -584,7 +585,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
                               Edit
                             </button>
                             <button
-                              className="block w-full rounded px-2 py-1 text-left text-sm text-rose-600 hover:bg-[rgb(var(--surface-muted))]"
+                              className="block w-full rounded px-2 py-1 text-left text-sm text-[rgb(var(--danger))] hover:bg-[rgb(var(--danger)/0.12)]"
                               role="menuitem"
                               onClick={() => openDeleteDialog(row)}
                             >
@@ -599,11 +600,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
               );
             })}
             {!filteredRows.length ? (
-              <tr>
-                <td className="px-3 py-4 text-center text-[rgb(var(--text-muted))]" colSpan={8}>
-                  No transactions found for the selected month and filters.
-                </td>
-              </tr>
+              <TableEmptyState colSpan={8} message="No transactions found for the selected month and filters." />
             ) : null}
           </tbody>
         </table>

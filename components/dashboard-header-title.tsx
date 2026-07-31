@@ -19,6 +19,5 @@ export function DashboardHeaderTitle({ activeBrandName }: Props) {
   const useGlobalTitle = GLOBAL_ADMIN_PREFIX_ROUTES.some((route) => pathname.startsWith(route));
   const title = useGlobalTitle ? "Finance Operations Hub" : `${activeBrandName} Finance Operations Hub`;
 
-  return <h1 className="text-2xl font-semibold">{title}</h1>;
+  return <p className="text-sm font-medium text-muted">{title}</p>;
 }
-

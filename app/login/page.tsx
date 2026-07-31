@@ -62,7 +62,7 @@ function LoginForm() {
     <main className="mx-auto flex min-h-screen w-full max-w-content-default items-center justify-center px-4 lg:px-8">
       <section className="card w-full max-w-content-narrow">
         <h1 className="mb-1 text-2xl font-semibold">Internal Access</h1>
-        <p className="mb-4 text-sm text-slate-600">
+        <p className="mb-4 text-sm text-muted">
           Sign in with your invited company account to access the spend tracker.
         </p>
 
@@ -89,7 +89,7 @@ function LoginForm() {
               placeholder="Your password"
             />
           </label>
-          <label className="flex items-center gap-2 text-sm text-slate-600">
+          <label className="flex items-center gap-2 text-sm text-muted">
             <input
               type="checkbox"
               checked={rememberMe}
@@ -102,8 +102,8 @@ function LoginForm() {
           </button>
         </form>
 
-        {message ? <p className="mt-3 text-sm text-emerald-600">{message}</p> : null}
-        {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
+        {message ? <p className="mt-3 text-sm text-[rgb(var(--success))]">{message}</p> : null}
+        {error ? <p className="mt-3 text-sm text-[rgb(var(--danger))]">{error}</p> : null}
       </section>
     </main>
   );
@@ -114,7 +114,7 @@ export default function LoginPage() {
     <Suspense
       fallback={
         <main className="mx-auto flex min-h-screen w-full max-w-content-default items-center justify-center px-4 lg:px-8">
-          <p className="text-sm text-slate-600">Loading…</p>
+          <p className="text-sm text-muted">Loading…</p>
         </main>
       }
     >

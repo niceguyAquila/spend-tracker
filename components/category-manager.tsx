@@ -266,22 +266,22 @@ export function CategoryManager({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-[rgb(var(--surface-muted))] text-left">
+          <table className="data-table data-table-zebra min-w-full">
+            <thead>
               <tr>
-                <th className="px-3 py-2">Code</th>
-                <th className="px-3 py-2">Name</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Actions</th>
+                <th>Code</th>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {pagedCategories.map((item) => (
-                <tr key={item.id} className="border-b">
-                  <td className="px-3 py-2">{item.code}</td>
-                  <td className="px-3 py-2">{item.name}</td>
-                  <td className="px-3 py-2">{item.is_active ? "Active" : "Disabled"}</td>
-                  <td className="px-3 py-2">
+                <tr key={item.id}>
+                  <td>{item.code}</td>
+                  <td>{item.name}</td>
+                  <td>{item.is_active ? "Active" : "Disabled"}</td>
+                  <td>
                     <div className="flex flex-wrap gap-2">
                       <button
                         className="btn-secondary"
@@ -351,20 +351,20 @@ export function CategoryManager({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-[rgb(var(--surface-muted))] text-left">
+          <table className="data-table data-table-zebra min-w-full">
+            <thead>
               <tr>
-                <th className="px-3 py-2">Name</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Actions</th>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {pagedSubcategoryRows.map((row) => (
-                <tr key={row.id} className="border-b">
-                  <td className="px-3 py-2">{row.name}</td>
-                  <td className="px-3 py-2">{row.is_active ? "Active" : "Disabled"}</td>
-                  <td className="px-3 py-2">
+                <tr key={row.id}>
+                  <td>{row.name}</td>
+                  <td>{row.is_active ? "Active" : "Disabled"}</td>
+                  <td>
                     <div className="flex flex-wrap gap-2">
                       <button
                         className="btn-secondary"

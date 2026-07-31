@@ -5,6 +5,7 @@ import type { WebTransactionComparisonOutcome, WebTransactionComparisonRow } fro
 import { formatAmount, getAmountColorClass } from "@/lib/display-format";
 import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
+import { TableEmptyState } from "@/components/ui/table-empty-state";
 
 type Props = {
   rows: WebTransactionComparisonRow[];
@@ -18,8 +19,8 @@ function getComparisonOutcomeLabel(outcome: WebTransactionComparisonOutcome) {
 }
 
 function getComparisonOutcomeClassName(outcome: WebTransactionComparisonOutcome) {
-  if (outcome === "matched") return "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300";
-  if (outcome === "mismatched") return "bg-amber-500/20 text-amber-700 dark:text-amber-300";
+  if (outcome === "matched") return "bg-[rgb(var(--success)/0.15)] text-[rgb(var(--success))]";
+  if (outcome === "mismatched") return "bg-[rgb(var(--warning)/0.15)] text-[rgb(var(--warning))]";
   return "bg-[rgb(var(--surface-muted))] text-[rgb(var(--text-muted))]";
 }
 
@@ -33,8 +34,8 @@ export function WebTransactionComparisonTable({ rows }: Props) {
   return (
     <>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1100px] text-sm">
-          <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
+        <table className="data-table data-table-zebra min-w-[1100px]">
+          <thead>
             <tr>
               <th className="px-3 py-2">Transaction No</th>
               <th className="px-3 py-2">Type</th>
@@ -47,7 +48,7 @@ export function WebTransactionComparisonTable({ rows }: Props) {
           </thead>
           <tbody>
             {pagedRows.map((row) => (
-              <tr key={row.comparison_key} className="border-b">
+              <tr key={row.comparison_key}>
                 <td className="px-3 py-2 font-mono text-xs">{row.transaction_no}</td>
                 <td className="px-3 py-2">{row.canonical_type}</td>
                 <td className="px-3 py-2">{row.backoffice?.canonical_status ?? "-"}</td>
@@ -72,11 +73,7 @@ export function WebTransactionComparisonTable({ rows }: Props) {
               </tr>
             ))}
             {!rows.length ? (
-              <tr>
-                <td className="px-3 py-4 text-center text-[rgb(var(--text-muted))]" colSpan={7}>
-                  No comparison rows for the selected filters.
-                </td>
-              </tr>
+              <TableEmptyState colSpan={7} message="No comparison rows for the selected filters." />
             ) : null}
           </tbody>
         </table>

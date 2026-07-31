@@ -63,11 +63,11 @@ export function BigBookGroupHeaderRow({
               {expanded ? "▾" : "▸"}
             </button>
             <div className="min-w-0">
-              <p className="font-medium text-slate-900">{group.label}</p>
-              <p className="text-xs text-slate-600">
+              <p className="font-medium text-[rgb(var(--text))]">{group.label}</p>
+              <p className="text-xs text-muted">
                 Group · {entries.length} transaction{entries.length === 1 ? "" : "s"} · {dateLabel}
               </p>
-              {group.remark ? <p className="mt-1 truncate text-xs text-slate-500">{group.remark}</p> : null}
+              {group.remark ? <p className="mt-1 truncate text-xs text-muted">{group.remark}</p> : null}
             </div>
           </div>
         </td>
@@ -75,7 +75,7 @@ export function BigBookGroupHeaderRow({
           <div className="space-y-1 text-sm">
             {totals.map((total) => (
               <div key={total.currency} className="flex flex-wrap gap-x-3 gap-y-1">
-                <span className="font-medium text-slate-700">{total.currency}</span>
+                <span className="font-medium text-muted">{total.currency}</span>
                 {total.spending > 0 ? (
                   <span className={getAmountColorClass(-total.spending)}>
                     Out {formatAmount(total.spending, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
@@ -137,7 +137,7 @@ export function BigBookGroupHeaderRow({
                 </button>
                 <button
                   role="menuitem"
-                  className="block w-full rounded px-3 py-2 text-left text-sm text-rose-700 hover:bg-rose-50"
+                  className="block w-full rounded px-3 py-2 text-left text-sm text-[rgb(var(--danger))] hover:bg-[rgb(var(--danger)/0.12)]"
                   onClick={() => {
                     onCloseActionMenu();
                     onDelete();

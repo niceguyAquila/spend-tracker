@@ -7,6 +7,8 @@ import {
   getCreditBookLedgerTypes
 } from "@/lib/db/queries";
 import { CreditBigBookPanel } from "@/components/credit-big-book-panel";
+import { PageHeader } from "@/components/ui/page-header";
+import { SetupRequiredCard } from "@/components/ui/setup-required-card";
 import { DEFAULT_PAGE_SIZE } from "@/lib/table-pagination";
 
 export default async function CreditBigBookPage() {
@@ -22,14 +24,10 @@ export default async function CreditBigBookPage() {
 
     return (
       <div className="space-y-6">
-        <section className="card">
-          <div>
-            <h1 className="text-xl font-semibold">Credit Dashboard</h1>
-            <p className="text-sm text-slate-600">
-              Manage credit (inflow) and debt (outflow) records.
-            </p>
-          </div>
-        </section>
+        <PageHeader
+          title="Credit Dashboard"
+          description="Manage credit (inflow) and debt (outflow) records."
+        />
         <CreditBigBookPanel
           initialTypes={types}
           initialSubTypes={subTypes}
@@ -54,13 +52,11 @@ export default async function CreditBigBookPage() {
     }
 
     return (
-      <section className="card">
-        <h2 className="mb-2 text-lg font-semibold">Credit Big Book setup required</h2>
-        <p className="text-sm text-slate-700">
-          The app cannot read Credit Big Book tables yet. Apply SQL migrations in `supabase/migrations` and refresh.
-        </p>
-        <p className="mt-2 text-xs text-slate-500">Error: {errorText}</p>
-      </section>
+      <SetupRequiredCard
+        title="Credit Big Book setup required"
+        message="The app cannot read Credit Big Book tables yet. Apply SQL migrations in `supabase/migrations` and refresh."
+        error={errorText}
+      />
     );
   }
 }

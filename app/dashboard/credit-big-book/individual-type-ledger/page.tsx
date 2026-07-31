@@ -1,4 +1,6 @@
 import { CreditBigBookIndividualTypeLedgerPanel } from "@/components/credit-big-book-individual-type-ledger-panel";
+import { PageHeader } from "@/components/ui/page-header";
+import { SetupRequiredCard } from "@/components/ui/setup-required-card";
 import { getCreditBookEntries, getCreditBookLedgerTypes } from "@/lib/db/queries";
 
 export default async function CreditIndividualTypeLedgerPage() {
@@ -10,14 +12,10 @@ export default async function CreditIndividualTypeLedgerPage() {
 
     return (
       <div className="space-y-6">
-        <section className="card">
-          <div>
-            <h1 className="text-xl font-semibold">Credit Type Dashboard</h1>
-            <p className="text-sm text-slate-600">
-              View records and monthly totals for one selected Credit Big Book type.
-            </p>
-          </div>
-        </section>
+        <PageHeader
+          title="Credit Type Dashboard"
+          description="View records and monthly totals for one selected Credit Big Book type."
+        />
         <CreditBigBookIndividualTypeLedgerPanel types={types} entries={entries} />
       </div>
     );
@@ -34,13 +32,11 @@ export default async function CreditIndividualTypeLedgerPage() {
     }
 
     return (
-      <section className="card">
-        <h2 className="mb-2 text-lg font-semibold">Credit Big Book setup required</h2>
-        <p className="text-sm text-slate-700">
-          The app cannot read Credit Big Book tables yet. Apply SQL migrations in `supabase/migrations` and refresh.
-        </p>
-        <p className="mt-2 text-xs text-slate-500">Error: {errorText}</p>
-      </section>
+      <SetupRequiredCard
+        title="Credit Big Book setup required"
+        message="The app cannot read Credit Big Book tables yet. Apply SQL migrations in `supabase/migrations` and refresh."
+        error={errorText}
+      />
     );
   }
 }

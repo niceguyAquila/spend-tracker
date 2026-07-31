@@ -35,6 +35,8 @@ import { useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
 import { buildBigBookImportTemplateCsv } from "@/lib/big-book/csv";
+import { rowStripeClass } from "@/lib/ui/table";
+import { TableEmptyState } from "@/components/ui/table-empty-state";
 
 type Props = {
   initialTypes: BigBookLedgerType[];
@@ -561,6 +563,17 @@ export function BigBookPanel({
     () => ledgerRows.filter((row) => row.kind === "entry").map((row) => row.entry.id),
     [ledgerRows]
   );
+
+  const standaloneEntryStripeIndex = useMemo(() => {
+    const indexById = new Map<string, number>();
+    let stripeIndex = 0;
+    for (const row of ledgerRows) {
+      if (row.kind !== "entry") continue;
+      indexById.set(row.entry.id, stripeIndex);
+      stripeIndex += 1;
+    }
+    return indexById;
+  }, [ledgerRows]);
 
 
   const selectedCount = selectedEntryIds.size;
@@ -1326,13 +1339,13 @@ export function BigBookPanel({
 
   function renderTotalsCell(totals: BigBookCurrencyTotal[]) {
     if (!totals.length) {
-      return <span className="text-xs text-slate-500">-</span>;
+      return <span className="text-xs text-muted">-</span>;
     }
     return (
       <div className="space-y-1 text-sm">
         {totals.map((total) => (
           <div key={total.currency} className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-            <span className="w-12 shrink-0 font-medium text-slate-700">{total.currency}</span>
+            <span className="w-12 shrink-0 font-medium text-muted">{total.currency}</span>
             <span className={getAmountColorClass(-total.spending)}>
               Out {formatAmount(total.spending, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
             </span>
@@ -1349,12 +1362,13 @@ export function BigBookPanel({
   }
 
   function renderEntryRow(entry: BigBookEntry, isGroupMember: boolean) {
+    const stripe = isGroupMember
+      ? "bg-[rgb(var(--surface-muted))]/40"
+      : rowStripeClass(standaloneEntryStripeIndex.get(entry.id) ?? 0);
     return (
       <tr
         key={entry.id}
-        className={`border-b border-[rgb(var(--border))] align-top ${
-          isGroupMember ? "bg-[rgb(var(--surface-muted))]/40" : ""
-        }`}
+        className={`border-b border-[rgb(var(--border))] align-top ${stripe}`}
       >
         <td className="px-3 py-2">
           {isGroupMember ? null : (
@@ -1372,8 +1386,8 @@ export function BigBookPanel({
           <span
             className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${
               entry.entry_direction === "profit"
-                ? "bg-emerald-100 text-emerald-700"
-                : "bg-amber-100 text-amber-700"
+                ? "bg-[rgb(var(--success)/0.15)] text-[rgb(var(--success))]"
+                : "bg-[rgb(var(--warning)/0.15)] text-[rgb(var(--warning))]"
             }`}
           >
             {entry.entry_direction === "profit" ? "In" : "Out"}
@@ -1381,13 +1395,13 @@ export function BigBookPanel({
         </td>
         <td className="px-3 py-2">{entry.type_name}</td>
         <td className="px-3 py-2">
-          {entry.sub_type_name ? entry.sub_type_name : <span className="text-xs text-slate-500">-</span>}
+          {entry.sub_type_name ? entry.sub_type_name : <span className="text-xs text-muted">-</span>}
         </td>
         <td className="px-3 py-2">
-          {entry.vendor_type_name ? entry.vendor_type_name : <span className="text-xs text-slate-500">-</span>}
+          {entry.vendor_type_name ? entry.vendor_type_name : <span className="text-xs text-muted">-</span>}
         </td>
         <td className="px-3 py-2">
-          {entry.vendor_name ? entry.vendor_name : <span className="text-xs text-slate-500">-</span>}
+          {entry.vendor_name ? entry.vendor_name : <span className="text-xs text-muted">-</span>}
         </td>
         <td className="px-3 py-2">{entry.explanation}</td>
         <td className="px-3 py-2">
@@ -1400,14 +1414,14 @@ export function BigBookPanel({
         </td>
         <td className="px-3 py-2">{entry.actor_display_name}</td>
         <td className="px-3 py-2">
-          {entry.pocket_name ? entry.pocket_name : <span className="text-xs text-slate-500">-</span>}
+          {entry.pocket_name ? entry.pocket_name : <span className="text-xs text-muted">-</span>}
         </td>
         <td className="px-3 py-2">
           {entry.remark ? (
             <div className="flex max-w-[260px] items-start gap-2">
               <span className="truncate">{entry.remark}</span>
               <button
-                className="shrink-0 text-xs text-blue-700 underline"
+                className="shrink-0 text-xs text-[rgb(var(--info))] underline"
                 type="button"
                 onClick={() => setViewingRemark({ entryId: entry.id, text: entry.remark ?? "" })}
               >
@@ -1421,12 +1435,12 @@ export function BigBookPanel({
         <td className="px-3 py-2">
           {entry.attachments.length ? (
             <div className="space-y-1">
-              <p className="text-xs text-slate-600">{entry.attachments.length} file(s)</p>
+              <p className="text-xs text-muted">{entry.attachments.length} file(s)</p>
               <ul className="space-y-1">
                 {entry.attachments.map((attachment) => (
                   <li key={attachment.id}>
                     <button
-                      className="text-xs text-blue-700 underline"
+                      className="text-xs text-[rgb(var(--info))] underline"
                       onClick={() => void viewAttachment(attachment.id)}
                       disabled={attachmentViewingId === attachment.id}
                     >
@@ -1437,7 +1451,7 @@ export function BigBookPanel({
               </ul>
             </div>
           ) : (
-            <span className="text-xs text-slate-500">No files</span>
+            <span className="text-xs text-muted">No files</span>
           )}
         </td>
         <td className="px-3 py-2">
@@ -1465,7 +1479,7 @@ export function BigBookPanel({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Create Ledger Entry</h2>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-muted">
               Add operational spending/profit records from a dedicated popup form.
             </p>
           </div>
@@ -1489,7 +1503,7 @@ export function BigBookPanel({
 
       <section className="card">
         <h2 className="text-lg font-semibold">Grand Total by Actor (All Time)</h2>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-muted">
           Total amount grouped by actor and currency across all Big Book records. Pocket transactions are excluded
           here and counted under Pocket Totals instead.
         </p>
@@ -1539,14 +1553,14 @@ export function BigBookPanel({
             </article>
           ))}
           {!actorCurrencyMetrics.length ? (
-            <p className="text-sm text-slate-600">No actor totals yet.</p>
+            <p className="text-sm text-muted">No actor totals yet.</p>
           ) : null}
         </div>
       </section>
 
       <section className="card">
         <h2 className="text-lg font-semibold">Pocket Totals by Actor (All Time)</h2>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-muted">
           Net IDR movement per pocket across all Big Book records. Each pocket is listed under the actor who owns it.
         </p>
         <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
@@ -1575,7 +1589,7 @@ export function BigBookPanel({
             </article>
           ))}
           {!initialActorPocketMetrics.length ? (
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-muted">
               No pockets yet. Add one under Big Book Settings to start tracking pocket totals.
             </p>
           ) : null}
@@ -1595,7 +1609,7 @@ export function BigBookPanel({
           }}
         >
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
-            <label className="text-sm text-slate-700 md:col-span-2 xl:col-span-2 2xl:col-span-2">
+            <label className="text-sm text-muted md:col-span-2 xl:col-span-2 2xl:col-span-2">
               <span className="mb-1 block">Search</span>
               <input
                 className="field w-full"
@@ -1604,7 +1618,7 @@ export function BigBookPanel({
                 onChange={(event) => setDraftQuery(event.target.value)}
               />
             </label>
-            <label className="text-sm text-slate-700">
+            <label className="text-sm text-muted">
               <span className="mb-1 block">Date From:</span>
               <input
                 className="field w-full"
@@ -1614,7 +1628,7 @@ export function BigBookPanel({
                 aria-label="Filter from date"
               />
             </label>
-            <label className="text-sm text-slate-700">
+            <label className="text-sm text-muted">
               <span className="mb-1 block">Date To:</span>
               <input
                 className="field w-full"
@@ -1624,7 +1638,7 @@ export function BigBookPanel({
                 aria-label="Filter to date"
               />
             </label>
-            <div className="text-sm text-slate-700">
+            <div className="text-sm text-muted">
               <span className="mb-1 block">Type</span>
               <SearchableMultiSelect
                 label="Type"
@@ -1634,7 +1648,7 @@ export function BigBookPanel({
                 searchPlaceholder="Search type..."
               />
             </div>
-            <div className="text-sm text-slate-700">
+            <div className="text-sm text-muted">
               <span className="mb-1 block">Currency</span>
               <SearchableMultiSelect
                 label="Currency"
@@ -1644,7 +1658,7 @@ export function BigBookPanel({
                 searchPlaceholder="Search currency..."
               />
             </div>
-            <div className="text-sm text-slate-700">
+            <div className="text-sm text-muted">
               <span className="mb-1 block">Actor</span>
               <SearchableMultiSelect
                 label="Actor"
@@ -1663,7 +1677,7 @@ export function BigBookPanel({
                 searchPlaceholder="Search actor..."
               />
             </div>
-            <div className="text-sm text-slate-700">
+            <div className="text-sm text-muted">
               <span className="mb-1 block">Cash Flow</span>
               <SearchableMultiSelect
                 label="Cash Flow"
@@ -1673,7 +1687,7 @@ export function BigBookPanel({
                 searchPlaceholder="Search direction..."
               />
             </div>
-            <div className="text-sm text-slate-700">
+            <div className="text-sm text-muted">
               <span className="mb-1 block">Vendor Type</span>
               <SearchableMultiSelect
                 label="Vendor Type"
@@ -1692,7 +1706,7 @@ export function BigBookPanel({
                 searchPlaceholder="Search vendor type..."
               />
             </div>
-            <div className="text-sm text-slate-700">
+            <div className="text-sm text-muted">
               <span className="mb-1 block">Vendor Name</span>
               <SearchableMultiSelect
                 label="Vendor Name"
@@ -1702,7 +1716,7 @@ export function BigBookPanel({
                 searchPlaceholder="Search vendor name..."
               />
             </div>
-            <div className="text-sm text-slate-700">
+            <div className="text-sm text-muted">
               <span className="mb-1 block">Pocket</span>
               <SearchableMultiSelect
                 label="Pocket"
@@ -1715,7 +1729,7 @@ export function BigBookPanel({
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             {filtersDirty ? (
-              <span className="mr-auto text-xs text-amber-700">Filters changed — click Apply Filters to update results.</span>
+              <span className="mr-auto text-xs text-[rgb(var(--warning))]">Filters changed — click Apply Filters to update results.</span>
             ) : null}
             <button
               type="button"
@@ -1732,11 +1746,11 @@ export function BigBookPanel({
         </form>
         {selectedCount > 0 ? (
           <div className="flex flex-wrap items-center gap-3 rounded border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] px-3 py-2">
-            <span className="text-sm font-medium text-slate-900">
+            <span className="text-sm font-medium text-[rgb(var(--text))]">
               {selectedCount} transaction{selectedCount === 1 ? "" : "s"} selected
             </span>
             {selectedCount < 2 ? (
-              <span className="text-xs text-slate-600">Select at least 2 to group them.</span>
+              <span className="text-xs text-muted">Select at least 2 to group them.</span>
             ) : null}
             <div className="ml-auto flex items-center gap-2">
               <button type="button" className="btn-secondary" onClick={() => setSelectedEntryIds(new Set())}>
@@ -1758,7 +1772,7 @@ export function BigBookPanel({
           </div>
         ) : null}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1660px] text-sm">
+          <table className="data-table min-w-[1660px]">
             <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
               <tr>
                 <th className="px-3 py-2">
@@ -1834,19 +1848,18 @@ export function BigBookPanel({
                     )
                   )}
               {!ledgerRows.length && !entriesLoading ? (
-                <tr>
-                  <td className="px-3 py-4 text-center text-slate-600" colSpan={LEDGER_COLUMN_COUNT}>
-                    No records match the current filters.
-                  </td>
-                </tr>
+                <TableEmptyState
+                  colSpan={LEDGER_COLUMN_COUNT}
+                  message="No records match the current filters."
+                />
               ) : null}
             </tbody>
             {ledgerRows.length > 0 && !entriesLoading ? (
               <tfoot className="border-t-2 border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]">
                 <tr className="align-top">
-                  <td className="px-3 py-2 font-medium text-slate-900" colSpan={LEDGER_COLUMN_COUNT - 6}>
+                  <td className="px-3 py-2 font-medium text-[rgb(var(--text))]" colSpan={LEDGER_COLUMN_COUNT - 6}>
                     Sub-total
-                    <span className="ml-1 text-xs font-normal text-slate-600">
+                    <span className="ml-1 text-xs font-normal text-muted">
                       (this page · {totals.pageEntryCount} transaction{totals.pageEntryCount === 1 ? "" : "s"})
                     </span>
                   </td>
@@ -1855,9 +1868,9 @@ export function BigBookPanel({
                   </td>
                 </tr>
                 <tr className="border-t border-[rgb(var(--border))] align-top">
-                  <td className="px-3 py-2 font-semibold text-slate-900" colSpan={LEDGER_COLUMN_COUNT - 6}>
+                  <td className="px-3 py-2 font-semibold text-[rgb(var(--text))]" colSpan={LEDGER_COLUMN_COUNT - 6}>
                     Grand total
-                    <span className="ml-1 text-xs font-normal text-slate-600">
+                    <span className="ml-1 text-xs font-normal text-muted">
                       (all pages · {totals.grandEntryCount} transaction
                       {totals.grandEntryCount === 1 ? "" : "s"}
                       {filtersActive ? " matching the current filters" : ""})
@@ -1882,8 +1895,8 @@ export function BigBookPanel({
         />
       </section>
 
-      {error ? <p className="text-sm text-rose-600">{error}</p> : null}
-      {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
+      {error ? <p className="text-sm text-[rgb(var(--danger))]">{error}</p> : null}
+      {message ? <p className="text-sm text-[rgb(var(--success))]">{message}</p> : null}
 
       {openActionMenu && !openActionMenu.id.startsWith(GROUP_MENU_PREFIX)
         ? (() => {
@@ -1895,25 +1908,25 @@ export function BigBookPanel({
               <div
                 ref={actionMenuRef}
                 role="menu"
-                className="absolute z-50 w-44 rounded-md border border-slate-200 bg-white p-1 text-slate-900 shadow-lg"
+                className="absolute z-50 w-44 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-1 text-[rgb(var(--text))] shadow-lg"
                 style={{ top: openActionMenu.top, left: openActionMenu.left }}
               >
                 <button
-                  className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-slate-100"
+                  className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
                   role="menuitem"
                   onClick={() => startEditEntry(targetRow)}
                 >
                   Edit record
                 </button>
                 <button
-                  className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-slate-100"
+                  className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
                   role="menuitem"
                   onClick={() => openManageAttachments(targetRow)}
                 >
                   Manage attachments
                 </button>
                 <button
-                  className="block w-full rounded px-2 py-1 text-left text-sm text-rose-600 hover:bg-slate-100"
+                  className="block w-full rounded px-2 py-1 text-left text-sm text-[rgb(var(--danger))] hover:bg-[rgb(var(--surface-muted))]"
                   role="menuitem"
                   onClick={() => {
                     setOpenActionMenu(null);
@@ -1963,10 +1976,10 @@ export function BigBookPanel({
         <div className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-muted">
                 Download the template, fill multiple rows, then import all at once.
               </p>
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-muted">
                 Type name and actor name must match currently available values in Big Book. If you edit in
                 Excel, save as CSV (comma or semicolon delimited).
               </p>
@@ -1975,7 +1988,7 @@ export function BigBookPanel({
               Download Template
             </button>
           </div>
-          <label className="text-sm text-slate-700">
+          <label className="text-sm text-muted">
             <span className="mb-1 block">CSV File</span>
             <input
               className="field"
@@ -1989,7 +2002,7 @@ export function BigBookPanel({
             />
           </label>
           {importErrors.length ? (
-            <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+            <div className="rounded-md border border-[rgb(var(--danger)/0.35)] bg-[rgb(var(--danger)/0.12)] p-3 text-sm text-[rgb(var(--danger))]">
               <p className="font-medium">Import validation errors:</p>
               <ul className="mt-1 list-disc pl-5">
                 {importErrors.map((item, index) => (
@@ -2013,7 +2026,7 @@ export function BigBookPanel({
           </button>
         }
       >
-        <p className="text-sm text-slate-700">
+        <p className="text-sm text-muted">
           Imported {importSuccessCount ?? 0} ledger row{(importSuccessCount ?? 0) === 1 ? "" : "s"} successfully.
         </p>
       </Modal>
@@ -2056,7 +2069,7 @@ export function BigBookPanel({
       >
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-slate-700">Entry style</span>
+            <span className="text-sm text-muted">Entry style</span>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -2123,7 +2136,7 @@ export function BigBookPanel({
                   className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-3"
                 >
                   <div className="mb-3 flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-slate-700">Transaction {index + 1}</p>
+                    <p className="text-sm font-medium text-muted">Transaction {index + 1}</p>
                     <button
                       type="button"
                       className="btn-secondary btn-sm"
@@ -2307,7 +2320,7 @@ export function BigBookPanel({
                 className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-3"
               >
                 <div className="mb-3 flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-slate-700">Transaction {index + 1}</p>
+                  <p className="text-sm font-medium text-muted">Transaction {index + 1}</p>
                   <button
                     type="button"
                     className="btn-secondary btn-sm"
@@ -2454,7 +2467,7 @@ export function BigBookPanel({
       >
         {manageAttachmentsEntry ? (
           <div className="space-y-3">
-            <p className="text-xs text-slate-600">
+            <p className="text-xs text-muted">
               {formatDateDisplay(manageAttachmentsEntry.entry_date)} · {manageAttachmentsEntry.type_name} · {manageAttachmentsEntry.explanation}
             </p>
             <input
@@ -2465,7 +2478,7 @@ export function BigBookPanel({
               onChange={(event) => setManageAttachmentFiles(Array.from(event.target.files ?? []))}
             />
             {manageAttachmentFiles.length ? (
-              <ul className="space-y-1 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-900">
+              <ul className="space-y-1 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-2 text-xs text-[rgb(var(--text))]">
                 {manageAttachmentFiles.map((file, index) => (
                   <li key={`${file.name}-${file.size}-${index}`}>{file.name}</li>
                 ))}
@@ -2475,17 +2488,17 @@ export function BigBookPanel({
               {manageAttachmentsEntry.attachments.map((attachment) => (
                 <li
                   key={attachment.id}
-                  className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-[rgb(var(--surface))] p-2"
+                  className="flex items-center justify-between gap-2 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2"
                 >
                   <button
-                    className="truncate text-left text-xs text-blue-700 underline"
+                    className="truncate text-left text-xs text-[rgb(var(--info))] underline"
                     onClick={() => void viewAttachment(attachment.id)}
                     disabled={attachmentViewingId === attachment.id}
                   >
                     {attachmentViewingId === attachment.id ? "Loading..." : attachment.file_name}
                   </button>
                   <button
-                    className="text-xs text-rose-600 underline"
+                    className="text-xs text-[rgb(var(--danger))] underline"
                     onClick={() => setPendingDeleteAttachmentId(attachment.id)}
                     disabled={attachmentDeleting}
                   >
@@ -2494,7 +2507,7 @@ export function BigBookPanel({
                 </li>
               ))}
               {!manageAttachmentsEntry.attachments.length ? (
-                <li className="text-xs text-slate-500">No attachments yet.</li>
+                <li className="text-xs text-muted">No attachments yet.</li>
               ) : null}
             </ul>
           </div>

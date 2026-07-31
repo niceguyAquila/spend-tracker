@@ -10,6 +10,8 @@ import {
   getBigBookVendors
 } from "@/lib/db/queries";
 import { BigBookPanel } from "@/components/big-book-panel";
+import { PageHeader } from "@/components/ui/page-header";
+import { SetupRequiredCard } from "@/components/ui/setup-required-card";
 import { DEFAULT_PAGE_SIZE } from "@/lib/table-pagination";
 
 export default async function BigBookPage() {
@@ -38,14 +40,10 @@ export default async function BigBookPage() {
 
     return (
       <div className="space-y-6">
-        <section className="card">
-          <div>
-            <h1 className="text-xl font-semibold">Transaction Dashboard</h1>
-            <p className="text-sm text-slate-600">
-              Manage operational spendings and business profits.
-            </p>
-          </div>
-        </section>
+        <PageHeader
+          title="Transaction Dashboard"
+          description="Manage operational spendings and business profits."
+        />
         <BigBookPanel
           initialTypes={types}
           initialSubTypes={subTypes}
@@ -74,13 +72,11 @@ export default async function BigBookPage() {
     }
 
     return (
-      <section className="card">
-        <h2 className="mb-2 text-lg font-semibold">Big Book setup required</h2>
-        <p className="text-sm text-slate-700">
-          The app cannot read Big Book tables yet. Apply SQL migrations in `supabase/migrations` and refresh.
-        </p>
-        <p className="mt-2 text-xs text-slate-500">Error: {errorText}</p>
-      </section>
+      <SetupRequiredCard
+        title="Big Book setup required"
+        message="The app cannot read Big Book tables yet. Apply SQL migrations in `supabase/migrations` and refresh."
+        error={errorText}
+      />
     );
   }
 }

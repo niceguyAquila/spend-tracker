@@ -1,4 +1,6 @@
 import { BigBookIndividualTypeLedgerPanel } from "@/components/big-book-individual-type-ledger-panel";
+import { PageHeader } from "@/components/ui/page-header";
+import { SetupRequiredCard } from "@/components/ui/setup-required-card";
 import { getBigBookEntries, getBigBookLedgerTypes } from "@/lib/db/queries";
 
 export default async function IndividualTypeLedgerPage() {
@@ -10,14 +12,10 @@ export default async function IndividualTypeLedgerPage() {
 
     return (
       <div className="space-y-6">
-        <section className="card">
-          <div>
-            <h1 className="text-xl font-semibold">Transaction Type Dashboard</h1>
-            <p className="text-sm text-slate-600">
-              View records and monthly totals for one selected Big Book type.
-            </p>
-          </div>
-        </section>
+        <PageHeader
+          title="Transaction Type Dashboard"
+          description="View records and monthly totals for one selected Big Book type."
+        />
         <BigBookIndividualTypeLedgerPanel types={types} entries={entries} />
       </div>
     );
@@ -34,13 +32,11 @@ export default async function IndividualTypeLedgerPage() {
     }
 
     return (
-      <section className="card">
-        <h2 className="mb-2 text-lg font-semibold">Big Book setup required</h2>
-        <p className="text-sm text-slate-700">
-          The app cannot read Big Book tables yet. Apply SQL migrations in `supabase/migrations` and refresh.
-        </p>
-        <p className="mt-2 text-xs text-slate-500">Error: {errorText}</p>
-      </section>
+      <SetupRequiredCard
+        title="Big Book setup required"
+        message="The app cannot read Big Book tables yet. Apply SQL migrations in `supabase/migrations` and refresh."
+        error={errorText}
+      />
     );
   }
 }

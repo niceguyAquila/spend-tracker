@@ -75,7 +75,7 @@ export function CreditBigBookExchangeHelperPanel() {
   return (
     <section className="card">
       <h2 className="text-lg font-semibold">Today&apos;s Exchange Helper</h2>
-      <p className="mt-1 text-sm text-slate-600">Get a live quote from Coinbase public rates for Credit Big Book currencies.</p>
+      <p className="mt-1 text-sm text-muted">Get a live quote from Coinbase public rates for Credit Big Book currencies.</p>
 
       <div className="mt-4 space-y-3">
         <label className="block text-sm">
@@ -126,19 +126,19 @@ export function CreditBigBookExchangeHelperPanel() {
         </button>
       </div>
 
-      {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
+      {error ? <p className="mt-3 text-sm text-[rgb(var(--danger))]">{error}</p> : null}
 
       {result ? (
-        <article className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4">
-          <p className="text-sm text-slate-700">
+        <article className="mt-4 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-4">
+          <p className="text-sm text-muted">
             {formatCurrencyValue(result.base_currency, result.amount)} ={" "}
             <span className="font-semibold">{formatCurrencyValue(result.quote_currency, result.converted_amount)}</span>
           </p>
-          <p className="mt-1 text-xs text-slate-600">
+          <p className="mt-1 text-xs text-muted">
             Rate: 1 {result.base_currency} = {formatAmount(result.rate, { minimumFractionDigits: 0, maximumFractionDigits: 6 })}{" "}
             {result.quote_currency}
           </p>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-muted">
             Source: Coinbase public exchange rates · Fetched at {formatDateTimeDisplay(result.fetched_at)}
           </p>
         </article>

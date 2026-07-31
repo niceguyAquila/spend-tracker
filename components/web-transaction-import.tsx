@@ -94,7 +94,7 @@ export function WebTransactionImport({ canImport, sourceSystem, sourceLabel }: P
           </button>
         </div>
       ) : (
-        <p className="text-sm text-amber-700 dark:text-amber-300">
+        <p className="text-sm text-[rgb(var(--warning))]">
           Viewer role can view data, but only finance/admin can import files.
         </p>
       )}
@@ -108,7 +108,7 @@ export function WebTransactionImport({ canImport, sourceSystem, sourceLabel }: P
       ) : null}
       {message ? <p className="text-sm text-muted">{message}</p> : null}
       {errors.length ? (
-        <ul className="list-inside list-disc space-y-1 text-xs text-rose-700">
+        <ul className="list-inside list-disc space-y-1 text-xs text-[rgb(var(--danger))]">
           {errors.slice(0, 10).map((item) => (
             <li key={item}>{item}</li>
           ))}
