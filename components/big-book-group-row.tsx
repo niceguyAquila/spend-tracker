@@ -3,32 +3,7 @@
 import type { RefObject, ReactNode } from "react";
 import type { BigBookEntry, BigBookEntryGroup } from "@/lib/types";
 import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
-
-type CurrencyTotals = {
-  currency: "IDR" | "MYR" | "USDT" | "TRX";
-  spending: number;
-  profit: number;
-};
-
-function summarizeCurrencies(entries: BigBookEntry[]): CurrencyTotals[] {
-  const map = new Map<CurrencyTotals["currency"], CurrencyTotals>();
-  for (const entry of entries) {
-    const existing = map.get(entry.currency_code) ?? {
-      currency: entry.currency_code,
-      spending: 0,
-      profit: 0
-    };
-    if (entry.entry_direction === "spending") {
-      existing.spending += entry.amount;
-    } else {
-      existing.profit += entry.amount;
-    }
-    map.set(entry.currency_code, existing);
-  }
-  return ["IDR", "MYR", "USDT", "TRX"]
-    .map((currency) => map.get(currency as CurrencyTotals["currency"]))
-    .filter((row): row is CurrencyTotals => Boolean(row));
-}
+import { summarizeCurrencies } from "@/lib/big-book/totals";
 
 type Props = {
   group: BigBookEntryGroup;

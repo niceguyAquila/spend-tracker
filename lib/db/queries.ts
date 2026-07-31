@@ -1,5 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import {
+  summarizeCurrencies,
+  type BigBookCurrency,
+  type BigBookCurrencyTotal
+} from "@/lib/big-book/totals";
+import {
   BigBookActor,
   BigBookActorPocket,
   BigBookActorPocketMetrics,
@@ -634,6 +639,9 @@ type LedgerScanRow = {
   group_id: string | null;
   entry_date: string;
   created_at: string;
+  amount: number;
+  currency_code: BigBookCurrency;
+  entry_direction: "spending" | "profit";
 };
 
 type LedgerDisplayKey =
@@ -691,9 +699,22 @@ function buildLedgerDisplayKeys(scanRows: LedgerScanRow[]): LedgerDisplayKey[] {
   return keys;
 }
 
+/**
+ * Both figures are derived from the filtered scan rather than from the hydrated
+ * rows, because a group is hydrated with all of its members while the filters
+ * may only match some of them.
+ */
+export type BigBookLedgerTotals = {
+  pageTotals: BigBookCurrencyTotal[];
+  pageEntryCount: number;
+  grandTotals: BigBookCurrencyTotal[];
+  grandEntryCount: number;
+};
+
 export type BigBookLedgerRowsPagedResult = {
   rows: BigBookLedgerRow[];
   totalCount: number;
+  totals: BigBookLedgerTotals;
 };
 
 export async function getBigBookLedgerRowsPaged(
@@ -710,7 +731,7 @@ export async function getBigBookLedgerRowsPaged(
   while (true) {
     let query = supabase
       .from("business_ledger_entries")
-      .select("id, group_id, entry_date, created_at")
+      .select("id, group_id, entry_date, created_at, amount, currency_code, entry_direction")
       .order("entry_date", { ascending: false })
       .order("created_at", { ascending: false })
       .range(offset, offset + scanPageSize - 1);
@@ -729,12 +750,27 @@ export async function getBigBookLedgerRowsPaged(
   const totalCount = displayKeys.length;
   const pageKeys = displayKeys.slice(page * pageSize, page * pageSize + pageSize);
 
-  if (!pageKeys.length) {
-    return { rows: [], totalCount };
-  }
-
   const standaloneIds = pageKeys.filter((key) => key.kind === "entry").map((key) => key.id);
   const pageGroupIds = pageKeys.filter((key) => key.kind === "group").map((key) => key.id);
+
+  // The scan already visited every filtered entry, so both totals cost no extra
+  // round trip and the grand total spans all pages rather than the visible one.
+  const standaloneIdSet = new Set(standaloneIds);
+  const pageGroupIdSet = new Set(pageGroupIds);
+  const pageScanRows = scanRows.filter((row) =>
+    row.group_id ? pageGroupIdSet.has(row.group_id) : standaloneIdSet.has(row.id)
+  );
+
+  const totals: BigBookLedgerTotals = {
+    pageTotals: summarizeCurrencies(pageScanRows),
+    pageEntryCount: pageScanRows.length,
+    grandTotals: summarizeCurrencies(scanRows),
+    grandEntryCount: scanRows.length
+  };
+
+  if (!pageKeys.length) {
+    return { rows: [], totalCount, totals };
+  }
 
   const entryPromises: Promise<{ data: unknown[] | null; error: { message: string } | null }>[] = [];
 
@@ -844,7 +880,7 @@ export async function getBigBookLedgerRowsPaged(
     rows.push({ kind: "group", sort_date: key.sort_date, group, entries });
   }
 
-  return { rows, totalCount };
+  return { rows, totalCount, totals };
 }
 
 export async function getBigBookActorCurrencyMetrics(): Promise<BigBookActorCurrencyMetrics[]> {

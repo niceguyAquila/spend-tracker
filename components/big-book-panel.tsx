@@ -24,6 +24,8 @@ import {
   type EntryFormState
 } from "@/components/big-book-entry-fields";
 import { BigBookGroupHeaderRow } from "@/components/big-book-group-row";
+import type { BigBookCurrencyTotal } from "@/lib/big-book/totals";
+import type { BigBookLedgerTotals } from "@/lib/db/queries";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
@@ -43,6 +45,7 @@ type Props = {
   initialActors: BigBookActor[];
   initialLedgerRows: BigBookLedgerRow[];
   initialTotalCount: number;
+  initialTotals: BigBookLedgerTotals;
   initialActorMetrics: BigBookActorCurrencyMetrics[];
   initialActorPocketMetrics: BigBookActorPocketMetrics[];
 };
@@ -84,6 +87,12 @@ function arraysEqual(left: string[], right: string[]) {
 const SUPPORTED_CURRENCIES: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR", "USDT", "TRX"];
 const LEDGER_SKELETON_ROW_COUNT = 6;
 const LEDGER_COLUMN_COUNT = 14;
+const EMPTY_LEDGER_TOTALS: BigBookLedgerTotals = {
+  pageTotals: [],
+  pageEntryCount: 0,
+  grandTotals: [],
+  grandEntryCount: 0
+};
 const GROUP_MENU_PREFIX = "group:";
 
 function toEntryPayload(form: EntryFormState) {
@@ -135,6 +144,7 @@ export function BigBookPanel({
   initialActors,
   initialLedgerRows,
   initialTotalCount,
+  initialTotals,
   initialActorMetrics,
   initialActorPocketMetrics
 }: Props) {
@@ -213,6 +223,7 @@ export function BigBookPanel({
   // entry or a group carrying its member entries.
   const [ledgerRows, setLedgerRows] = useState<BigBookLedgerRow[]>(initialLedgerRows);
   const [totalCount, setTotalCount] = useState<number>(initialTotalCount);
+  const [totals, setTotals] = useState<BigBookLedgerTotals>(initialTotals);
   const [entriesLoading, setEntriesLoading] = useState(false);
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(() => new Set());
   const [groupSubmitting, setGroupSubmitting] = useState(false);
@@ -350,6 +361,7 @@ export function BigBookPanel({
       const nextRows: BigBookLedgerRow[] = Array.isArray(data?.rows) ? data.rows : [];
       setLedgerRows(nextRows);
       setTotalCount(typeof data?.totalCount === "number" ? data.totalCount : 0);
+      setTotals(data?.totals ?? EMPTY_LEDGER_TOTALS);
       // Drop ticked ids that are no longer on screen, so grouping can never act
       // on a row the user cannot currently see.
       const visibleIds = new Set(
@@ -549,6 +561,7 @@ export function BigBookPanel({
     () => ledgerRows.filter((row) => row.kind === "entry").map((row) => row.entry.id),
     [ledgerRows]
   );
+
 
   const selectedCount = selectedEntryIds.size;
   const allSelectableSelected =
@@ -1311,6 +1324,30 @@ export function BigBookPanel({
     editGroupForms.every((form) => Boolean(form.explanation.trim()) && Boolean(form.amount));
   const editValid = editingGroupId ? editGroupValid : Boolean(editForm.explanation.trim()) && Boolean(editForm.amount);
 
+  function renderTotalsCell(totals: BigBookCurrencyTotal[]) {
+    if (!totals.length) {
+      return <span className="text-xs text-slate-500">-</span>;
+    }
+    return (
+      <div className="space-y-1 text-sm">
+        {totals.map((total) => (
+          <div key={total.currency} className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <span className="w-12 shrink-0 font-medium text-slate-700">{total.currency}</span>
+            <span className={getAmountColorClass(-total.spending)}>
+              Out {formatAmount(total.spending, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+            </span>
+            <span className={getAmountColorClass(total.profit)}>
+              In {formatAmount(total.profit, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+            </span>
+            <span className={`font-semibold ${getAmountColorClass(total.net)}`}>
+              Net {formatAmount(total.net, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   function renderEntryRow(entry: BigBookEntry, isGroupMember: boolean) {
     return (
       <tr
@@ -1804,6 +1841,34 @@ export function BigBookPanel({
                 </tr>
               ) : null}
             </tbody>
+            {ledgerRows.length > 0 && !entriesLoading ? (
+              <tfoot className="border-t-2 border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]">
+                <tr className="align-top">
+                  <td className="px-3 py-2 font-medium text-slate-900" colSpan={LEDGER_COLUMN_COUNT - 6}>
+                    Sub-total
+                    <span className="ml-1 text-xs font-normal text-slate-600">
+                      (this page · {totals.pageEntryCount} transaction{totals.pageEntryCount === 1 ? "" : "s"})
+                    </span>
+                  </td>
+                  <td className="px-3 py-2" colSpan={6}>
+                    {renderTotalsCell(totals.pageTotals)}
+                  </td>
+                </tr>
+                <tr className="border-t border-[rgb(var(--border))] align-top">
+                  <td className="px-3 py-2 font-semibold text-slate-900" colSpan={LEDGER_COLUMN_COUNT - 6}>
+                    Grand total
+                    <span className="ml-1 text-xs font-normal text-slate-600">
+                      (all pages · {totals.grandEntryCount} transaction
+                      {totals.grandEntryCount === 1 ? "" : "s"}
+                      {filtersActive ? " matching the current filters" : ""})
+                    </span>
+                  </td>
+                  <td className="px-3 py-2" colSpan={6}>
+                    {renderTotalsCell(totals.grandTotals)}
+                  </td>
+                </tr>
+              </tfoot>
+            ) : null}
           </table>
         </div>
         <TablePaginationBar

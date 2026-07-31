@@ -55,6 +55,7 @@ export default async function BigBookPage() {
           initialActors={actors}
           initialLedgerRows={entriesPage.rows}
           initialTotalCount={entriesPage.totalCount}
+          initialTotals={entriesPage.totals}
           initialActorMetrics={actorMetrics}
           initialActorPocketMetrics={actorPocketMetrics}
         />
