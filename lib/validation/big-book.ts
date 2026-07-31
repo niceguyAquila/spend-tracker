@@ -157,6 +157,16 @@ export const bigBookGroupDeleteSchema = z.object({
   mode: z.enum(["cascade", "ungroup"]).default("cascade")
 });
 
+export const bigBookGroupAssignSchema = z.object({
+  label: z.string().trim().min(2).max(200),
+  remark: z.string().max(1000).optional().or(z.literal("")),
+  entry_ids: z
+    .array(z.string().uuid())
+    .min(2, "Select at least 2 transactions to group")
+    .max(50)
+    .refine((ids) => new Set(ids).size === ids.length, "Duplicate transaction ids")
+});
+
 const optionalString = z
   .string()
   .trim()

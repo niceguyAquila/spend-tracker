@@ -75,7 +75,8 @@ export function BigBookGroupHeaderRow({
   return (
     <>
       <tr className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] align-top">
-        <td className="px-3 py-2" colSpan={Math.max(1, colSpan - 3)}>
+        <td className="px-3 py-2" aria-hidden="true" />
+        <td className="px-3 py-2" colSpan={Math.max(1, colSpan - 4)}>
           <div className="flex items-start gap-2">
             <button
               type="button"

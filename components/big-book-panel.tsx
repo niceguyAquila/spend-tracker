@@ -83,7 +83,7 @@ function arraysEqual(left: string[], right: string[]) {
 
 const SUPPORTED_CURRENCIES: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR", "USDT", "TRX"];
 const LEDGER_SKELETON_ROW_COUNT = 6;
-const LEDGER_COLUMN_COUNT = 13;
+const LEDGER_COLUMN_COUNT = 14;
 const GROUP_MENU_PREFIX = "group:";
 
 function toEntryPayload(form: EntryFormState) {
@@ -221,6 +221,12 @@ export function BigBookPanel({
     entries: BigBookEntry[];
   } | null>(null);
   const [pendingUngroup, setPendingUngroup] = useState<BigBookEntryGroup | null>(null);
+  // Ids of standalone rows ticked for grouping. Only ungrouped entries are
+  // selectable, so grouping never has to move a row out of an existing group.
+  const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(() => new Set());
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [assignLabel, setAssignLabel] = useState("");
+  const [assignRemark, setAssignRemark] = useState("");
 
   const activeTypes = useMemo(() => initialTypes.filter((item) => item.is_active), [initialTypes]);
   const currencies = SUPPORTED_CURRENCIES;
@@ -341,8 +347,15 @@ export function BigBookPanel({
         setError(extractApiError(data?.error, "Failed to load ledger entries."));
         return;
       }
-      setLedgerRows(Array.isArray(data?.rows) ? data.rows : []);
+      const nextRows: BigBookLedgerRow[] = Array.isArray(data?.rows) ? data.rows : [];
+      setLedgerRows(nextRows);
       setTotalCount(typeof data?.totalCount === "number" ? data.totalCount : 0);
+      // Drop ticked ids that are no longer on screen, so grouping can never act
+      // on a row the user cannot currently see.
+      const visibleIds = new Set(
+        nextRows.filter((row) => row.kind === "entry").map((row) => row.entry.id)
+      );
+      setSelectedEntryIds((prev) => new Set([...prev].filter((id) => visibleIds.has(id))));
     } catch {
       if (loadRequestIdRef.current !== requestId) return;
       setError("Failed to load ledger entries due to a network error.");
@@ -530,6 +543,83 @@ export function BigBookPanel({
       }
       return next;
     });
+  }
+
+  const selectableEntryIds = useMemo(
+    () => ledgerRows.filter((row) => row.kind === "entry").map((row) => row.entry.id),
+    [ledgerRows]
+  );
+
+  const selectedCount = selectedEntryIds.size;
+  const allSelectableSelected =
+    selectableEntryIds.length > 0 && selectableEntryIds.every((id) => selectedEntryIds.has(id));
+
+  function toggleEntrySelected(entryId: string) {
+    setSelectedEntryIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(entryId)) {
+        next.delete(entryId);
+      } else {
+        next.add(entryId);
+      }
+      return next;
+    });
+  }
+
+  function toggleSelectAllOnPage() {
+    setSelectedEntryIds((prev) => {
+      if (selectableEntryIds.every((id) => prev.has(id))) {
+        const next = new Set(prev);
+        for (const id of selectableEntryIds) next.delete(id);
+        return next;
+      }
+      const next = new Set(prev);
+      for (const id of selectableEntryIds) next.add(id);
+      return next;
+    });
+  }
+
+  async function groupSelectedEntries() {
+    if (selectedEntryIds.size < 2) {
+      setError("Select at least 2 transactions to group.");
+      return;
+    }
+    if (assignLabel.trim().length < 2) {
+      setError("Group name must be at least 2 characters.");
+      return;
+    }
+
+    setGroupSubmitting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await secureFetch("/api/big-book/groups/assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: assignLabel.trim(),
+          remark: assignRemark,
+          entry_ids: [...selectedEntryIds]
+        })
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(extractApiError(data.error, "Failed to group the selected transactions."));
+        return;
+      }
+
+      setMessage(`Grouped ${selectedEntryIds.size} transactions into "${assignLabel.trim()}".`);
+      setAssignModalOpen(false);
+      setAssignLabel("");
+      setAssignRemark("");
+      setSelectedEntryIds(new Set());
+      triggerRefresh();
+    } catch {
+      setError("Failed to group the selected transactions due to a network error.");
+    } finally {
+      setGroupSubmitting(false);
+    }
   }
 
   const criticalPending =
@@ -1229,6 +1319,17 @@ export function BigBookPanel({
           isGroupMember ? "bg-[rgb(var(--surface-muted))]/40" : ""
         }`}
       >
+        <td className="px-3 py-2">
+          {isGroupMember ? null : (
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              aria-label={`Select transaction ${entry.explanation}`}
+              checked={selectedEntryIds.has(entry.id)}
+              onChange={() => toggleEntrySelected(entry.id)}
+            />
+          )}
+        </td>
         <td className={`px-3 py-2 ${isGroupMember ? "pl-8" : ""}`}>{formatDateDisplay(entry.entry_date)}</td>
         <td className="px-3 py-2">
           <span
@@ -1592,10 +1693,47 @@ export function BigBookPanel({
             </button>
           </div>
         </form>
+        {selectedCount > 0 ? (
+          <div className="flex flex-wrap items-center gap-3 rounded border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] px-3 py-2">
+            <span className="text-sm font-medium text-slate-900">
+              {selectedCount} transaction{selectedCount === 1 ? "" : "s"} selected
+            </span>
+            {selectedCount < 2 ? (
+              <span className="text-xs text-slate-600">Select at least 2 to group them.</span>
+            ) : null}
+            <div className="ml-auto flex items-center gap-2">
+              <button type="button" className="btn-secondary" onClick={() => setSelectedEntryIds(new Set())}>
+                Clear selection
+              </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={selectedCount < 2}
+                onClick={() => {
+                  setAssignLabel("");
+                  setAssignRemark("");
+                  setAssignModalOpen(true);
+                }}
+              >
+                Group selected
+              </button>
+            </div>
+          </div>
+        ) : null}
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1660px] text-sm">
             <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
               <tr>
+                <th className="px-3 py-2">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    aria-label="Select all ungrouped transactions on this page"
+                    checked={allSelectableSelected}
+                    disabled={selectableEntryIds.length === 0}
+                    onChange={toggleSelectAllOnPage}
+                  />
+                </th>
                 <th className="px-3 py-2">Date</th>
                 <th className="px-3 py-2">Cash Flow</th>
                 <th className="px-3 py-2">Type</th>
@@ -1619,6 +1757,7 @@ export function BigBookPanel({
                       className="border-b border-[rgb(var(--border))] align-top animate-pulse"
                       aria-hidden="true"
                     >
+                      <td className="px-3 py-2"><div className="h-4 w-4 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-5 w-14 rounded-full bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-28 rounded bg-[rgb(var(--surface-muted))]" /></td>
@@ -2000,6 +2139,57 @@ export function BigBookPanel({
         }
       >
         <p className="whitespace-pre-wrap break-words text-sm text-muted">{viewingRemark?.text ?? ""}</p>
+      </Modal>
+
+      <Modal
+        open={assignModalOpen}
+        onOpenChange={(open) => {
+          if (!groupSubmitting) setAssignModalOpen(open);
+        }}
+        title="Group Selected Transactions"
+        dismissible={!groupSubmitting}
+        closeOnBackdrop={!groupSubmitting}
+        footer={
+          <>
+            <button className="btn-secondary" disabled={groupSubmitting} onClick={() => setAssignModalOpen(false)}>
+              Cancel
+            </button>
+            <button
+              className="btn"
+              disabled={groupSubmitting || assignLabel.trim().length < 2 || selectedCount < 2}
+              onClick={groupSelectedEntries}
+            >
+              {groupSubmitting ? "Grouping..." : "Group"}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-muted">
+            {selectedCount} transaction{selectedCount === 1 ? "" : "s"} will be moved under this group. Their dates,
+            amounts, currencies and actors stay exactly as they are.
+          </p>
+          <label className="block text-sm">
+            Group Label *
+            <input
+              className="field mt-1"
+              value={assignLabel}
+              maxLength={200}
+              placeholder="e.g. October vendor settlement"
+              onChange={(event) => setAssignLabel(event.target.value)}
+            />
+          </label>
+          <label className="block text-sm">
+            Group Remark
+            <input
+              className="field mt-1"
+              value={assignRemark}
+              maxLength={1000}
+              placeholder="Optional context for this group"
+              onChange={(event) => setAssignRemark(event.target.value)}
+            />
+          </label>
+        </div>
       </Modal>
 
       <Modal
