@@ -222,6 +222,15 @@ function firstLine(content: string): string {
  * Unwrap that so normal delimiter parsing can run.
  */
 function unwrapExcelSingleColumn(content: string): string {
+  // Only a header that is itself one fully quoted cell can be an Excel
+  // single-column file. Without this guard, a normal delimited file containing
+  // no tabs matches the `\t` candidate below, and re-joining its rows strips the
+  // quoting from fields with embedded newlines, splitting them into bogus rows.
+  const header = firstLine(content).trim();
+  if (header.length < 2 || !header.startsWith('"') || !header.endsWith('"')) {
+    return content;
+  }
+
   for (const delimiter of [",", ";", "\t"] as const) {
     const rows = parseDelimitedRows(content, delimiter);
     if (!rows.length || rows[0].length !== 1) continue;

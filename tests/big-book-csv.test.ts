@@ -211,6 +211,24 @@ describe("parseBigBookCsv Excel compatibility", () => {
     expect(result.rows[0].sub_type_name).toBe("Stationery");
   });
 
+  it("keeps multi-line quoted fields on a single row", () => {
+    const csv = [
+      "entry_date;entry_direction;type_name;explanation;amount;currency_code;remark;actor_name;group_label;group_remark",
+      '2026-02-24;spending;Operational;Leg A;8144;USDT;;Actor A;Tagihan Feb;"kilo = u398,300',
+      "X = u144,200",
+      '(total = u542,500)"',
+      '2026-02-24;spending;Operational;Leg B;1.33;TRX;;Actor A;Tagihan Feb;"kilo = u398,300',
+      "X = u144,200",
+      '(total = u542,500)"'
+    ].join("\n");
+
+    const result = parseBigBookCsv(csv);
+    expect(result.errors).toEqual([]);
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows[0].group_remark).toBe("kilo = u398,300\nX = u144,200\n(total = u542,500)");
+    expect(result.rows[1].explanation).toBe("Leg B");
+  });
+
   it("parses Excel single-column quoted CSV lines", () => {
     const csv = [
       '"entry_date,entry_direction,type_name,explanation,amount,currency_code,remark,actor_name"',
