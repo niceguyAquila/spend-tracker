@@ -1,81 +1,62 @@
 import { z } from "zod";
+import { entityCodeSchema, entityNameSchema, entitySortOrderSchema } from "@/lib/validation/entity-code";
 
 export const bigBookCurrencySchema = z.enum(["IDR", "MYR", "USDT", "TRX"]);
 export type BigBookCurrencyCode = z.infer<typeof bigBookCurrencySchema>;
 export const bigBookEntryDirectionSchema = z.enum(["spending", "profit"]);
 
 export const bigBookTypeCreateSchema = z.object({
-  code: z
-    .string()
-    .trim()
-    .min(2)
-    .max(64)
-    .regex(/^[A-Z0-9_]+$/, "Code must use uppercase letters, numbers, and underscores."),
-  name: z.string().trim().min(2).max(100),
-  sort_order: z.coerce.number().int().min(0).max(9999).optional()
+  code: entityCodeSchema("Type code"),
+  name: entityNameSchema("Type name"),
+  sort_order: entitySortOrderSchema()
 });
 
 export const bigBookTypeUpdateSchema = z.object({
   id: z.string().uuid(),
-  name: z.string().trim().min(2).max(100).optional(),
+  name: entityNameSchema("Type name").optional(),
   is_active: z.boolean().optional(),
-  sort_order: z.coerce.number().int().min(0).max(9999).optional()
+  sort_order: entitySortOrderSchema()
 });
 
 export const bigBookSubTypeCreateSchema = z.object({
-  entry_type_id: z.string().uuid("Type is required"),
-  code: z
-    .string()
-    .trim()
-    .min(2)
-    .max(64)
-    .regex(/^[A-Z0-9_]+$/, "Code must use uppercase letters, numbers, and underscores."),
-  name: z.string().trim().min(2).max(100),
-  sort_order: z.coerce.number().int().min(0).max(9999).optional()
+  entry_type_id: z.string().uuid("Select a parent type."),
+  code: entityCodeSchema("Sub-Type code"),
+  name: entityNameSchema("Sub-Type name"),
+  sort_order: entitySortOrderSchema()
 });
 
 export const bigBookSubTypeUpdateSchema = z.object({
   id: z.string().uuid(),
-  name: z.string().trim().min(2).max(100).optional(),
+  name: entityNameSchema("Sub-Type name").optional(),
   is_active: z.boolean().optional(),
-  sort_order: z.coerce.number().int().min(0).max(9999).optional()
+  sort_order: entitySortOrderSchema()
 });
 
 export const bigBookVendorTypeCreateSchema = z.object({
-  code: z
-    .string()
-    .trim()
-    .min(2)
-    .max(64)
-    .regex(/^[A-Z0-9_]+$/, "Code must use uppercase letters, numbers, and underscores."),
-  name: z.string().trim().min(2).max(100),
-  sort_order: z.coerce.number().int().min(0).max(9999).optional()
+  code: entityCodeSchema("Vendor Type code"),
+  name: entityNameSchema("Vendor Type name"),
+  sort_order: entitySortOrderSchema()
 });
 
 export const bigBookVendorTypeUpdateSchema = z.object({
   id: z.string().uuid(),
-  name: z.string().trim().min(2).max(100).optional(),
+  name: entityNameSchema("Vendor Type name").optional(),
   is_active: z.boolean().optional(),
-  sort_order: z.coerce.number().int().min(0).max(9999).optional()
+  sort_order: entitySortOrderSchema()
 });
 
 export const bigBookVendorCreateSchema = z.object({
-  vendor_type_id: z.string().uuid("Vendor Type is required"),
-  code: z
-    .string()
-    .trim()
-    .min(2)
-    .max(64)
-    .regex(/^[A-Z0-9_]+$/, "Code must use uppercase letters, numbers, and underscores."),
-  name: z.string().trim().min(2).max(100),
-  sort_order: z.coerce.number().int().min(0).max(9999).optional()
+  vendor_type_id: z.string().uuid("Select a vendor type."),
+  code: entityCodeSchema("Vendor code"),
+  name: entityNameSchema("Vendor name"),
+  sort_order: entitySortOrderSchema()
 });
 
 export const bigBookVendorUpdateSchema = z.object({
   id: z.string().uuid(),
-  name: z.string().trim().min(2).max(100).optional(),
+  name: entityNameSchema("Vendor name").optional(),
   is_active: z.boolean().optional(),
-  sort_order: z.coerce.number().int().min(0).max(9999).optional()
+  sort_order: entitySortOrderSchema()
 });
 
 export const bigBookActorUpdateSchema = z.object({
@@ -88,23 +69,18 @@ export const bigBookPocketCurrencySchema = z.enum(["IDR"]);
 export type BigBookPocketCurrencyCode = z.infer<typeof bigBookPocketCurrencySchema>;
 
 export const bigBookPocketCreateSchema = z.object({
-  actor_id: z.string().uuid("Actor is required"),
-  code: z
-    .string()
-    .trim()
-    .min(2)
-    .max(64)
-    .regex(/^[A-Z0-9_]+$/, "Code must use uppercase letters, numbers, and underscores."),
-  name: z.string().trim().min(2).max(100),
+  actor_id: z.string().uuid("Select an actor."),
+  code: entityCodeSchema("Pocket code"),
+  name: entityNameSchema("Pocket name"),
   currency_code: bigBookPocketCurrencySchema.default("IDR"),
-  sort_order: z.coerce.number().int().min(0).max(9999).optional()
+  sort_order: entitySortOrderSchema()
 });
 
 export const bigBookPocketUpdateSchema = z.object({
   id: z.string().uuid(),
-  name: z.string().trim().min(2).max(100).optional(),
+  name: entityNameSchema("Pocket name").optional(),
   is_active: z.boolean().optional(),
-  sort_order: z.coerce.number().int().min(0).max(9999).optional()
+  sort_order: entitySortOrderSchema()
 });
 
 const optionalUuidOrEmpty = (message: string) =>

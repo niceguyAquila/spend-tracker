@@ -7,14 +7,8 @@ const updateEqMock = vi.fn();
 const deleteSelectMaybeSingleMock = vi.fn();
 const deleteSelectMock = vi.fn(() => ({ maybeSingle: deleteSelectMaybeSingleMock }));
 const deleteEqMock = vi.fn(() => ({ select: deleteSelectMock }));
-const selectMaybeSingleMock = vi.fn();
-const selectListMock = vi.fn(() => ({
-  eq: vi.fn(() => ({
-    order: vi.fn(() => ({
-      limit: vi.fn(() => ({ maybeSingle: selectMaybeSingleMock }))
-    }))
-  }))
-}));
+const selectEqMock = vi.fn();
+const selectListMock = vi.fn(() => ({ eq: selectEqMock }));
 
 const requireAdminApiMock = vi.fn();
 const assertCsrfAndOriginMock = vi.fn();
@@ -67,8 +61,8 @@ describe("credit big book sub-types route", () => {
     updateMock.mockReturnValue({ eq: updateEqMock });
     updateEqMock.mockResolvedValue({ error: null });
 
-    selectMaybeSingleMock.mockResolvedValue({
-      data: { sort_order: 20 },
+    selectEqMock.mockResolvedValue({
+      data: [{ code: "DEPOSIT", name: "Deposit", is_active: true, sort_order: 20 }],
       error: null
     });
 
@@ -96,8 +90,34 @@ describe("credit big book sub-types route", () => {
     expect(insertMock.mock.calls[0][0]).toMatchObject({
       entry_type_id: "11111111-1111-4111-8111-111111111111",
       code: "INVOICE",
-      name: "Invoice"
+      name: "Invoice",
+      sort_order: 30
     });
+  });
+
+  it("returns a readable conflict when the code already exists", async () => {
+    selectEqMock.mockResolvedValueOnce({
+      data: [{ code: "INVOICE", name: "Invoice", is_active: true, sort_order: 20 }],
+      error: null
+    });
+
+    const { POST } = await import("@/app/api/credit-big-book/sub-types/route");
+    const request = new Request("https://app.localhost/api/credit-big-book/sub-types", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        code: "INVOICE",
+        name: "Customer Invoice"
+      })
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(data.error).toContain('already uses the code "INVOICE"');
+    expect(insertMock).not.toHaveBeenCalled();
   });
 
   it("rejects invalid create payload", async () => {

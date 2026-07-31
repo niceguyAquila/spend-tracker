@@ -2,10 +2,13 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdminApi } from "@/lib/auth-api";
 import { assertCsrfAndOrigin } from "@/lib/security/origin";
+import { describeWriteError, findLabelConflict, nextSortOrder } from "@/lib/db/entity-writes";
 import {
   bigBookVendorTypeCreateSchema,
   bigBookVendorTypeUpdateSchema
 } from "@/lib/validation/big-book";
+
+const ENTITY_LABEL = "Vendor Type";
 
 export async function GET() {
   const authCheck = await requireAdminApi();
@@ -43,36 +46,36 @@ export async function POST(request: Request) {
   }
 
   const supabase = await createClient();
-  const { data: latestRow, error: latestError } = await supabase
+  const { data: existingVendorTypes, error: existingError } = await supabase
     .from("business_ledger_vendor_types")
-    .select("sort_order")
-    .order("sort_order", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .select("code, name, is_active, sort_order");
 
-  if (latestError) {
-    return NextResponse.json({ error: latestError.message }, { status: 400 });
+  if (existingError) {
+    return NextResponse.json({ error: describeWriteError(existingError, ENTITY_LABEL) }, { status: 400 });
   }
 
-  const nextSortOrder =
+  const conflict = findLabelConflict(existingVendorTypes, parsed.data, ENTITY_LABEL);
+  if (conflict) {
+    return NextResponse.json({ error: conflict }, { status: 409 });
+  }
+
+  const sortOrder =
     typeof parsed.data.sort_order === "number"
       ? parsed.data.sort_order
-      : typeof latestRow?.sort_order === "number"
-        ? latestRow.sort_order + 10
-        : 10;
+      : nextSortOrder(existingVendorTypes);
 
   const { data, error } = await supabase
     .from("business_ledger_vendor_types")
     .insert({
       code: parsed.data.code,
       name: parsed.data.name,
-      sort_order: nextSortOrder
+      sort_order: sortOrder
     })
     .select("id")
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ error: describeWriteError(error, ENTITY_LABEL) }, { status: 400 });
   }
 
   return NextResponse.json({ id: data.id });
@@ -102,7 +105,7 @@ export async function PATCH(request: Request) {
   const supabase = await createClient();
   const { error } = await supabase.from("business_ledger_vendor_types").update(payload).eq("id", id);
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ error: describeWriteError(error, ENTITY_LABEL) }, { status: 400 });
   }
 
   return NextResponse.json({ ok: true });

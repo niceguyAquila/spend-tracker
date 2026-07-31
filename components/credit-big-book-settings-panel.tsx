@@ -9,6 +9,7 @@ import type {
   CreditBookLedgerType
 } from "@/lib/types";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
+import { ENTITY_CODE_HINT, ENTITY_CODE_MAX_LENGTH, normalizeEntityCode } from "@/lib/entity-code";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
@@ -161,7 +162,7 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          code: newTypeCode.trim().toUpperCase(),
+          code: normalizeEntityCode(newTypeCode),
           name: newTypeName.trim()
         })
       });
@@ -227,7 +228,7 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           entry_type_id: subTypeParentTypeId,
-          code: newSubTypeCode.trim().toUpperCase(),
+          code: normalizeEntityCode(newSubTypeCode),
           name: newSubTypeName.trim()
         })
       });
@@ -348,23 +349,26 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
           <input
             className="field"
             placeholder="Code (e.g. RECEIVABLE)"
+            maxLength={ENTITY_CODE_MAX_LENGTH}
             value={newTypeCode}
-            onChange={(event) => setNewTypeCode(event.target.value)}
+            onChange={(event) => setNewTypeCode(normalizeEntityCode(event.target.value))}
           />
           <input
             className="field"
             placeholder="Type Name"
+            maxLength={100}
             value={newTypeName}
             onChange={(event) => setNewTypeName(event.target.value)}
           />
           <button
             className="btn"
-            disabled={!newTypeCode.trim() || !newTypeName.trim() || typeSubmitting}
+            disabled={newTypeCode.trim().length < 2 || newTypeName.trim().length < 2 || typeSubmitting}
             onClick={() => setPendingAddTypeConfirm(true)}
           >
             Add Type
           </button>
         </div>
+        <p className="mt-2 text-xs text-muted">{ENTITY_CODE_HINT}</p>
         <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <label className="text-sm text-muted sm:col-span-2">
             <span className="mb-1 block">Search</span>
@@ -480,12 +484,14 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
           <input
             className="field"
             placeholder="Code (e.g. INVOICE)"
+            maxLength={ENTITY_CODE_MAX_LENGTH}
             value={newSubTypeCode}
-            onChange={(event) => setNewSubTypeCode(event.target.value)}
+            onChange={(event) => setNewSubTypeCode(normalizeEntityCode(event.target.value))}
           />
           <input
             className="field"
             placeholder="Sub-Type Name"
+            maxLength={100}
             value={newSubTypeName}
             onChange={(event) => setNewSubTypeName(event.target.value)}
           />
@@ -493,8 +499,8 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
             className="btn"
             disabled={
               !subTypeParentTypeId ||
-              !newSubTypeCode.trim() ||
-              !newSubTypeName.trim() ||
+              newSubTypeCode.trim().length < 2 ||
+              newSubTypeName.trim().length < 2 ||
               subTypeSubmitting
             }
             onClick={() => setPendingAddSubTypeConfirm(true)}
@@ -502,6 +508,7 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
             Add Sub-Type
           </button>
         </div>
+        <p className="mt-2 text-xs text-muted">{ENTITY_CODE_HINT}</p>
         <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <label className="text-sm text-muted sm:col-span-2">
             <span className="mb-1 block">Search</span>

@@ -12,6 +12,7 @@ import type {
   BigBookVendorType
 } from "@/lib/types";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
+import { ENTITY_CODE_HINT, ENTITY_CODE_MAX_LENGTH, normalizeEntityCode } from "@/lib/entity-code";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
@@ -298,7 +299,7 @@ export function BigBookSettingsPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          code: newTypeCode.trim().toUpperCase(),
+          code: normalizeEntityCode(newTypeCode),
           name: newTypeName.trim()
         })
       });
@@ -364,7 +365,7 @@ export function BigBookSettingsPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           entry_type_id: subTypeParentTypeId,
-          code: newSubTypeCode.trim().toUpperCase(),
+          code: normalizeEntityCode(newSubTypeCode),
           name: newSubTypeName.trim()
         })
       });
@@ -451,7 +452,7 @@ export function BigBookSettingsPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          code: newVendorTypeCode.trim().toUpperCase(),
+          code: normalizeEntityCode(newVendorTypeCode),
           name: newVendorTypeName.trim()
         })
       });
@@ -517,7 +518,7 @@ export function BigBookSettingsPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           vendor_type_id: vendorParentTypeId,
-          code: newVendorCode.trim().toUpperCase(),
+          code: normalizeEntityCode(newVendorCode),
           name: newVendorName.trim()
         })
       });
@@ -608,7 +609,7 @@ export function BigBookSettingsPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           actor_id: pocketParentActorId,
-          code: newPocketCode.trim().toUpperCase(),
+          code: normalizeEntityCode(newPocketCode),
           name: newPocketName.trim(),
           currency_code: "IDR"
         })
@@ -729,23 +730,26 @@ export function BigBookSettingsPanel({
           <input
             className="field"
             placeholder="Code (e.g. OPERATIONAL)"
+            maxLength={ENTITY_CODE_MAX_LENGTH}
             value={newTypeCode}
-            onChange={(event) => setNewTypeCode(event.target.value)}
+            onChange={(event) => setNewTypeCode(normalizeEntityCode(event.target.value))}
           />
           <input
             className="field"
             placeholder="Type Name"
+            maxLength={100}
             value={newTypeName}
             onChange={(event) => setNewTypeName(event.target.value)}
           />
           <button
             className="btn"
-            disabled={!newTypeCode.trim() || !newTypeName.trim() || typeSubmitting}
+            disabled={newTypeCode.trim().length < 2 || newTypeName.trim().length < 2 || typeSubmitting}
             onClick={() => setPendingAddTypeConfirm(true)}
           >
             Add Type
           </button>
         </div>
+        <p className="mt-2 text-xs text-muted">{ENTITY_CODE_HINT}</p>
         <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <label className="text-sm text-muted sm:col-span-2">
             <span className="mb-1 block">Search</span>
@@ -861,12 +865,14 @@ export function BigBookSettingsPanel({
           <input
             className="field"
             placeholder="Code (e.g. RENT)"
+            maxLength={ENTITY_CODE_MAX_LENGTH}
             value={newSubTypeCode}
-            onChange={(event) => setNewSubTypeCode(event.target.value)}
+            onChange={(event) => setNewSubTypeCode(normalizeEntityCode(event.target.value))}
           />
           <input
             className="field"
             placeholder="Sub-Type Name"
+            maxLength={100}
             value={newSubTypeName}
             onChange={(event) => setNewSubTypeName(event.target.value)}
           />
@@ -874,8 +880,8 @@ export function BigBookSettingsPanel({
             className="btn"
             disabled={
               !subTypeParentTypeId ||
-              !newSubTypeCode.trim() ||
-              !newSubTypeName.trim() ||
+              newSubTypeCode.trim().length < 2 ||
+              newSubTypeName.trim().length < 2 ||
               subTypeSubmitting
             }
             onClick={() => setPendingAddSubTypeConfirm(true)}
@@ -883,6 +889,7 @@ export function BigBookSettingsPanel({
             Add Sub-Type
           </button>
         </div>
+        <p className="mt-2 text-xs text-muted">{ENTITY_CODE_HINT}</p>
         <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <label className="text-sm text-muted sm:col-span-2">
             <span className="mb-1 block">Search</span>
@@ -997,23 +1004,30 @@ export function BigBookSettingsPanel({
           <input
             className="field"
             placeholder="Code (e.g. MERCHANT)"
+            maxLength={ENTITY_CODE_MAX_LENGTH}
             value={newVendorTypeCode}
-            onChange={(event) => setNewVendorTypeCode(event.target.value)}
+            onChange={(event) => setNewVendorTypeCode(normalizeEntityCode(event.target.value))}
           />
           <input
             className="field"
             placeholder="Vendor Type Name"
+            maxLength={100}
             value={newVendorTypeName}
             onChange={(event) => setNewVendorTypeName(event.target.value)}
           />
           <button
             className="btn"
-            disabled={!newVendorTypeCode.trim() || !newVendorTypeName.trim() || vendorTypeSubmitting}
+            disabled={
+              newVendorTypeCode.trim().length < 2 ||
+              newVendorTypeName.trim().length < 2 ||
+              vendorTypeSubmitting
+            }
             onClick={() => setPendingAddVendorTypeConfirm(true)}
           >
             Add Vendor Type
           </button>
         </div>
+        <p className="mt-2 text-xs text-muted">{ENTITY_CODE_HINT}</p>
         <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <label className="text-sm text-muted sm:col-span-2">
             <span className="mb-1 block">Search</span>
@@ -1129,12 +1143,14 @@ export function BigBookSettingsPanel({
           <input
             className="field"
             placeholder="Code (e.g. RBEE)"
+            maxLength={ENTITY_CODE_MAX_LENGTH}
             value={newVendorCode}
-            onChange={(event) => setNewVendorCode(event.target.value)}
+            onChange={(event) => setNewVendorCode(normalizeEntityCode(event.target.value))}
           />
           <input
             className="field"
             placeholder="Vendor Name"
+            maxLength={100}
             value={newVendorName}
             onChange={(event) => setNewVendorName(event.target.value)}
           />
@@ -1142,8 +1158,8 @@ export function BigBookSettingsPanel({
             className="btn"
             disabled={
               !vendorParentTypeId ||
-              !newVendorCode.trim() ||
-              !newVendorName.trim() ||
+              newVendorCode.trim().length < 2 ||
+              newVendorName.trim().length < 2 ||
               vendorSubmitting
             }
             onClick={() => setPendingAddVendorConfirm(true)}
@@ -1151,6 +1167,7 @@ export function BigBookSettingsPanel({
             Add Vendor Name
           </button>
         </div>
+        <p className="mt-2 text-xs text-muted">{ENTITY_CODE_HINT}</p>
         <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <label className="text-sm text-muted sm:col-span-2">
             <span className="mb-1 block">Search</span>
@@ -1280,12 +1297,14 @@ export function BigBookSettingsPanel({
           <input
             className="field"
             placeholder="Code (e.g. PETTY_CASH)"
+            maxLength={ENTITY_CODE_MAX_LENGTH}
             value={newPocketCode}
-            onChange={(event) => setNewPocketCode(event.target.value)}
+            onChange={(event) => setNewPocketCode(normalizeEntityCode(event.target.value))}
           />
           <input
             className="field"
             placeholder="Pocket Name"
+            maxLength={100}
             value={newPocketName}
             onChange={(event) => setNewPocketName(event.target.value)}
           />
@@ -1293,8 +1312,8 @@ export function BigBookSettingsPanel({
             className="btn"
             disabled={
               !pocketParentActorId ||
-              !newPocketCode.trim() ||
-              !newPocketName.trim() ||
+              newPocketCode.trim().length < 2 ||
+              newPocketName.trim().length < 2 ||
               pocketSubmitting
             }
             onClick={() => setPendingAddPocketConfirm(true)}
@@ -1302,6 +1321,7 @@ export function BigBookSettingsPanel({
             Add Pocket
           </button>
         </div>
+        <p className="mt-2 text-xs text-muted">{ENTITY_CODE_HINT}</p>
         <p className="mt-2 text-xs text-muted">Currency is fixed to IDR for all pockets.</p>
         <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <label className="text-sm text-muted sm:col-span-2">

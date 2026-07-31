@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { entityCodeSchema, entityNameSchema, entitySortOrderSchema } from "@/lib/validation/entity-code";
 
 export const creditBookCurrencySchema = z.enum(["IDR", "MYR", "USDT", "TRX"]);
 export type CreditBookCurrencyCode = z.infer<typeof creditBookCurrencySchema>;
@@ -7,40 +8,30 @@ export const creditBookEntryStatusSchema = z.enum(["open", "partial", "settled"]
 export type CreditBookEntryStatusValue = z.infer<typeof creditBookEntryStatusSchema>;
 
 export const creditBookTypeCreateSchema = z.object({
-  code: z
-    .string()
-    .trim()
-    .min(2)
-    .max(64)
-    .regex(/^[A-Z0-9_]+$/, "Code must use uppercase letters, numbers, and underscores."),
-  name: z.string().trim().min(2).max(100),
-  sort_order: z.coerce.number().int().min(0).max(9999).optional()
+  code: entityCodeSchema("Type code"),
+  name: entityNameSchema("Type name"),
+  sort_order: entitySortOrderSchema()
 });
 
 export const creditBookTypeUpdateSchema = z.object({
   id: z.string().uuid(),
-  name: z.string().trim().min(2).max(100).optional(),
+  name: entityNameSchema("Type name").optional(),
   is_active: z.boolean().optional(),
-  sort_order: z.coerce.number().int().min(0).max(9999).optional()
+  sort_order: entitySortOrderSchema()
 });
 
 export const creditBookSubTypeCreateSchema = z.object({
-  entry_type_id: z.string().uuid("Type is required"),
-  code: z
-    .string()
-    .trim()
-    .min(2)
-    .max(64)
-    .regex(/^[A-Z0-9_]+$/, "Code must use uppercase letters, numbers, and underscores."),
-  name: z.string().trim().min(2).max(100),
-  sort_order: z.coerce.number().int().min(0).max(9999).optional()
+  entry_type_id: z.string().uuid("Select a parent type."),
+  code: entityCodeSchema("Sub-Type code"),
+  name: entityNameSchema("Sub-Type name"),
+  sort_order: entitySortOrderSchema()
 });
 
 export const creditBookSubTypeUpdateSchema = z.object({
   id: z.string().uuid(),
-  name: z.string().trim().min(2).max(100).optional(),
+  name: entityNameSchema("Sub-Type name").optional(),
   is_active: z.boolean().optional(),
-  sort_order: z.coerce.number().int().min(0).max(9999).optional()
+  sort_order: entitySortOrderSchema()
 });
 
 export const creditBookActorUpdateSchema = z.object({

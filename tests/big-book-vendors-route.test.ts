@@ -7,14 +7,8 @@ const updateEqMock = vi.fn();
 const deleteSelectMaybeSingleMock = vi.fn();
 const deleteSelectMock = vi.fn(() => ({ maybeSingle: deleteSelectMaybeSingleMock }));
 const deleteEqMock = vi.fn(() => ({ select: deleteSelectMock }));
-const selectMaybeSingleMock = vi.fn();
-const selectListMock = vi.fn(() => ({
-  eq: vi.fn(() => ({
-    order: vi.fn(() => ({
-      limit: vi.fn(() => ({ maybeSingle: selectMaybeSingleMock }))
-    }))
-  }))
-}));
+const selectEqMock = vi.fn();
+const selectListMock = vi.fn(() => ({ eq: selectEqMock }));
 
 const requireAdminApiMock = vi.fn();
 const assertCsrfAndOriginMock = vi.fn();
@@ -67,8 +61,8 @@ describe("big book vendors route", () => {
     updateMock.mockReturnValue({ eq: updateEqMock });
     updateEqMock.mockResolvedValue({ error: null });
 
-    selectMaybeSingleMock.mockResolvedValue({
-      data: { sort_order: 20 },
+    selectEqMock.mockResolvedValue({
+      data: [{ code: "MSEK", name: "Msek", is_active: true, sort_order: 20 }],
       error: null
     });
 
@@ -96,8 +90,34 @@ describe("big book vendors route", () => {
     expect(insertMock.mock.calls[0][0]).toMatchObject({
       vendor_type_id: "11111111-1111-4111-8111-111111111111",
       code: "RBEE",
-      name: "Rbee"
+      name: "Rbee",
+      sort_order: 30
     });
+  });
+
+  it("returns a readable conflict when the vendor code already exists", async () => {
+    selectEqMock.mockResolvedValueOnce({
+      data: [{ code: "RBEE", name: "Rbee", is_active: true, sort_order: 20 }],
+      error: null
+    });
+
+    const { POST } = await import("@/app/api/big-book/vendors/route");
+    const request = new Request("https://app.localhost/api/big-book/vendors", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        vendor_type_id: "11111111-1111-4111-8111-111111111111",
+        code: "RBEE",
+        name: "Rbee Retail"
+      })
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(data.error).toContain('already uses the code "RBEE"');
+    expect(insertMock).not.toHaveBeenCalled();
   });
 
   it("rejects invalid create payload", async () => {

@@ -7,16 +7,11 @@ const updateEqMock = vi.fn();
 const deleteSelectMaybeSingleMock = vi.fn();
 const deleteSelectMock = vi.fn(() => ({ maybeSingle: deleteSelectMaybeSingleMock }));
 const deleteEqMock = vi.fn(() => ({ select: deleteSelectMock }));
-const selectMaybeSingleMock = vi.fn();
-// POST queries the latest sort_order via:
-//   select("sort_order").eq("entry_type_id", ...).order(...).limit(1).maybeSingle()
-const selectListMock = vi.fn(() => ({
-  eq: vi.fn(() => ({
-    order: vi.fn(() => ({
-      limit: vi.fn(() => ({ maybeSingle: selectMaybeSingleMock }))
-    }))
-  }))
-}));
+// POST loads the existing sub-types of the parent type via:
+//   select("code, name, is_active, sort_order").eq("entry_type_id", ...)
+// and uses them for both the duplicate check and the next sort_order.
+const selectEqMock = vi.fn();
+const selectListMock = vi.fn(() => ({ eq: selectEqMock }));
 
 const requireAdminApiMock = vi.fn();
 const assertCsrfAndOriginMock = vi.fn();
@@ -69,8 +64,8 @@ describe("big book sub-types route", () => {
     updateMock.mockReturnValue({ eq: updateEqMock });
     updateEqMock.mockResolvedValue({ error: null });
 
-    selectMaybeSingleMock.mockResolvedValue({
-      data: { sort_order: 20 },
+    selectEqMock.mockResolvedValue({
+      data: [{ code: "UTILITIES", name: "Utilities", is_active: true, sort_order: 20 }],
       error: null
     });
 
@@ -98,7 +93,8 @@ describe("big book sub-types route", () => {
     expect(insertMock.mock.calls[0][0]).toMatchObject({
       entry_type_id: "11111111-1111-4111-8111-111111111111",
       code: "RENT",
-      name: "Rent"
+      name: "Rent",
+      sort_order: 30
     });
   });
 
@@ -116,6 +112,76 @@ describe("big book sub-types route", () => {
 
     const response = await POST(request);
     expect(response.status).toBe(400);
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it("explains which rule a malformed code broke", async () => {
+    const { POST } = await import("@/app/api/big-book/sub-types/route");
+    const request = new Request("https://app.localhost/api/big-book/sub-types", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        code: "OFFICE RENT",
+        name: "Office Rent"
+      })
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error.fieldErrors.code[0]).toContain("uppercase letters, numbers, and underscores");
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it("returns a readable conflict when the code already exists", async () => {
+    selectEqMock.mockResolvedValueOnce({
+      data: [{ code: "RENT", name: "Rent", is_active: true, sort_order: 20 }],
+      error: null
+    });
+
+    const { POST } = await import("@/app/api/big-book/sub-types/route");
+    const request = new Request("https://app.localhost/api/big-book/sub-types", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        code: "RENT",
+        name: "Monthly Rent"
+      })
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(data.error).toContain('already uses the code "RENT"');
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it("points at the inactive row when a deactivated sub-type owns the name", async () => {
+    selectEqMock.mockResolvedValueOnce({
+      data: [{ code: "OLD_RENT", name: "Rent", is_active: false, sort_order: 20 }],
+      error: null
+    });
+
+    const { POST } = await import("@/app/api/big-book/sub-types/route");
+    const request = new Request("https://app.localhost/api/big-book/sub-types", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        code: "RENT",
+        name: "rent"
+      })
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(data.error).toContain("inactive");
     expect(insertMock).not.toHaveBeenCalled();
   });
 

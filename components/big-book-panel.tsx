@@ -23,8 +23,8 @@ import {
   parseAmountInput,
   type EntryFormState
 } from "@/components/big-book-entry-fields";
+import { BigBookCurrencyTotals } from "@/components/big-book-currency-totals";
 import { BigBookGroupHeaderRow } from "@/components/big-book-group-row";
-import type { BigBookCurrencyTotal } from "@/lib/big-book/totals";
 import type { BigBookLedgerTotals } from "@/lib/db/queries";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
@@ -1337,30 +1337,6 @@ export function BigBookPanel({
     editGroupForms.every((form) => Boolean(form.explanation.trim()) && Boolean(form.amount));
   const editValid = editingGroupId ? editGroupValid : Boolean(editForm.explanation.trim()) && Boolean(editForm.amount);
 
-  function renderTotalsCell(totals: BigBookCurrencyTotal[]) {
-    if (!totals.length) {
-      return <span className="text-xs text-muted">-</span>;
-    }
-    return (
-      <div className="space-y-1 text-sm">
-        {totals.map((total) => (
-          <div key={total.currency} className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-            <span className="w-12 shrink-0 font-medium text-muted">{total.currency}</span>
-            <span className={getAmountColorClass(-total.spending)}>
-              Out {formatAmount(total.spending, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
-            </span>
-            <span className={getAmountColorClass(total.profit)}>
-              In {formatAmount(total.profit, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
-            </span>
-            <span className={`font-semibold ${getAmountColorClass(total.net)}`}>
-              Net {formatAmount(total.net, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
-            </span>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
   function renderEntryRow(entry: BigBookEntry, isGroupMember: boolean) {
     const stripe = isGroupMember
       ? "bg-[rgb(var(--surface-muted))]/40"
@@ -1856,28 +1832,31 @@ export function BigBookPanel({
             </tbody>
             {ledgerRows.length > 0 && !entriesLoading ? (
               <tfoot className="border-t-2 border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]">
-                <tr className="align-top">
-                  <td className="px-3 py-2 font-medium text-[rgb(var(--text))]" colSpan={LEDGER_COLUMN_COUNT - 6}>
-                    Sub-total
-                    <span className="ml-1 text-xs font-normal text-muted">
-                      (this page · {totals.pageEntryCount} transaction{totals.pageEntryCount === 1 ? "" : "s"})
-                    </span>
-                  </td>
-                  <td className="px-3 py-2" colSpan={6}>
-                    {renderTotalsCell(totals.pageTotals)}
-                  </td>
-                </tr>
-                <tr className="border-t border-[rgb(var(--border))] align-top">
-                  <td className="px-3 py-2 font-semibold text-[rgb(var(--text))]" colSpan={LEDGER_COLUMN_COUNT - 6}>
-                    Grand total
-                    <span className="ml-1 text-xs font-normal text-muted">
-                      (all pages · {totals.grandEntryCount} transaction
-                      {totals.grandEntryCount === 1 ? "" : "s"}
-                      {filtersActive ? " matching the current filters" : ""})
-                    </span>
-                  </td>
-                  <td className="px-3 py-2" colSpan={6}>
-                    {renderTotalsCell(totals.grandTotals)}
+                <tr>
+                  <td colSpan={LEDGER_COLUMN_COUNT} className="!p-0">
+                    <div className="sticky left-0 inline-flex max-w-full flex-col px-3 py-3">
+                      <div className="flex items-start gap-x-8">
+                        <div className="w-56 shrink-0">
+                          <p className="font-medium text-[rgb(var(--text))]">Sub-total</p>
+                          <p className="text-xs text-muted">
+                            this page · {totals.pageEntryCount} transaction
+                            {totals.pageEntryCount === 1 ? "" : "s"}
+                          </p>
+                        </div>
+                        <BigBookCurrencyTotals totals={totals.pageTotals} showHeader showNet />
+                      </div>
+                      <div className="mt-3 flex items-start gap-x-8 border-t border-[rgb(var(--border))] pt-3">
+                        <div className="w-56 shrink-0">
+                          <p className="font-semibold text-[rgb(var(--text))]">Grand total</p>
+                          <p className="text-xs text-muted">
+                            all pages · {totals.grandEntryCount} transaction
+                            {totals.grandEntryCount === 1 ? "" : "s"}
+                            {filtersActive ? " matching the current filters" : ""}
+                          </p>
+                        </div>
+                        <BigBookCurrencyTotals totals={totals.grandTotals} showHeader showNet />
+                      </div>
+                    </div>
                   </td>
                 </tr>
               </tfoot>

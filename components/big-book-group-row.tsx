@@ -2,8 +2,9 @@
 
 import type { RefObject, ReactNode } from "react";
 import type { BigBookEntry, BigBookEntryGroup } from "@/lib/types";
-import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
+import { formatDateDisplay } from "@/lib/display-format";
 import { summarizeCurrencies } from "@/lib/big-book/totals";
+import { BigBookCurrencyTotals } from "@/components/big-book-currency-totals";
 
 type Props = {
   group: BigBookEntryGroup;
@@ -72,23 +73,7 @@ export function BigBookGroupHeaderRow({
           </div>
         </td>
         <td className="px-3 py-2" colSpan={2}>
-          <div className="space-y-1 text-sm">
-            {totals.map((total) => (
-              <div key={total.currency} className="flex flex-wrap gap-x-3 gap-y-1">
-                <span className="font-medium text-muted">{total.currency}</span>
-                {total.spending > 0 ? (
-                  <span className={getAmountColorClass(-total.spending)}>
-                    Out {formatAmount(total.spending, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
-                  </span>
-                ) : null}
-                {total.profit > 0 ? (
-                  <span className={getAmountColorClass(total.profit)}>
-                    In {formatAmount(total.profit, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
-                  </span>
-                ) : null}
-              </div>
-            ))}
-          </div>
+          <BigBookCurrencyTotals totals={totals} showNet={false} />
         </td>
         <td className="px-3 py-2">
           <div className="relative">

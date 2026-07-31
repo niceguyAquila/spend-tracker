@@ -7,14 +7,8 @@ const updateEqMock = vi.fn();
 const deleteSelectMaybeSingleMock = vi.fn();
 const deleteSelectMock = vi.fn(() => ({ maybeSingle: deleteSelectMaybeSingleMock }));
 const deleteEqMock = vi.fn(() => ({ select: deleteSelectMock }));
-const selectMaybeSingleMock = vi.fn();
-const selectListMock = vi.fn(() => ({
-  eq: vi.fn(() => ({
-    order: vi.fn(() => ({
-      limit: vi.fn(() => ({ maybeSingle: selectMaybeSingleMock }))
-    }))
-  }))
-}));
+const selectEqMock = vi.fn();
+const selectListMock = vi.fn(() => ({ eq: selectEqMock }));
 
 const requireAdminApiMock = vi.fn();
 const assertCsrfAndOriginMock = vi.fn();
@@ -67,8 +61,8 @@ describe("big book pockets route", () => {
     updateMock.mockReturnValue({ eq: updateEqMock });
     updateEqMock.mockResolvedValue({ error: null });
 
-    selectMaybeSingleMock.mockResolvedValue({
-      data: { sort_order: 20 },
+    selectEqMock.mockResolvedValue({
+      data: [{ code: "BANK", name: "Bank", is_active: true, sort_order: 20 }],
       error: null
     });
 
@@ -97,8 +91,34 @@ describe("big book pockets route", () => {
       actor_id: "11111111-1111-4111-8111-111111111111",
       code: "PETTY_CASH",
       name: "Petty Cash",
-      currency_code: "IDR"
+      currency_code: "IDR",
+      sort_order: 30
     });
+  });
+
+  it("returns a readable conflict when the pocket code already exists", async () => {
+    selectEqMock.mockResolvedValueOnce({
+      data: [{ code: "PETTY_CASH", name: "Petty Cash", is_active: true, sort_order: 20 }],
+      error: null
+    });
+
+    const { POST } = await import("@/app/api/big-book/pockets/route");
+    const request = new Request("https://app.localhost/api/big-book/pockets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        actor_id: "11111111-1111-4111-8111-111111111111",
+        code: "PETTY_CASH",
+        name: "Cash Drawer"
+      })
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(data.error).toContain('already uses the code "PETTY_CASH"');
+    expect(insertMock).not.toHaveBeenCalled();
   });
 
   it("rejects non-IDR currency_code", async () => {

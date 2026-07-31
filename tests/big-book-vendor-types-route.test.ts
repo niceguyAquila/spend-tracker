@@ -4,15 +4,7 @@ const insertMock = vi.fn();
 const insertSelectSingleMock = vi.fn();
 const updateMock = vi.fn();
 const updateEqMock = vi.fn();
-const selectMaybeSingleMock = vi.fn();
-const selectListMock = vi.fn(() => ({
-  order: vi.fn(() => ({
-    order: vi.fn(() => ({
-      limit: vi.fn(() => ({ maybeSingle: selectMaybeSingleMock }))
-    })),
-    limit: vi.fn(() => ({ maybeSingle: selectMaybeSingleMock }))
-  }))
-}));
+const selectListMock = vi.fn();
 
 const requireAdminApiMock = vi.fn();
 const assertCsrfAndOriginMock = vi.fn();
@@ -64,8 +56,8 @@ describe("big book vendor-types route", () => {
     updateMock.mockReturnValue({ eq: updateEqMock });
     updateEqMock.mockResolvedValue({ error: null });
 
-    selectMaybeSingleMock.mockResolvedValue({
-      data: { sort_order: 20 },
+    selectListMock.mockResolvedValue({
+      data: [{ code: "PARTNER", name: "Partner", is_active: true, sort_order: 20 }],
       error: null
     });
   });
@@ -89,8 +81,28 @@ describe("big book vendor-types route", () => {
     expect(insertMock).toHaveBeenCalledTimes(1);
     expect(insertMock.mock.calls[0][0]).toMatchObject({
       code: "MERCHANT",
-      name: "Merchant"
+      name: "Merchant",
+      sort_order: 30
     });
+  });
+
+  it("returns a readable conflict when the vendor type code already exists", async () => {
+    const { POST } = await import("@/app/api/big-book/vendor-types/route");
+    const request = new Request("https://app.localhost/api/big-book/vendor-types", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: "PARTNER",
+        name: "Business Partner"
+      })
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(data.error).toContain('already uses the code "PARTNER"');
+    expect(insertMock).not.toHaveBeenCalled();
   });
 
   it("rejects invalid create payload", async () => {

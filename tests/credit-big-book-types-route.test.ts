@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const insertMock = vi.fn();
+const selectListMock = vi.fn();
 const requireAdminApiMock = vi.fn();
 const assertCsrfAndOriginMock = vi.fn();
 
@@ -16,6 +17,7 @@ vi.mock("@/lib/auth-api", () => ({
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
     from: vi.fn(() => ({
+      select: selectListMock,
       insert: insertMock
     }))
   }))
@@ -34,6 +36,10 @@ describe("credit big book types route", () => {
       select: vi.fn(() => ({
         single: vi.fn().mockResolvedValue({ data: { id: "type-1" }, error: null })
       }))
+    });
+    selectListMock.mockResolvedValue({
+      data: [{ code: "RECEIVABLE", name: "Receivable", is_active: true, sort_order: 10 }],
+      error: null
     });
   });
 
@@ -54,5 +60,29 @@ describe("credit big book types route", () => {
 
     expect(response.status).toBe(200);
     expect(data.id).toBe("type-1");
+    expect(insertMock.mock.calls[0][0]).toMatchObject({
+      code: "PROMO_REFUND",
+      name: "Promo Refund",
+      sort_order: 20
+    });
+  });
+
+  it("returns a readable conflict when the type code already exists", async () => {
+    const { POST } = await import("@/app/api/credit-big-book/types/route");
+    const request = new Request("https://app.localhost/api/credit-big-book/types", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: "RECEIVABLE",
+        name: "Receivables"
+      })
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(data.error).toContain('already uses the code "RECEIVABLE"');
+    expect(insertMock).not.toHaveBeenCalled();
   });
 });
