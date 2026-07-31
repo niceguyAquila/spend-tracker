@@ -413,8 +413,20 @@ function toFilterArray<T>(value: T | T[] | undefined | null): T[] | undefined {
   return Array.isArray(value) ? value : [value];
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function applyBigBookEntryFilters(query: any, filters?: BigBookEntryFilters) {
+// Structural subset of the PostgREST filter builder used by the Big Book
+// queries, so the shared filter chain can be applied to both the full entry
+// select and the narrow id scan without widening either to `any`.
+type BigBookFilterableQuery<T> = {
+  in(column: string, values: readonly unknown[]): T;
+  gte(column: string, value: unknown): T;
+  lte(column: string, value: unknown): T;
+  or(filters: string): T;
+};
+
+function applyBigBookEntryFilters<T extends BigBookFilterableQuery<T>>(
+  query: T,
+  filters?: BigBookEntryFilters
+): T {
   const filterTypeIds = toFilterArray(filters?.typeId);
   const filterCurrencyCodes = toFilterArray(filters?.currencyCode);
   const filterDirections = toFilterArray(filters?.direction);
