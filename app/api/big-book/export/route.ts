@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/auth-api";
 import { bigBookEntriesQuerySchema } from "@/lib/validation/big-book";
 import { getBigBookEntries } from "@/lib/db/queries";
+import { createClient } from "@/lib/supabase/server";
 
 const EXPORT_HEADERS = [
   "entry_date",
@@ -15,7 +16,9 @@ const EXPORT_HEADERS = [
   "currency_code",
   "remark",
   "actor_name",
-  "pocket_name"
+  "pocket_name",
+  "group_label",
+  "group_remark"
 ] as const;
 
 function escapeCsvCell(value: string | null | undefined): string {
@@ -73,9 +76,36 @@ export async function GET(request: Request) {
       limit: 100000
     });
 
+    const groupIds = [...new Set(entries.map((entry) => entry.group_id).filter((id): id is string => Boolean(id)))];
+    const groupMap = new Map<string, { label: string; remark: string | null }>();
+    if (groupIds.length) {
+      const supabase = await createClient();
+      const { data: groups, error: groupsError } = await supabase
+        .from("business_ledger_entry_groups")
+        .select("id, label, remark")
+        .in("id", groupIds);
+      if (groupsError) throw groupsError;
+      for (const group of groups ?? []) {
+        groupMap.set(group.id, { label: group.label, remark: group.remark ?? null });
+      }
+    }
+
+    const sortedEntries = [...entries].sort((a, b) => {
+      const aGroup = a.group_id ?? "";
+      const bGroup = b.group_id ?? "";
+      if (aGroup !== bGroup) {
+        if (!aGroup) return 1;
+        if (!bGroup) return -1;
+        return aGroup.localeCompare(bGroup);
+      }
+      if (a.entry_date !== b.entry_date) return a.entry_date < b.entry_date ? 1 : -1;
+      return a.created_at < b.created_at ? 1 : -1;
+    });
+
     const lines: string[] = [];
     lines.push(EXPORT_HEADERS.join(","));
-    for (const entry of entries) {
+    for (const entry of sortedEntries) {
+      const group = entry.group_id ? groupMap.get(entry.group_id) : null;
       const cells = [
         entry.entry_date,
         entry.entry_direction,
@@ -88,7 +118,9 @@ export async function GET(request: Request) {
         entry.currency_code,
         entry.remark ?? "",
         entry.actor_display_name,
-        entry.pocket_name ?? ""
+        entry.pocket_name ?? "",
+        group?.label ?? "",
+        group?.remark ?? ""
       ].map(escapeCsvCell);
       lines.push(cells.join(","));
     }

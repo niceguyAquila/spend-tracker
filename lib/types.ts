@@ -215,8 +215,19 @@ export type BigBookAttachment = {
   created_at: string;
 };
 
+export type BigBookEntryGroup = {
+  id: string;
+  label: string;
+  remark: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type BigBookEntry = {
   id: string;
+  group_id: string | null;
   entry_date: string;
   entry_direction: "spending" | "profit";
   entry_type_id: string;
@@ -246,6 +257,10 @@ export type BigBookEntry = {
   updater_display_name: string;
   attachments: BigBookAttachment[];
 };
+
+export type BigBookLedgerRow =
+  | { kind: "entry"; sort_date: string; entry: BigBookEntry }
+  | { kind: "group"; sort_date: string; group: BigBookEntryGroup; entries: BigBookEntry[] };
 
 export type BigBookAllowedUserOption = {
   id: string;

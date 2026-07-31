@@ -135,6 +135,28 @@ export const bigBookEntryUpdateSchema = bigBookEntryInputSchema.extend({
   id: z.string().uuid()
 });
 
+export const bigBookGroupCreateSchema = z.object({
+  label: z.string().trim().min(2).max(200),
+  remark: z.string().max(1000).optional().or(z.literal("")),
+  entries: z.array(bigBookEntryInputSchema).min(2).max(50)
+});
+
+export const bigBookGroupEntryUpdateSchema = bigBookEntryInputSchema.extend({
+  id: z.string().uuid().optional()
+});
+
+export const bigBookGroupUpdateSchema = z.object({
+  id: z.string().uuid(),
+  label: z.string().trim().min(2).max(200),
+  remark: z.string().max(1000).optional().or(z.literal("")),
+  entries: z.array(bigBookGroupEntryUpdateSchema).min(2).max(50)
+});
+
+export const bigBookGroupDeleteSchema = z.object({
+  id: z.string().uuid(),
+  mode: z.enum(["cascade", "ungroup"]).default("cascade")
+});
+
 const optionalString = z
   .string()
   .trim()

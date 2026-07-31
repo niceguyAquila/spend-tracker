@@ -8,12 +8,22 @@ import type {
   BigBookActorPocket,
   BigBookActorPocketMetrics,
   BigBookEntry,
+  BigBookEntryGroup,
+  BigBookLedgerRow,
   BigBookLedgerSubType,
   BigBookLedgerType,
   BigBookVendor,
   BigBookVendorType
 } from "@/lib/types";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
+import {
+  BigBookEntryFields,
+  createEmptyEntryForm,
+  formatAmountInput,
+  parseAmountInput,
+  type EntryFormState
+} from "@/components/big-book-entry-fields";
+import { BigBookGroupHeaderRow } from "@/components/big-book-group-row";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
@@ -31,25 +41,10 @@ type Props = {
   initialVendors: BigBookVendor[];
   initialPockets: BigBookActorPocket[];
   initialActors: BigBookActor[];
-  initialEntries: BigBookEntry[];
+  initialLedgerRows: BigBookLedgerRow[];
   initialTotalCount: number;
   initialActorMetrics: BigBookActorCurrencyMetrics[];
   initialActorPocketMetrics: BigBookActorPocketMetrics[];
-};
-
-type EntryFormState = {
-  entry_date: string;
-  entry_direction: "spending" | "profit";
-  entry_type_id: string;
-  entry_sub_type_id: string;
-  vendor_type_id: string;
-  vendor_id: string;
-  pocket_id: string;
-  explanation: string;
-  amount: string;
-  currency_code: "IDR" | "MYR" | "USDT" | "TRX";
-  remark: string;
-  responsible_actor_id: string;
 };
 
 type ApiErrorShape = {
@@ -59,27 +54,7 @@ type ApiErrorShape = {
 
 type CreateEntryMode = "create" | "create_another";
 
-const amountFormatter = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 4
-});
-
-function parseAmountInput(value: string) {
-  return value.replace(/,/g, "");
-}
-
-function formatAmountInput(value: string) {
-  const cleaned = value.replace(/[^\d.]/g, "");
-  if (!cleaned) return "";
-  const [integerPartRaw, ...decimalParts] = cleaned.split(".");
-  const integerPart = integerPartRaw.replace(/^0+(?=\d)/, "") || "0";
-  const decimalPart = decimalParts.join("").slice(0, 4);
-  const formattedInteger = amountFormatter.format(Number(integerPart));
-  if (cleaned.endsWith(".") && decimalPart.length === 0) {
-    return `${formattedInteger}.`;
-  }
-  return decimalPart.length > 0 ? `${formattedInteger}.${decimalPart}` : formattedInteger;
-}
+type GroupEntryFormState = EntryFormState & { id?: string };
 
 function extractApiError(error: unknown, fallback: string) {
   if (typeof error === "string" && error.trim().length > 0) return error;
@@ -108,6 +83,48 @@ function arraysEqual(left: string[], right: string[]) {
 
 const SUPPORTED_CURRENCIES: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR", "USDT", "TRX"];
 const LEDGER_SKELETON_ROW_COUNT = 6;
+const LEDGER_COLUMN_COUNT = 13;
+const GROUP_MENU_PREFIX = "group:";
+
+function toEntryPayload(form: EntryFormState) {
+  return {
+    entry_date: form.entry_date,
+    entry_direction: form.entry_direction,
+    entry_type_id: form.entry_type_id,
+    entry_sub_type_id: form.entry_sub_type_id || null,
+    vendor_type_id: form.vendor_type_id || null,
+    vendor_id: form.vendor_id || null,
+    pocket_id: form.pocket_id || null,
+    explanation: form.explanation.trim(),
+    amount: Number(parseAmountInput(form.amount)),
+    currency_code: form.currency_code,
+    remark: form.remark,
+    responsible_actor_id: form.responsible_actor_id
+  };
+}
+
+function entryFormFromEntry(entry: BigBookEntry): GroupEntryFormState {
+  return {
+    id: entry.id,
+    entry_date: entry.entry_date,
+    entry_direction: entry.entry_direction,
+    entry_type_id: entry.entry_type_id,
+    entry_sub_type_id: entry.entry_sub_type_id ?? "",
+    vendor_type_id: entry.vendor_type_id ?? "",
+    vendor_id: entry.vendor_id ?? "",
+    pocket_id: entry.pocket_id ?? "",
+    explanation: entry.explanation,
+    amount: formatAmountInput(String(entry.amount)),
+    currency_code: entry.currency_code,
+    remark: entry.remark ?? "",
+    responsible_actor_id: entry.responsible_actor_id
+  };
+}
+
+function isEntryFormComplete(form: EntryFormState) {
+  const amountValue = Number(parseAmountInput(form.amount));
+  return Boolean(form.explanation.trim()) && Number.isFinite(amountValue) && amountValue > 0;
+}
 
 export function BigBookPanel({
   initialTypes,
@@ -116,7 +133,7 @@ export function BigBookPanel({
   initialVendors,
   initialPockets,
   initialActors,
-  initialEntries,
+  initialLedgerRows,
   initialTotalCount,
   initialActorMetrics,
   initialActorPocketMetrics
@@ -157,6 +174,7 @@ export function BigBookPanel({
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [pendingEntryConfirm, setPendingEntryConfirm] = useState(false);
   const [createEntryMode, setCreateEntryMode] = useState<CreateEntryMode>("create");
+  const [createMode, setCreateMode] = useState<"single" | "group">("single");
   const [createAttachmentFiles, setCreateAttachmentFiles] = useState<File[]>([]);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
@@ -191,10 +209,18 @@ export function BigBookPanel({
   const [attachmentDeleting, setAttachmentDeleting] = useState(false);
   const [viewingRemark, setViewingRemark] = useState<{ entryId: string; text: string } | null>(null);
   // Current server-paged rows. Re-fetched whenever filters / page / pageSize change
-  // or after a mutation. Not filtered client-side.
-  const [entries, setEntries] = useState<BigBookEntry[]>(initialEntries);
+  // or after a mutation. Not filtered client-side. A row is either a standalone
+  // entry or a group carrying its member entries.
+  const [ledgerRows, setLedgerRows] = useState<BigBookLedgerRow[]>(initialLedgerRows);
   const [totalCount, setTotalCount] = useState<number>(initialTotalCount);
   const [entriesLoading, setEntriesLoading] = useState(false);
+  const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(() => new Set());
+  const [groupSubmitting, setGroupSubmitting] = useState(false);
+  const [pendingDeleteGroup, setPendingDeleteGroup] = useState<{
+    group: BigBookEntryGroup;
+    entries: BigBookEntry[];
+  } | null>(null);
+  const [pendingUngroup, setPendingUngroup] = useState<BigBookEntryGroup | null>(null);
 
   const activeTypes = useMemo(() => initialTypes.filter((item) => item.is_active), [initialTypes]);
   const currencies = SUPPORTED_CURRENCIES;
@@ -256,61 +282,23 @@ export function BigBookPanel({
     responsible_actor_id: initialActors[0]?.id ?? ""
   });
 
-  const activeSubTypes = useMemo(() => initialSubTypes.filter((row) => row.is_active), [initialSubTypes]);
-  const subTypesForCreateForm = useMemo(
-    () => activeSubTypes.filter((row) => row.entry_type_id === entryForm.entry_type_id),
-    [activeSubTypes, entryForm.entry_type_id]
+  const defaultTypeId = activeTypes[0]?.id ?? initialTypes[0]?.id ?? "";
+  const defaultActorId = initialActors[0]?.id ?? "";
+  const newEntryForm = useCallback(
+    () => createEmptyEntryForm({ today, defaultTypeId, defaultActorId }),
+    [today, defaultTypeId, defaultActorId]
   );
-  const subTypesForEditForm = useMemo(
-    () => activeSubTypes.filter((row) => row.entry_type_id === editForm.entry_type_id),
-    [activeSubTypes, editForm.entry_type_id]
-  );
-  const activeVendorTypes = useMemo(
-    () => initialVendorTypes.filter((row) => row.is_active),
-    [initialVendorTypes]
-  );
-  const activeVendors = useMemo(() => initialVendors.filter((row) => row.is_active), [initialVendors]);
-  const vendorsForCreateForm = useMemo(
-    () => activeVendors.filter((row) => row.vendor_type_id === entryForm.vendor_type_id),
-    [activeVendors, entryForm.vendor_type_id]
-  );
-  const vendorsForEditForm = useMemo(
-    () => activeVendors.filter((row) => row.vendor_type_id === editForm.vendor_type_id),
-    [activeVendors, editForm.vendor_type_id]
-  );
-  const activePockets = useMemo(() => initialPockets.filter((row) => row.is_active), [initialPockets]);
-  const pocketsForCreateForm = useMemo(
-    () =>
-      activePockets.filter(
-        (row) =>
-          row.actor_id === entryForm.responsible_actor_id &&
-          row.currency_code === entryForm.currency_code
-      ),
-    [activePockets, entryForm.responsible_actor_id, entryForm.currency_code]
-  );
-  const pocketsForEditForm = useMemo(
-    () =>
-      activePockets.filter(
-        (row) =>
-          row.actor_id === editForm.responsible_actor_id &&
-          row.currency_code === editForm.currency_code
-      ),
-    [activePockets, editForm.responsible_actor_id, editForm.currency_code]
-  );
-  const createPocketDisabled = entryForm.currency_code !== "IDR" || !pocketsForCreateForm.length;
-  const editPocketDisabled = editForm.currency_code !== "IDR" || !pocketsForEditForm.length;
-  const createPocketHint =
-    entryForm.currency_code !== "IDR"
-      ? "Pockets are IDR-only"
-      : !pocketsForCreateForm.length
-        ? "No pockets for this actor yet"
-        : null;
-  const editPocketHint =
-    editForm.currency_code !== "IDR"
-      ? "Pockets are IDR-only"
-      : !pocketsForEditForm.length
-        ? "No pockets for this actor yet"
-        : null;
+
+  const [groupLabel, setGroupLabel] = useState("");
+  const [groupRemark, setGroupRemark] = useState("");
+  const [groupEntryForms, setGroupEntryForms] = useState<EntryFormState[]>(() => [
+    createEmptyEntryForm({ today, defaultTypeId, defaultActorId }),
+    createEmptyEntryForm({ today, defaultTypeId, defaultActorId })
+  ]);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [editGroupLabel, setEditGroupLabel] = useState("");
+  const [editGroupRemark, setEditGroupRemark] = useState("");
+  const [editGroupForms, setEditGroupForms] = useState<GroupEntryFormState[]>([]);
 
   const ledgerPagination = useTablePagination(totalCount);
 
@@ -323,7 +311,7 @@ export function BigBookPanel({
   // Skip the initial fetch on mount when SSR already provided the first page.
   // If SSR reports a positive count but no rows, force a client fetch to heal
   // the "empty table on first load" mismatch.
-  const skipNextLoadRef = useRef(!(initialEntries.length === 0 && initialTotalCount > 0));
+  const skipNextLoadRef = useRef(!(initialLedgerRows.length === 0 && initialTotalCount > 0));
 
   const loadEntries = useCallback(async () => {
     const requestId = ++loadRequestIdRef.current;
@@ -331,6 +319,7 @@ export function BigBookPanel({
     setError(null);
     try {
       const params = new URLSearchParams();
+      params.set("view", "rows");
       params.set("page", String(ledgerPagination.page));
       params.set("pageSize", String(ledgerPagination.pageSize));
       if (query) params.set("query", query);
@@ -352,7 +341,7 @@ export function BigBookPanel({
         setError(extractApiError(data?.error, "Failed to load ledger entries."));
         return;
       }
-      setEntries(Array.isArray(data?.rows) ? data.rows : []);
+      setLedgerRows(Array.isArray(data?.rows) ? data.rows : []);
       setTotalCount(typeof data?.totalCount === "number" ? data.totalCount : 0);
     } catch {
       if (loadRequestIdRef.current !== requestId) return;
@@ -511,8 +500,36 @@ export function BigBookPanel({
     [initialActors]
   );
 
+  const findEntryById = useCallback(
+    (entryId: string): BigBookEntry | null => {
+      for (const row of ledgerRows) {
+        if (row.kind === "entry") {
+          if (row.entry.id === entryId) return row.entry;
+          continue;
+        }
+        const member = row.entries.find((item) => item.id === entryId);
+        if (member) return member;
+      }
+      return null;
+    },
+    [ledgerRows]
+  );
+
+  function toggleGroupExpanded(groupId: string) {
+    setExpandedGroupIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  }
+
   const criticalPending =
     entrySubmitting ||
+    groupSubmitting ||
     entryDeleting ||
     importSubmitting ||
     exportSubmitting ||
@@ -548,7 +565,72 @@ export function BigBookPanel({
     });
   }
 
+  function resetGroupCreateForm() {
+    setGroupLabel("");
+    setGroupRemark("");
+    setGroupEntryForms([newEntryForm(), newEntryForm()]);
+  }
+
+  async function createGroup() {
+    const label = groupLabel.trim();
+    if (label.length < 2) {
+      setError("Group label must be at least 2 characters.");
+      return;
+    }
+    const payloadEntries = groupEntryForms.filter(isEntryFormComplete).map(toEntryPayload);
+    if (payloadEntries.length < 2) {
+      setError("A grouped transaction needs at least 2 entries with an explanation and amount.");
+      return;
+    }
+
+    setGroupSubmitting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await secureFetch("/api/big-book/groups", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label,
+          remark: groupRemark,
+          entries: payloadEntries
+        })
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(extractApiError(data.error, "Failed to create grouped transaction."));
+        return;
+      }
+
+      setMessage("Grouped transaction created.");
+      setPendingEntryConfirm(false);
+      setCreateModalOpen(false);
+      // Optimistically fold every child amount into the Grand Total card; SSR
+      // via `triggerRefresh` reconciles right after.
+      for (const payload of payloadEntries) {
+        const actor = initialActors.find((row) => row.id === payload.responsible_actor_id);
+        applyMetricDelta(
+          payload.responsible_actor_id,
+          actor?.display_name ?? "Unknown Actor",
+          payload.currency_code,
+          payload.entry_direction === "spending" ? -payload.amount : payload.amount
+        );
+      }
+      resetGroupCreateForm();
+      triggerRefresh();
+    } catch {
+      setError("Failed to create grouped transaction due to a network error.");
+    } finally {
+      setGroupSubmitting(false);
+    }
+  }
+
   async function createEntry() {
+    if (createMode === "group") {
+      await createGroup();
+      return;
+    }
     const amountValue = Number(parseAmountInput(entryForm.amount));
     if (!Number.isFinite(amountValue) || amountValue <= 0) {
       setError("Amount must be greater than 0.");
@@ -663,8 +745,21 @@ export function BigBookPanel({
         return;
       }
       setMessage("Ledger entry deleted.");
-      setEntries((prev) => prev.filter((row) => row.id !== deletingEntryId));
-      setTotalCount((prev) => Math.max(0, prev - 1));
+      const wasStandalone = ledgerRows.some(
+        (row) => row.kind === "entry" && row.entry.id === deletingEntryId
+      );
+      setLedgerRows((prev) =>
+        prev
+          .map((row) =>
+            row.kind === "group"
+              ? { ...row, entries: row.entries.filter((item) => item.id !== deletingEntryId) }
+              : row
+          )
+          .filter((row) => (row.kind === "entry" ? row.entry.id !== deletingEntryId : row.entries.length > 0))
+      );
+      if (wasStandalone) {
+        setTotalCount((prev) => Math.max(0, prev - 1));
+      }
       // Optimistically undo the deleted row's contribution to the Grand Total
       // card. spending was -amount, so undoing it adds +amount; profit was
       // +amount, so undoing it subtracts amount. SSR via `triggerRefresh`
@@ -807,6 +902,7 @@ export function BigBookPanel({
 
   function startEditEntry(row: BigBookEntry) {
     setOpenActionMenu(null);
+    setEditingGroupId(null);
     setEditingEntryId(row.id);
     setEditForm({
       entry_date: row.entry_date,
@@ -823,6 +919,123 @@ export function BigBookPanel({
       responsible_actor_id: row.responsible_actor_id
     });
     setEditModalOpen(true);
+  }
+
+  function startEditGroup(group: BigBookEntryGroup, entries: BigBookEntry[]) {
+    setOpenActionMenu(null);
+    setEditingEntryId(null);
+    setEditingGroupId(group.id);
+    setEditGroupLabel(group.label);
+    setEditGroupRemark(group.remark ?? "");
+    setEditGroupForms(entries.map(entryFormFromEntry));
+    setEditModalOpen(true);
+  }
+
+  async function saveEditedGroup() {
+    if (!editingGroupId) return;
+    const label = editGroupLabel.trim();
+    if (label.length < 2) {
+      setError("Group label must be at least 2 characters.");
+      return;
+    }
+    const payloadEntries = editGroupForms
+      .filter(isEntryFormComplete)
+      .map((form) => ({ ...toEntryPayload(form), ...(form.id ? { id: form.id } : {}) }));
+    if (payloadEntries.length < 2) {
+      setError("A grouped transaction needs at least 2 entries with an explanation and amount.");
+      return;
+    }
+
+    setGroupSubmitting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await secureFetch("/api/big-book/groups", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingGroupId,
+          label,
+          remark: editGroupRemark,
+          entries: payloadEntries
+        })
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(extractApiError(data.error, "Failed to update grouped transaction."));
+        return;
+      }
+      setMessage("Grouped transaction updated.");
+      setPendingEditConfirm(false);
+      setEditModalOpen(false);
+      setEditingGroupId(null);
+      setEditGroupForms([]);
+      triggerRefresh();
+    } catch {
+      setError("Failed to update grouped transaction due to a network error.");
+    } finally {
+      setGroupSubmitting(false);
+    }
+  }
+
+  async function deleteGroup(mode: "cascade" | "ungroup") {
+    const groupId = mode === "cascade" ? pendingDeleteGroup?.group.id : pendingUngroup?.id;
+    if (!groupId) return;
+
+    setGroupSubmitting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await secureFetch(`/api/big-book/groups?id=${groupId}&mode=${mode}`, {
+        method: "DELETE"
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(
+          extractApiError(
+            data.error,
+            mode === "cascade" ? "Failed to delete grouped transaction." : "Failed to ungroup transactions."
+          )
+        );
+        return;
+      }
+
+      if (mode === "cascade") {
+        // Undo every child's contribution to the Grand Total card, mirroring
+        // the single-entry delete path.
+        for (const entry of pendingDeleteGroup?.entries ?? []) {
+          const amount = Math.abs(Number(entry.amount));
+          applyMetricDelta(
+            entry.responsible_actor_id,
+            entry.actor_display_name,
+            entry.currency_code,
+            entry.entry_direction === "spending" ? amount : -amount
+          );
+        }
+        setMessage("Grouped transaction deleted.");
+      } else {
+        setMessage("Group removed. Transactions are now standalone.");
+      }
+
+      setPendingDeleteGroup(null);
+      setPendingUngroup(null);
+      setExpandedGroupIds((prev) => {
+        const next = new Set(prev);
+        next.delete(groupId);
+        return next;
+      });
+      triggerRefresh();
+    } catch {
+      setError(
+        mode === "cascade"
+          ? "Failed to delete grouped transaction due to a network error."
+          : "Failed to ungroup transactions due to a network error."
+      );
+    } finally {
+      setGroupSubmitting(false);
+    }
   }
 
   async function saveEditedEntry() {
@@ -979,12 +1192,124 @@ export function BigBookPanel({
 
   const handleCreateModalOpenChange = useCallback(
     (open: boolean) => {
-      if (!entrySubmitting) {
+      if (!entrySubmitting && !groupSubmitting) {
         setCreateModalOpen(open);
       }
     },
-    [entrySubmitting]
+    [entrySubmitting, groupSubmitting]
   );
+
+  const createPending = entrySubmitting || groupSubmitting;
+  const createSingleValid = Boolean(entryForm.explanation.trim()) && Boolean(entryForm.amount);
+  const createGroupValid =
+    groupLabel.trim().length >= 2 &&
+    groupEntryForms.length >= 2 &&
+    groupEntryForms.every((form) => Boolean(form.explanation.trim()) && Boolean(form.amount));
+  const createValid = createMode === "group" ? createGroupValid : createSingleValid;
+  const editGroupValid =
+    editGroupLabel.trim().length >= 2 &&
+    editGroupForms.length >= 2 &&
+    editGroupForms.every((form) => Boolean(form.explanation.trim()) && Boolean(form.amount));
+  const editValid = editingGroupId ? editGroupValid : Boolean(editForm.explanation.trim()) && Boolean(editForm.amount);
+
+  function renderEntryRow(entry: BigBookEntry, isGroupMember: boolean) {
+    return (
+      <tr
+        key={entry.id}
+        className={`border-b border-[rgb(var(--border))] align-top ${
+          isGroupMember ? "bg-[rgb(var(--surface-muted))]/40" : ""
+        }`}
+      >
+        <td className={`px-3 py-2 ${isGroupMember ? "pl-8" : ""}`}>{formatDateDisplay(entry.entry_date)}</td>
+        <td className="px-3 py-2">
+          <span
+            className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${
+              entry.entry_direction === "profit"
+                ? "bg-emerald-100 text-emerald-700"
+                : "bg-amber-100 text-amber-700"
+            }`}
+          >
+            {entry.entry_direction === "profit" ? "In" : "Out"}
+          </span>
+        </td>
+        <td className="px-3 py-2">{entry.type_name}</td>
+        <td className="px-3 py-2">
+          {entry.sub_type_name ? entry.sub_type_name : <span className="text-xs text-slate-500">-</span>}
+        </td>
+        <td className="px-3 py-2">
+          {entry.vendor_type_name ? entry.vendor_type_name : <span className="text-xs text-slate-500">-</span>}
+        </td>
+        <td className="px-3 py-2">
+          {entry.vendor_name ? entry.vendor_name : <span className="text-xs text-slate-500">-</span>}
+        </td>
+        <td className="px-3 py-2">{entry.explanation}</td>
+        <td className="px-3 py-2">
+          <span
+            className={getAmountColorClass(entry.entry_direction === "spending" ? -entry.amount : entry.amount)}
+          >
+            {entry.currency_code}{" "}
+            {formatAmount(entry.amount, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+          </span>
+        </td>
+        <td className="px-3 py-2">{entry.actor_display_name}</td>
+        <td className="px-3 py-2">
+          {entry.pocket_name ? entry.pocket_name : <span className="text-xs text-slate-500">-</span>}
+        </td>
+        <td className="px-3 py-2">
+          {entry.remark ? (
+            <div className="flex max-w-[260px] items-start gap-2">
+              <span className="truncate">{entry.remark}</span>
+              <button
+                className="shrink-0 text-xs text-blue-700 underline"
+                type="button"
+                onClick={() => setViewingRemark({ entryId: entry.id, text: entry.remark ?? "" })}
+              >
+                View
+              </button>
+            </div>
+          ) : (
+            "-"
+          )}
+        </td>
+        <td className="px-3 py-2">
+          {entry.attachments.length ? (
+            <div className="space-y-1">
+              <p className="text-xs text-slate-600">{entry.attachments.length} file(s)</p>
+              <ul className="space-y-1">
+                {entry.attachments.map((attachment) => (
+                  <li key={attachment.id}>
+                    <button
+                      className="text-xs text-blue-700 underline"
+                      onClick={() => void viewAttachment(attachment.id)}
+                      disabled={attachmentViewingId === attachment.id}
+                    >
+                      {attachmentViewingId === attachment.id ? "Loading..." : attachment.file_name}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <span className="text-xs text-slate-500">No files</span>
+          )}
+        </td>
+        <td className="px-3 py-2">
+          <div className="relative">
+            <button
+              className="btn-secondary btn-sm"
+              aria-label="Open actions menu"
+              aria-expanded={openActionMenu?.id === entry.id}
+              aria-haspopup="menu"
+              onClick={(event) => toggleActionMenu(entry.id, event.currentTarget)}
+              disabled={criticalPending}
+            >
+              Actions
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -1299,116 +1624,32 @@ export function BigBookPanel({
                       <td className="px-3 py-2"><div className="h-8 w-20 rounded bg-[rgb(var(--surface-muted))]" /></td>
                     </tr>
                   ))
-                : entries.map((row) => (
-                    <tr key={row.id} className="border-b border-[rgb(var(--border))] align-top">
-                      <td className="px-3 py-2">{formatDateDisplay(row.entry_date)}</td>
-                      <td className="px-3 py-2">
-                        <span
-                          className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${
-                            row.entry_direction === "profit"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-amber-100 text-amber-700"
-                          }`}
-                        >
-                          {row.entry_direction === "profit" ? "In" : "Out"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2">{row.type_name}</td>
-                      <td className="px-3 py-2">
-                        {row.sub_type_name ? (
-                          row.sub_type_name
-                        ) : (
-                          <span className="text-xs text-slate-500">-</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        {row.vendor_type_name ? (
-                          row.vendor_type_name
-                        ) : (
-                          <span className="text-xs text-slate-500">-</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        {row.vendor_name ? (
-                          row.vendor_name
-                        ) : (
-                          <span className="text-xs text-slate-500">-</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">{row.explanation}</td>
-                      <td className="px-3 py-2">
-                        <span className={getAmountColorClass(row.entry_direction === "spending" ? -row.amount : row.amount)}>
-                          {row.currency_code}{" "}
-                          {formatAmount(row.amount, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2">
-                        {row.actor_display_name}
-                      </td>
-                      <td className="px-3 py-2">
-                        {row.pocket_name ? (
-                          row.pocket_name
-                        ) : (
-                          <span className="text-xs text-slate-500">-</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        {row.remark ? (
-                          <div className="flex max-w-[260px] items-start gap-2">
-                            <span className="truncate">{row.remark}</span>
-                            <button
-                              className="shrink-0 text-xs text-blue-700 underline"
-                              type="button"
-                              onClick={() => setViewingRemark({ entryId: row.id, text: row.remark ?? "" })}
-                            >
-                              View
-                            </button>
-                          </div>
-                        ) : (
-                          "-"
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        {row.attachments.length ? (
-                          <div className="space-y-1">
-                            <p className="text-xs text-slate-600">{row.attachments.length} file(s)</p>
-                            <ul className="space-y-1">
-                              {row.attachments.map((attachment) => (
-                                <li key={attachment.id}>
-                                  <button
-                                    className="text-xs text-blue-700 underline"
-                                    onClick={() => void viewAttachment(attachment.id)}
-                                    disabled={attachmentViewingId === attachment.id}
-                                  >
-                                    {attachmentViewingId === attachment.id ? "Loading..." : attachment.file_name}
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-slate-500">No files</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="relative">
-                          <button
-                            className="btn-secondary btn-sm"
-                            aria-label="Open actions menu"
-                            aria-expanded={openActionMenu?.id === row.id}
-                            aria-haspopup="menu"
-                            onClick={(event) => toggleActionMenu(row.id, event.currentTarget)}
-                            disabled={criticalPending}
-                          >
-                            Actions
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-              {!entries.length && !entriesLoading ? (
+                : ledgerRows.map((row) =>
+                    row.kind === "entry" ? (
+                      renderEntryRow(row.entry, false)
+                    ) : (
+                      <BigBookGroupHeaderRow
+                        key={`group-${row.group.id}`}
+                        group={row.group}
+                        entries={row.entries}
+                        expanded={expandedGroupIds.has(row.group.id)}
+                        onToggle={() => toggleGroupExpanded(row.group.id)}
+                        colSpan={LEDGER_COLUMN_COUNT}
+                        openActionMenu={openActionMenu}
+                        actionMenuRef={actionMenuRef}
+                        onOpenActionMenu={(id, top, left) => setOpenActionMenu({ id, top, left })}
+                        onCloseActionMenu={() => setOpenActionMenu(null)}
+                        onEdit={() => startEditGroup(row.group, row.entries)}
+                        onUngroup={() => setPendingUngroup(row.group)}
+                        onDelete={() => setPendingDeleteGroup({ group: row.group, entries: row.entries })}
+                      >
+                        {row.entries.map((entry) => renderEntryRow(entry, true))}
+                      </BigBookGroupHeaderRow>
+                    )
+                  )}
+              {!ledgerRows.length && !entriesLoading ? (
                 <tr>
-                  <td className="px-3 py-4 text-center text-slate-600" colSpan={13}>
+                  <td className="px-3 py-4 text-center text-slate-600" colSpan={LEDGER_COLUMN_COUNT}>
                     No records match the current filters.
                   </td>
                 </tr>
@@ -1430,18 +1671,19 @@ export function BigBookPanel({
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
       {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
 
-      {openActionMenu ? (
-        <div
-          ref={actionMenuRef}
-          role="menu"
-          className="absolute z-50 w-44 rounded-md border border-slate-200 bg-white p-1 text-slate-900 shadow-lg"
-          style={{ top: openActionMenu.top, left: openActionMenu.left }}
-        >
-          {(() => {
-            const targetRow = entries.find((entry) => entry.id === openActionMenu.id);
+      {openActionMenu && !openActionMenu.id.startsWith(GROUP_MENU_PREFIX)
+        ? (() => {
+            // Group headers render their own menu inline; this one only serves
+            // individual entry rows (standalone or group members).
+            const targetRow = findEntryById(openActionMenu.id);
             if (!targetRow) return null;
             return (
-              <>
+              <div
+                ref={actionMenuRef}
+                role="menu"
+                className="absolute z-50 w-44 rounded-md border border-slate-200 bg-white p-1 text-slate-900 shadow-lg"
+                style={{ top: openActionMenu.top, left: openActionMenu.left }}
+              >
                 <button
                   className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-slate-100"
                   role="menuitem"
@@ -1466,11 +1708,10 @@ export function BigBookPanel({
                 >
                   Delete record
                 </button>
-              </>
+              </div>
             );
-          })()}
-        </div>
-      ) : null}
+          })()
+        : null}
 
       <Modal
         open={importModalOpen}
@@ -1566,268 +1807,172 @@ export function BigBookPanel({
       <Modal
         open={createModalOpen}
         onOpenChange={handleCreateModalOpenChange}
-        title="Create Ledger Entry"
-        dismissible={!entrySubmitting}
-        closeOnBackdrop={!entrySubmitting}
+        title={createMode === "group" ? "Create Grouped Transaction" : "Create Ledger Entry"}
+        dismissible={!createPending}
+        closeOnBackdrop={!createPending}
         footer={
           <>
-            <button className="btn-secondary" disabled={entrySubmitting} onClick={() => setCreateModalOpen(false)}>
+            <button className="btn-secondary" disabled={createPending} onClick={() => setCreateModalOpen(false)}>
               Cancel
             </button>
             <button
               className="btn"
-              disabled={entrySubmitting || !entryForm.explanation.trim() || !entryForm.amount}
+              disabled={createPending || !createValid}
               onClick={() => {
                 setCreateEntryMode("create");
                 setPendingEntryConfirm(true);
               }}
             >
-              {entrySubmitting ? "Saving..." : "Save"}
+              {createPending ? "Saving..." : "Save"}
             </button>
-            <button
-              className="btn-secondary"
-              disabled={entrySubmitting || !entryForm.explanation.trim() || !entryForm.amount}
-              onClick={() => {
-                setCreateEntryMode("create_another");
-                setPendingEntryConfirm(true);
-              }}
-            >
-              {entrySubmitting ? "Saving..." : "Save + Create Another"}
-            </button>
+            {createMode === "single" ? (
+              <button
+                className="btn-secondary"
+                disabled={createPending || !createValid}
+                onClick={() => {
+                  setCreateEntryMode("create_another");
+                  setPendingEntryConfirm(true);
+                }}
+              >
+                {createPending ? "Saving..." : "Save + Create Another"}
+              </button>
+            ) : null}
           </>
         }
       >
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          <label className="text-sm">
-            Date *
-            <input
-              className="field mt-1"
-              type="date"
-              value={entryForm.entry_date}
-              onChange={(event) => setEntryForm((prev) => ({ ...prev, entry_date: event.target.value }))}
-            />
-          </label>
-          <label className="text-sm">
-            Type *
-            <select
-              className="field mt-1"
-              value={entryForm.entry_type_id}
-              onChange={(event) =>
-                setEntryForm((prev) => ({
-                  ...prev,
-                  entry_type_id: event.target.value,
-                  entry_sub_type_id: ""
-                }))
-              }
-            >
-              {activeTypes.map((type) => (
-                <option key={type.id} value={type.id}>
-                  {type.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            Sub-Type
-            <select
-              className="field mt-1"
-              value={entryForm.entry_sub_type_id}
-              onChange={(event) =>
-                setEntryForm((prev) => ({ ...prev, entry_sub_type_id: event.target.value }))
-              }
-              disabled={!subTypesForCreateForm.length}
-            >
-              <option value="">(none)</option>
-              {subTypesForCreateForm.map((subType) => (
-                <option key={subType.id} value={subType.id}>
-                  {subType.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            Vendor Type
-            <select
-              className="field mt-1"
-              value={entryForm.vendor_type_id}
-              onChange={(event) =>
-                setEntryForm((prev) => ({
-                  ...prev,
-                  vendor_type_id: event.target.value,
-                  vendor_id: ""
-                }))
-              }
-            >
-              <option value="">(none)</option>
-              {activeVendorTypes.map((vendorType) => (
-                <option key={vendorType.id} value={vendorType.id}>
-                  {vendorType.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            Vendor Name
-            <select
-              className="field mt-1"
-              value={entryForm.vendor_id}
-              onChange={(event) =>
-                setEntryForm((prev) => ({ ...prev, vendor_id: event.target.value }))
-              }
-              disabled={!entryForm.vendor_type_id || !vendorsForCreateForm.length}
-            >
-              <option value="">(none)</option>
-              {vendorsForCreateForm.map((vendor) => (
-                <option key={vendor.id} value={vendor.id}>
-                  {vendor.name}
-                </option>
-              ))}
-            </select>
-          </label>
-            <label className="text-sm">
-              Cash Flow *
-              <select
-                className="field mt-1"
-                value={entryForm.entry_direction}
-                onChange={(event) =>
-                  setEntryForm((prev) => ({
-                    ...prev,
-                    entry_direction: event.target.value as "spending" | "profit"
-                  }))
-                }
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-slate-700">Entry style</span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className={createMode === "single" ? "btn btn-sm" : "btn-secondary btn-sm"}
+                aria-pressed={createMode === "single"}
+                onClick={() => setCreateMode("single")}
+                disabled={createPending}
               >
-                <option value="spending">Out</option>
-                <option value="profit">In</option>
-              </select>
-            </label>
-          <label className="text-sm">
-            Responsible Actor *
-            <select
-              className="field mt-1"
-              value={entryForm.responsible_actor_id}
-              onChange={(event) =>
-                setEntryForm((prev) => ({
-                  ...prev,
-                  responsible_actor_id: event.target.value,
-                  pocket_id: ""
-                }))
-              }
-            >
-              {initialActors.map((actor) => (
-                <option key={actor.id} value={actor.id}>
-                  {actor.display_name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            Currency *
-            <select
-              className="field mt-1"
-              value={entryForm.currency_code}
-              onChange={(event) =>
-                setEntryForm((prev) => ({
-                  ...prev,
-                  currency_code: event.target.value as EntryFormState["currency_code"],
-                  pocket_id: ""
-                }))
-              }
-            >
-              {currencies.map((currency) => (
-                <option key={currency} value={currency}>
-                  {currency}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            Pocket
-            <select
-              className="field mt-1"
-              value={entryForm.pocket_id}
-              onChange={(event) => setEntryForm((prev) => ({ ...prev, pocket_id: event.target.value }))}
-              disabled={createPocketDisabled}
-            >
-              <option value="">(none)</option>
-              {pocketsForCreateForm.map((pocket) => (
-                <option key={pocket.id} value={pocket.id}>
-                  {pocket.name}
-                </option>
-              ))}
-            </select>
-            {createPocketHint ? <span className="mt-1 block text-xs text-slate-500">{createPocketHint}</span> : null}
-          </label>
-          <label className="text-sm lg:col-span-2">
-            Explanation *
-            <input
-              className="field mt-1"
-              value={entryForm.explanation}
-              onChange={(event) => setEntryForm((prev) => ({ ...prev, explanation: event.target.value }))}
-              placeholder="What was this spending/profit for?"
+                Single transaction
+              </button>
+              <button
+                type="button"
+                className={createMode === "group" ? "btn btn-sm" : "btn-secondary btn-sm"}
+                aria-pressed={createMode === "group"}
+                onClick={() => setCreateMode("group")}
+                disabled={createPending}
+              >
+                Grouped transaction
+              </button>
+            </div>
+          </div>
+
+          {createMode === "single" ? (
+            <BigBookEntryFields
+              value={entryForm}
+              onChange={setEntryForm}
+              types={initialTypes}
+              subTypes={initialSubTypes}
+              vendorTypes={initialVendorTypes}
+              vendors={initialVendors}
+              pockets={initialPockets}
+              actors={initialActors}
+              currencies={currencies}
+              showAttachments
+              attachmentFiles={createAttachmentFiles}
+              onAttachmentFilesChange={setCreateAttachmentFiles}
+              onRemoveAttachmentAt={removeCreateAttachmentAt}
             />
-          </label>
-          <label className="text-sm">
-            Amount *
-            <input
-              className="field mt-1"
-              inputMode="decimal"
-              placeholder="0"
-              value={entryForm.amount}
-              onChange={(event) =>
-                setEntryForm((prev) => ({ ...prev, amount: formatAmountInput(event.target.value) }))
-              }
-            />
-          </label>
-          <label className="text-sm">
-            Attachments
-            <input
-              className="field mt-1"
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={(event) => setCreateAttachmentFiles(Array.from(event.target.files ?? []))}
-            />
-            {createAttachmentFiles.length > 0 ? (
-              <ul className="mt-2 space-y-1 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-900">
-                {createAttachmentFiles.map((file, index) => (
-                  <li key={`${file.name}-${file.size}-${index}`} className="flex items-center justify-between gap-2">
-                    <span className="truncate">
-                      {file.name} ({(file.size / 1024).toFixed(1)} KB)
-                    </span>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                <label className="text-sm">
+                  Group Label *
+                  <input
+                    className="field mt-1"
+                    value={groupLabel}
+                    onChange={(event) => setGroupLabel(event.target.value)}
+                    placeholder="e.g. October office setup"
+                  />
+                </label>
+                <label className="text-sm">
+                  Group Remark
+                  <input
+                    className="field mt-1"
+                    value={groupRemark}
+                    onChange={(event) => setGroupRemark(event.target.value)}
+                  />
+                </label>
+              </div>
+
+              {groupEntryForms.map((form, index) => (
+                <div
+                  key={`group-entry-form-${index}`}
+                  className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-3"
+                >
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-slate-700">Transaction {index + 1}</p>
                     <button
                       type="button"
-                      className="text-rose-600 underline"
-                      onClick={() => removeCreateAttachmentAt(index)}
+                      className="btn-secondary btn-sm"
+                      disabled={groupEntryForms.length <= 2 || createPending}
+                      onClick={() =>
+                        setGroupEntryForms((prev) => prev.filter((_, itemIndex) => itemIndex !== index))
+                      }
                     >
                       Remove
                     </button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </label>
-          <label className="text-sm lg:col-span-2">
-            Remark
-            <input
-              className="field mt-1"
-              value={entryForm.remark}
-              onChange={(event) => setEntryForm((prev) => ({ ...prev, remark: event.target.value }))}
-            />
-          </label>
+                  </div>
+                  <BigBookEntryFields
+                    value={form}
+                    onChange={(next) =>
+                      setGroupEntryForms((prev) =>
+                        prev.map((item, itemIndex) => (itemIndex === index ? next : item))
+                      )
+                    }
+                    types={initialTypes}
+                    subTypes={initialSubTypes}
+                    vendorTypes={initialVendorTypes}
+                    vendors={initialVendors}
+                    pockets={initialPockets}
+                    actors={initialActors}
+                    currencies={currencies}
+                  />
+                </div>
+              ))}
+
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={createPending}
+                onClick={() => setGroupEntryForms((prev) => [...prev, newEntryForm()])}
+              >
+                Add transaction
+              </button>
+            </div>
+          )}
         </div>
       </Modal>
 
       <ConfirmDialog
         open={pendingEntryConfirm}
         onOpenChange={setPendingEntryConfirm}
-        title="Create ledger entry?"
+        title={createMode === "group" ? "Create grouped transaction?" : "Create ledger entry?"}
         description={
-          createAttachmentFiles.length
-            ? `This will create a new record and upload ${createAttachmentFiles.length} attachment(s).`
-            : "This will create a new operational/profit record in the Big Book."
+          createMode === "group"
+            ? `This will create a group with ${groupEntryForms.length} transaction${
+                groupEntryForms.length === 1 ? "" : "s"
+              } in the Big Book.`
+            : createAttachmentFiles.length
+              ? `This will create a new record and upload ${createAttachmentFiles.length} attachment(s).`
+              : "This will create a new operational/profit record in the Big Book."
         }
-        confirmLabel={createEntryMode === "create_another" ? "Create & Add Another" : "Create Entry"}
-        confirming={entrySubmitting}
+        confirmLabel={
+          createMode === "group"
+            ? "Create Group"
+            : createEntryMode === "create_another"
+              ? "Create & Add Another"
+              : "Create Entry"
+        }
+        confirming={createPending}
         closeOnBackdrop={false}
         onConfirm={createEntry}
       />
@@ -1850,223 +1995,149 @@ export function BigBookPanel({
       <Modal
         open={editModalOpen}
         onOpenChange={(open) => {
-          if (!entrySubmitting) setEditModalOpen(open);
+          if (!createPending) setEditModalOpen(open);
         }}
-        title="Edit Ledger Entry"
-        dismissible={!entrySubmitting}
-        closeOnBackdrop={!entrySubmitting}
+        title={editingGroupId ? "Edit Grouped Transaction" : "Edit Ledger Entry"}
+        dismissible={!createPending}
+        closeOnBackdrop={!createPending}
         footer={
           <>
-            <button className="btn-secondary" disabled={entrySubmitting} onClick={() => setEditModalOpen(false)}>
+            <button className="btn-secondary" disabled={createPending} onClick={() => setEditModalOpen(false)}>
               Cancel
             </button>
             <button
               className="btn"
-              disabled={entrySubmitting || !editForm.explanation.trim() || !editForm.amount}
+              disabled={createPending || !editValid}
               onClick={() => setPendingEditConfirm(true)}
             >
-              {entrySubmitting ? "Saving..." : "Continue"}
+              {createPending ? "Saving..." : "Continue"}
             </button>
           </>
         }
       >
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          <label className="text-sm">
-            Date *
-            <input
-              className="field mt-1"
-              type="date"
-              value={editForm.entry_date}
-              onChange={(event) => setEditForm((prev) => ({ ...prev, entry_date: event.target.value }))}
-            />
-          </label>
-          <label className="text-sm">
-            Type *
-            <select
-              className="field mt-1"
-              value={editForm.entry_type_id}
-              onChange={(event) =>
-                setEditForm((prev) => ({
-                  ...prev,
-                  entry_type_id: event.target.value,
-                  entry_sub_type_id: ""
-                }))
-              }
-            >
-              {activeTypes.map((type) => (
-                <option key={type.id} value={type.id}>
-                  {type.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            Sub-Type
-            <select
-              className="field mt-1"
-              value={editForm.entry_sub_type_id}
-              onChange={(event) =>
-                setEditForm((prev) => ({ ...prev, entry_sub_type_id: event.target.value }))
-              }
-              disabled={!subTypesForEditForm.length}
-            >
-              <option value="">(none)</option>
-              {subTypesForEditForm.map((subType) => (
-                <option key={subType.id} value={subType.id}>
-                  {subType.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            Vendor Type
-            <select
-              className="field mt-1"
-              value={editForm.vendor_type_id}
-              onChange={(event) =>
-                setEditForm((prev) => ({
-                  ...prev,
-                  vendor_type_id: event.target.value,
-                  vendor_id: ""
-                }))
-              }
-            >
-              <option value="">(none)</option>
-              {activeVendorTypes.map((vendorType) => (
-                <option key={vendorType.id} value={vendorType.id}>
-                  {vendorType.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            Vendor Name
-            <select
-              className="field mt-1"
-              value={editForm.vendor_id}
-              onChange={(event) =>
-                setEditForm((prev) => ({ ...prev, vendor_id: event.target.value }))
-              }
-              disabled={!editForm.vendor_type_id || !vendorsForEditForm.length}
-            >
-              <option value="">(none)</option>
-              {vendorsForEditForm.map((vendor) => (
-                <option key={vendor.id} value={vendor.id}>
-                  {vendor.name}
-                </option>
-              ))}
-            </select>
-          </label>
-            <label className="text-sm">
-              Cash Flow *
-              <select
-                className="field mt-1"
-                value={editForm.entry_direction}
-                onChange={(event) =>
-                  setEditForm((prev) => ({
-                    ...prev,
-                    entry_direction: event.target.value as "spending" | "profit"
-                  }))
-                }
+        {editingGroupId ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              <label className="text-sm">
+                Group Label *
+                <input
+                  className="field mt-1"
+                  value={editGroupLabel}
+                  onChange={(event) => setEditGroupLabel(event.target.value)}
+                />
+              </label>
+              <label className="text-sm">
+                Group Remark
+                <input
+                  className="field mt-1"
+                  value={editGroupRemark}
+                  onChange={(event) => setEditGroupRemark(event.target.value)}
+                />
+              </label>
+            </div>
+
+            {editGroupForms.map((form, index) => (
+              <div
+                key={form.id ?? `new-group-entry-${index}`}
+                className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-3"
               >
-                <option value="spending">Out</option>
-                <option value="profit">In</option>
-              </select>
-            </label>
-          <label className="text-sm">
-            Responsible Actor *
-            <select
-              className="field mt-1"
-              value={editForm.responsible_actor_id}
-              onChange={(event) =>
-                setEditForm((prev) => ({
-                  ...prev,
-                  responsible_actor_id: event.target.value,
-                  pocket_id: ""
-                }))
-              }
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-slate-700">Transaction {index + 1}</p>
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    disabled={editGroupForms.length <= 2 || createPending}
+                    onClick={() =>
+                      setEditGroupForms((prev) => prev.filter((_, itemIndex) => itemIndex !== index))
+                    }
+                  >
+                    Remove
+                  </button>
+                </div>
+                <BigBookEntryFields
+                  value={form}
+                  onChange={(next) =>
+                    setEditGroupForms((prev) =>
+                      prev.map((item, itemIndex) => (itemIndex === index ? { ...next, id: item.id } : item))
+                    )
+                  }
+                  types={initialTypes}
+                  subTypes={initialSubTypes}
+                  vendorTypes={initialVendorTypes}
+                  vendors={initialVendors}
+                  pockets={initialPockets}
+                  actors={initialActors}
+                  currencies={currencies}
+                />
+              </div>
+            ))}
+
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={createPending}
+              onClick={() => setEditGroupForms((prev) => [...prev, newEntryForm()])}
             >
-              {initialActors.map((actor) => (
-                <option key={actor.id} value={actor.id}>
-                  {actor.display_name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            Currency *
-            <select
-              className="field mt-1"
-              value={editForm.currency_code}
-              onChange={(event) =>
-                setEditForm((prev) => ({
-                  ...prev,
-                  currency_code: event.target.value as EntryFormState["currency_code"],
-                  pocket_id: ""
-                }))
-              }
-            >
-              {currencies.map((currency) => (
-                <option key={currency} value={currency}>
-                  {currency}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            Pocket
-            <select
-              className="field mt-1"
-              value={editForm.pocket_id}
-              onChange={(event) => setEditForm((prev) => ({ ...prev, pocket_id: event.target.value }))}
-              disabled={editPocketDisabled}
-            >
-              <option value="">(none)</option>
-              {pocketsForEditForm.map((pocket) => (
-                <option key={pocket.id} value={pocket.id}>
-                  {pocket.name}
-                </option>
-              ))}
-            </select>
-            {editPocketHint ? <span className="mt-1 block text-xs text-slate-500">{editPocketHint}</span> : null}
-          </label>
-          <label className="text-sm lg:col-span-2">
-            Explanation *
-            <input
-              className="field mt-1"
-              value={editForm.explanation}
-              onChange={(event) => setEditForm((prev) => ({ ...prev, explanation: event.target.value }))}
-            />
-          </label>
-          <label className="text-sm">
-            Amount *
-            <input
-              className="field mt-1"
-              inputMode="decimal"
-              value={editForm.amount}
-              onChange={(event) => setEditForm((prev) => ({ ...prev, amount: formatAmountInput(event.target.value) }))}
-            />
-          </label>
-          <label className="text-sm lg:col-span-2">
-            Remark
-            <input
-              className="field mt-1"
-              value={editForm.remark}
-              onChange={(event) => setEditForm((prev) => ({ ...prev, remark: event.target.value }))}
-            />
-          </label>
-        </div>
+              Add transaction
+            </button>
+          </div>
+        ) : (
+          <BigBookEntryFields
+            value={editForm}
+            onChange={setEditForm}
+            types={initialTypes}
+            subTypes={initialSubTypes}
+            vendorTypes={initialVendorTypes}
+            vendors={initialVendors}
+            pockets={initialPockets}
+            actors={initialActors}
+            currencies={currencies}
+          />
+        )}
       </Modal>
 
       <ConfirmDialog
         open={pendingEditConfirm}
         onOpenChange={setPendingEditConfirm}
-        title="Save ledger entry changes?"
-        description="This will update the selected ledger record."
+        title={editingGroupId ? "Save grouped transaction changes?" : "Save ledger entry changes?"}
+        description={
+          editingGroupId
+            ? "This will update the group and all of its transactions. Removed transactions are deleted permanently."
+            : "This will update the selected ledger record."
+        }
         confirmLabel="Save changes"
-        confirming={entrySubmitting}
+        confirming={createPending}
         closeOnBackdrop={false}
-        onConfirm={saveEditedEntry}
+        onConfirm={editingGroupId ? saveEditedGroup : saveEditedEntry}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingUngroup)}
+        onOpenChange={(open) => {
+          if (!open && !groupSubmitting) setPendingUngroup(null);
+        }}
+        title="Ungroup transactions?"
+        description={`"${pendingUngroup?.label ?? ""}" will be removed and its transactions will become standalone records.`}
+        confirmLabel="Ungroup"
+        confirming={groupSubmitting}
+        closeOnBackdrop={false}
+        onConfirm={() => deleteGroup("ungroup")}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingDeleteGroup)}
+        onOpenChange={(open) => {
+          if (!open && !groupSubmitting) setPendingDeleteGroup(null);
+        }}
+        title="Delete grouped transaction?"
+        description={`This will permanently remove "${pendingDeleteGroup?.group.label ?? ""}" along with its ${
+          pendingDeleteGroup?.entries.length ?? 0
+        } transaction(s) and their attachments.`}
+        confirmLabel="Delete group"
+        confirming={groupSubmitting}
+        variant="danger"
+        closeOnBackdrop={false}
+        onConfirm={() => deleteGroup("cascade")}
       />
 
       <ConfirmDialog

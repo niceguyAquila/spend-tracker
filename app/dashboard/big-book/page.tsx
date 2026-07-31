@@ -3,7 +3,7 @@ import {
   getBigBookActorCurrencyMetrics,
   getBigBookActorPocketMetrics,
   getBigBookActorPockets,
-  getBigBookEntriesPaged,
+  getBigBookLedgerRowsPaged,
   getBigBookLedgerSubTypes,
   getBigBookLedgerTypes,
   getBigBookVendorTypes,
@@ -31,7 +31,7 @@ export default async function BigBookPage() {
       getBigBookVendors({ includeInactive: true }),
       getBigBookActorPockets({ includeInactive: true }),
       getBigBookActors(),
-      getBigBookEntriesPaged({ page: 0, pageSize: DEFAULT_PAGE_SIZE }),
+      getBigBookLedgerRowsPaged({ page: 0, pageSize: DEFAULT_PAGE_SIZE }),
       getBigBookActorCurrencyMetrics(),
       getBigBookActorPocketMetrics()
     ]);
@@ -53,7 +53,7 @@ export default async function BigBookPage() {
           initialVendors={vendors}
           initialPockets={pockets}
           initialActors={actors}
-          initialEntries={entriesPage.rows}
+          initialLedgerRows={entriesPage.rows}
           initialTotalCount={entriesPage.totalCount}
           initialActorMetrics={actorMetrics}
           initialActorPocketMetrics={actorPocketMetrics}

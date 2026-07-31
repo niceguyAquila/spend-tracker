@@ -8,6 +8,7 @@ import type { BigBookEntry } from "@/lib/types";
 
 const baseEntry: BigBookEntry = {
   id: "entry-1",
+  group_id: null,
   entry_date: "2026-01-01",
   entry_direction: "spending",
   entry_type_id: "type-1",

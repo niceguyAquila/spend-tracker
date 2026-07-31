@@ -7,6 +7,8 @@ import {
   BigBookActorCurrencyMetrics,
   BigBookAttachment,
   BigBookEntry,
+  BigBookEntryGroup,
+  BigBookLedgerRow,
   BigBookLedgerSubType,
   BigBookLedgerType,
   BigBookVendor,
@@ -382,6 +384,17 @@ export type BigBookEntryFilters = {
   query?: string;
 };
 
+const BIG_BOOK_ENTRY_SELECT = `
+  id, group_id, entry_date, entry_direction, entry_type_id, entry_sub_type_id, vendor_type_id, vendor_id, pocket_id, explanation, amount, currency_code, remark, responsible_actor_id, created_by, updated_by, created_at, updated_at,
+  business_ledger_types(id, code, name),
+  business_ledger_sub_types(id, code, name),
+  business_ledger_vendor_types(id, code, name),
+  business_ledger_vendors(id, code, name),
+  big_book_actor_pockets(id, code, name),
+  big_book_actors(id, actor_code, display_name),
+  business_ledger_attachments(id, ledger_entry_id, storage_path, file_name, mime_type, file_size, uploaded_by, created_at)
+`;
+
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
@@ -400,25 +413,8 @@ function toFilterArray<T>(value: T | T[] | undefined | null): T[] | undefined {
   return Array.isArray(value) ? value : [value];
 }
 
-export async function getBigBookEntries(filters?: BigBookEntryFilters & { limit?: number }): Promise<BigBookEntry[]> {
-  const supabase = await createClient();
-  let query = supabase
-    .from("business_ledger_entries")
-    .select(
-      `
-      id, entry_date, entry_direction, entry_type_id, entry_sub_type_id, vendor_type_id, vendor_id, pocket_id, explanation, amount, currency_code, remark, responsible_actor_id, created_by, updated_by, created_at, updated_at,
-      business_ledger_types(id, code, name),
-      business_ledger_sub_types(id, code, name),
-      business_ledger_vendor_types(id, code, name),
-      business_ledger_vendors(id, code, name),
-      big_book_actor_pockets(id, code, name),
-      big_book_actors(id, actor_code, display_name),
-      business_ledger_attachments(id, ledger_entry_id, storage_path, file_name, mime_type, file_size, uploaded_by, created_at)
-    `
-    )
-    .order("entry_date", { ascending: false })
-    .order("created_at", { ascending: false });
-
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyBigBookEntryFilters(query: any, filters?: BigBookEntryFilters) {
   const filterTypeIds = toFilterArray(filters?.typeId);
   const filterCurrencyCodes = toFilterArray(filters?.currencyCode);
   const filterDirections = toFilterArray(filters?.direction);
@@ -426,105 +422,157 @@ export async function getBigBookEntries(filters?: BigBookEntryFilters & { limit?
   const filterVendorTypeIds = toFilterArray(filters?.vendorTypeId);
   const filterVendorIds = toFilterArray(filters?.vendorId);
   const filterPocketIds = toFilterArray(filters?.pocketId);
-  if (filterTypeIds?.length) query = query.in("entry_type_id", filterTypeIds);
-  if (filterCurrencyCodes?.length) query = query.in("currency_code", filterCurrencyCodes);
-  if (filterDirections?.length) query = query.in("entry_direction", filterDirections);
-  if (filterActorIds?.length) query = query.in("responsible_actor_id", filterActorIds);
-  if (filterVendorTypeIds?.length) query = query.in("vendor_type_id", filterVendorTypeIds);
-  if (filterVendorIds?.length) query = query.in("vendor_id", filterVendorIds);
-  if (filterPocketIds?.length) query = query.in("pocket_id", filterPocketIds);
-  if (filters?.dateFrom) query = query.gte("entry_date", filters.dateFrom);
-  if (filters?.dateTo) query = query.lte("entry_date", filters.dateTo);
+  let next = query;
+  if (filterTypeIds?.length) next = next.in("entry_type_id", filterTypeIds);
+  if (filterCurrencyCodes?.length) next = next.in("currency_code", filterCurrencyCodes);
+  if (filterDirections?.length) next = next.in("entry_direction", filterDirections);
+  if (filterActorIds?.length) next = next.in("responsible_actor_id", filterActorIds);
+  if (filterVendorTypeIds?.length) next = next.in("vendor_type_id", filterVendorTypeIds);
+  if (filterVendorIds?.length) next = next.in("vendor_id", filterVendorIds);
+  if (filterPocketIds?.length) next = next.in("pocket_id", filterPocketIds);
+  if (filters?.dateFrom) next = next.gte("entry_date", filters.dateFrom);
+  if (filters?.dateTo) next = next.lte("entry_date", filters.dateTo);
   if (filters?.query) {
     const sanitized = sanitizeBigBookSearchQuery(filters.query);
     if (sanitized) {
-      query = query.or(`explanation.ilike.%${sanitized}%,remark.ilike.%${sanitized}%`);
+      next = next.or(`explanation.ilike.%${sanitized}%,remark.ilike.%${sanitized}%`);
     }
   }
+  return next;
+}
+
+async function resolveDisplayNameMap(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userIds: string[]
+): Promise<Map<string, string>> {
+  const actorMap = new Map<string, string>();
+  const uniqueIds = [...new Set(userIds.filter(isUuid))];
+  if (!uniqueIds.length) return actorMap;
+
+  const { data: actorRows, error: actorError } = await supabase
+    .from("allowed_users")
+    .select("auth_user_id, display_name, email")
+    .in("auth_user_id", uniqueIds);
+  if (actorError) throw actorError;
+  for (const actor of actorRows ?? []) {
+    if (!actor.auth_user_id) continue;
+    actorMap.set(actor.auth_user_id, actor.display_name?.trim() || actor.email || actor.auth_user_id);
+  }
+  return actorMap;
+}
+
+type RawBigBookEntryRow = {
+  id: string;
+  group_id: string | null;
+  entry_date: string;
+  entry_direction: string;
+  entry_type_id: string;
+  entry_sub_type_id: string | null;
+  vendor_type_id: string | null;
+  vendor_id: string | null;
+  pocket_id: string | null;
+  explanation: string;
+  amount: number | string;
+  currency_code: "IDR" | "MYR" | "USDT" | "TRX";
+  remark: string | null;
+  responsible_actor_id: string;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  business_ledger_types: { id: string; code: string; name: string } | { id: string; code: string; name: string }[] | null;
+  business_ledger_sub_types: { id: string; code: string; name: string } | { id: string; code: string; name: string }[] | null;
+  business_ledger_vendor_types: { id: string; code: string; name: string } | { id: string; code: string; name: string }[] | null;
+  business_ledger_vendors: { id: string; code: string; name: string } | { id: string; code: string; name: string }[] | null;
+  big_book_actor_pockets: { id: string; code: string; name: string } | { id: string; code: string; name: string }[] | null;
+  big_book_actors: { id: string; actor_code: "A" | "B"; display_name: string } | { id: string; actor_code: "A" | "B"; display_name: string }[] | null;
+  business_ledger_attachments: BigBookAttachment | BigBookAttachment[] | null;
+};
+
+function mapBigBookEntryRow(row: RawBigBookEntryRow, actorMap: Map<string, string>): BigBookEntry {
+  const type = Array.isArray(row.business_ledger_types)
+    ? row.business_ledger_types[0]
+    : row.business_ledger_types;
+  const subType = Array.isArray(row.business_ledger_sub_types)
+    ? row.business_ledger_sub_types[0]
+    : row.business_ledger_sub_types;
+  const vendorType = Array.isArray(row.business_ledger_vendor_types)
+    ? row.business_ledger_vendor_types[0]
+    : row.business_ledger_vendor_types;
+  const vendor = Array.isArray(row.business_ledger_vendors)
+    ? row.business_ledger_vendors[0]
+    : row.business_ledger_vendors;
+  const pocket = Array.isArray(row.big_book_actor_pockets)
+    ? row.big_book_actor_pockets[0]
+    : row.big_book_actor_pockets;
+  const actor = Array.isArray(row.big_book_actors)
+    ? row.big_book_actors[0]
+    : row.big_book_actors;
+  const attachments = (Array.isArray(row.business_ledger_attachments)
+    ? row.business_ledger_attachments
+    : row.business_ledger_attachments
+      ? [row.business_ledger_attachments]
+      : []) as BigBookAttachment[];
+
+  return {
+    id: row.id,
+    group_id: row.group_id ?? null,
+    entry_date: row.entry_date,
+    entry_direction: row.entry_direction as "spending" | "profit",
+    entry_type_id: row.entry_type_id,
+    entry_sub_type_id: row.entry_sub_type_id ?? null,
+    vendor_type_id: row.vendor_type_id ?? null,
+    vendor_id: row.vendor_id ?? null,
+    pocket_id: row.pocket_id ?? null,
+    explanation: row.explanation,
+    amount: Number(row.amount),
+    currency_code: row.currency_code,
+    remark: row.remark,
+    responsible_actor_id: row.responsible_actor_id,
+    created_by: row.created_by,
+    updated_by: row.updated_by,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    type_name: type?.name ?? "-",
+    type_code: type?.code ?? "-",
+    sub_type_name: subType?.name ?? null,
+    sub_type_code: subType?.code ?? null,
+    vendor_type_name: vendorType?.name ?? null,
+    vendor_name: vendor?.name ?? null,
+    pocket_name: pocket?.name ?? null,
+    actor_code: (actor?.actor_code ?? "A") as "A" | "B",
+    actor_display_name: actor?.display_name ?? "-",
+    creator_display_name: row.created_by ? (actorMap.get(row.created_by) ?? row.created_by) : "-",
+    updater_display_name: row.updated_by ? (actorMap.get(row.updated_by) ?? row.updated_by) : "-",
+    attachments: attachments.map((attachment) => ({
+      ...attachment,
+      file_size: Number(attachment.file_size)
+    }))
+  };
+}
+
+export async function getBigBookEntries(filters?: BigBookEntryFilters & { limit?: number }): Promise<BigBookEntry[]> {
+  const supabase = await createClient();
+  let query = supabase
+    .from("business_ledger_entries")
+    .select(BIG_BOOK_ENTRY_SELECT)
+    .order("entry_date", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  query = applyBigBookEntryFilters(query, filters);
   query = query.limit(filters?.limit ?? 500);
 
   const { data, error } = await query;
   if (error) throw error;
 
-  const actorIds = new Set<string>();
+  const actorIds: string[] = [];
   for (const row of data ?? []) {
-    if (row.created_by && isUuid(row.created_by)) actorIds.add(row.created_by);
-    if (row.updated_by && isUuid(row.updated_by)) actorIds.add(row.updated_by);
+    if (row.created_by) actorIds.push(row.created_by);
+    if (row.updated_by) actorIds.push(row.updated_by);
   }
+  const actorMap = await resolveDisplayNameMap(supabase, actorIds);
 
-  const actorMap = new Map<string, string>();
-  if (actorIds.size > 0) {
-    const { data: actorRows, error: actorError } = await supabase
-      .from("allowed_users")
-      .select("auth_user_id, display_name, email")
-      .in("auth_user_id", [...actorIds]);
-    if (actorError) throw actorError;
-    for (const actor of actorRows ?? []) {
-      if (!actor.auth_user_id) continue;
-      actorMap.set(actor.auth_user_id, actor.display_name?.trim() || actor.email || actor.auth_user_id);
-    }
-  }
-
-  return (data ?? []).map((row) => {
-    const type = Array.isArray(row.business_ledger_types)
-      ? row.business_ledger_types[0]
-      : row.business_ledger_types;
-    const subType = Array.isArray(row.business_ledger_sub_types)
-      ? row.business_ledger_sub_types[0]
-      : row.business_ledger_sub_types;
-    const vendorType = Array.isArray(row.business_ledger_vendor_types)
-      ? row.business_ledger_vendor_types[0]
-      : row.business_ledger_vendor_types;
-    const vendor = Array.isArray(row.business_ledger_vendors)
-      ? row.business_ledger_vendors[0]
-      : row.business_ledger_vendors;
-    const pocket = Array.isArray(row.big_book_actor_pockets)
-      ? row.big_book_actor_pockets[0]
-      : row.big_book_actor_pockets;
-    const actor = Array.isArray(row.big_book_actors)
-      ? row.big_book_actors[0]
-      : row.big_book_actors;
-    const attachments = (Array.isArray(row.business_ledger_attachments)
-      ? row.business_ledger_attachments
-      : row.business_ledger_attachments
-        ? [row.business_ledger_attachments]
-        : []) as BigBookAttachment[];
-
-    return {
-      id: row.id,
-      entry_date: row.entry_date,
-      entry_direction: row.entry_direction as "spending" | "profit",
-      entry_type_id: row.entry_type_id,
-      entry_sub_type_id: row.entry_sub_type_id ?? null,
-      vendor_type_id: row.vendor_type_id ?? null,
-      vendor_id: row.vendor_id ?? null,
-      pocket_id: row.pocket_id ?? null,
-      explanation: row.explanation,
-      amount: Number(row.amount),
-      currency_code: row.currency_code,
-      remark: row.remark,
-      responsible_actor_id: row.responsible_actor_id,
-      created_by: row.created_by,
-      updated_by: row.updated_by,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-      type_name: type?.name ?? "-",
-      type_code: type?.code ?? "-",
-      sub_type_name: subType?.name ?? null,
-      sub_type_code: subType?.code ?? null,
-      vendor_type_name: vendorType?.name ?? null,
-      vendor_name: vendor?.name ?? null,
-      pocket_name: pocket?.name ?? null,
-      actor_code: (actor?.actor_code ?? "A") as "A" | "B",
-      actor_display_name: actor?.display_name ?? "-",
-      creator_display_name: row.created_by ? (actorMap.get(row.created_by) ?? row.created_by) : "-",
-      updater_display_name: row.updated_by ? (actorMap.get(row.updated_by) ?? row.updated_by) : "-",
-      attachments: attachments.map((attachment) => ({
-        ...attachment,
-        file_size: Number(attachment.file_size)
-      }))
-    };
-  });
+  return (data ?? []).map((row) => mapBigBookEntryRow(row as RawBigBookEntryRow, actorMap));
 }
 
 export type BigBookEntriesPagedResult = {
@@ -543,45 +591,11 @@ export async function getBigBookEntriesPaged(
 
   let query = supabase
     .from("business_ledger_entries")
-    .select(
-      `
-      id, entry_date, entry_direction, entry_type_id, entry_sub_type_id, vendor_type_id, vendor_id, pocket_id, explanation, amount, currency_code, remark, responsible_actor_id, created_by, updated_by, created_at, updated_at,
-      business_ledger_types(id, code, name),
-      business_ledger_sub_types(id, code, name),
-      business_ledger_vendor_types(id, code, name),
-      business_ledger_vendors(id, code, name),
-      big_book_actor_pockets(id, code, name),
-      big_book_actors(id, actor_code, display_name),
-      business_ledger_attachments(id, ledger_entry_id, storage_path, file_name, mime_type, file_size, uploaded_by, created_at)
-    `,
-      { count: "exact" }
-    )
+    .select(BIG_BOOK_ENTRY_SELECT, { count: "exact" })
     .order("entry_date", { ascending: false })
     .order("created_at", { ascending: false });
 
-  const filterTypeIds = toFilterArray(filters.typeId);
-  const filterCurrencyCodes = toFilterArray(filters.currencyCode);
-  const filterDirections = toFilterArray(filters.direction);
-  const filterActorIds = toFilterArray(filters.actorId);
-  const filterVendorTypeIds = toFilterArray(filters.vendorTypeId);
-  const filterVendorIds = toFilterArray(filters.vendorId);
-  const filterPocketIds = toFilterArray(filters.pocketId);
-  if (filterTypeIds?.length) query = query.in("entry_type_id", filterTypeIds);
-  if (filterCurrencyCodes?.length) query = query.in("currency_code", filterCurrencyCodes);
-  if (filterDirections?.length) query = query.in("entry_direction", filterDirections);
-  if (filterActorIds?.length) query = query.in("responsible_actor_id", filterActorIds);
-  if (filterVendorTypeIds?.length) query = query.in("vendor_type_id", filterVendorTypeIds);
-  if (filterVendorIds?.length) query = query.in("vendor_id", filterVendorIds);
-  if (filterPocketIds?.length) query = query.in("pocket_id", filterPocketIds);
-  if (filters.dateFrom) query = query.gte("entry_date", filters.dateFrom);
-  if (filters.dateTo) query = query.lte("entry_date", filters.dateTo);
-  if (filters.query) {
-    const sanitized = sanitizeBigBookSearchQuery(filters.query);
-    if (sanitized) {
-      query = query.or(`explanation.ilike.%${sanitized}%,remark.ilike.%${sanitized}%`);
-    }
-  }
-
+  query = applyBigBookEntryFilters(query, filters);
   query = query.range(fromIndex, toIndex);
 
   const { data, error, count } = await query;
@@ -589,85 +603,234 @@ export async function getBigBookEntriesPaged(
 
   const totalCount = count ?? 0;
 
-  const actorIds = new Set<string>();
+  const actorIds: string[] = [];
   for (const row of data ?? []) {
-    if (row.created_by && isUuid(row.created_by)) actorIds.add(row.created_by);
-    if (row.updated_by && isUuid(row.updated_by)) actorIds.add(row.updated_by);
+    if (row.created_by) actorIds.push(row.created_by);
+    if (row.updated_by) actorIds.push(row.updated_by);
+  }
+  const actorMap = await resolveDisplayNameMap(supabase, actorIds);
+
+  const rows: BigBookEntry[] = (data ?? []).map((row) =>
+    mapBigBookEntryRow(row as RawBigBookEntryRow, actorMap)
+  );
+
+  return { rows, totalCount };
+}
+
+type LedgerScanRow = {
+  id: string;
+  group_id: string | null;
+  entry_date: string;
+  created_at: string;
+};
+
+type LedgerDisplayKey =
+  | { kind: "entry"; id: string; sort_date: string; sort_created_at: string }
+  | { kind: "group"; id: string; sort_date: string; sort_created_at: string };
+
+function buildLedgerDisplayKeys(scanRows: LedgerScanRow[]): LedgerDisplayKey[] {
+  const groupMeta = new Map<string, { sort_date: string; sort_created_at: string }>();
+  const keys: LedgerDisplayKey[] = [];
+
+  for (const row of scanRows) {
+    if (row.group_id) {
+      const existing = groupMeta.get(row.group_id);
+      if (!existing) {
+        groupMeta.set(row.group_id, {
+          sort_date: row.entry_date,
+          sort_created_at: row.created_at
+        });
+      } else {
+        const dateNewer = row.entry_date > existing.sort_date;
+        const sameDateNewer =
+          row.entry_date === existing.sort_date && row.created_at > existing.sort_created_at;
+        if (dateNewer || sameDateNewer) {
+          groupMeta.set(row.group_id, {
+            sort_date: row.entry_date,
+            sort_created_at: row.created_at
+          });
+        }
+      }
+      continue;
+    }
+    keys.push({
+      kind: "entry",
+      id: row.id,
+      sort_date: row.entry_date,
+      sort_created_at: row.created_at
+    });
   }
 
-  const actorMap = new Map<string, string>();
-  if (actorIds.size > 0) {
-    const { data: actorRows, error: actorError } = await supabase
-      .from("allowed_users")
-      .select("auth_user_id, display_name, email")
-      .in("auth_user_id", [...actorIds]);
-    if (actorError) throw actorError;
-    for (const actor of actorRows ?? []) {
-      if (!actor.auth_user_id) continue;
-      actorMap.set(actor.auth_user_id, actor.display_name?.trim() || actor.email || actor.auth_user_id);
+  for (const [groupId, meta] of groupMeta) {
+    keys.push({
+      kind: "group",
+      id: groupId,
+      sort_date: meta.sort_date,
+      sort_created_at: meta.sort_created_at
+    });
+  }
+
+  keys.sort((a, b) => {
+    if (a.sort_date !== b.sort_date) return a.sort_date < b.sort_date ? 1 : -1;
+    if (a.sort_created_at !== b.sort_created_at) return a.sort_created_at < b.sort_created_at ? 1 : -1;
+    return a.id.localeCompare(b.id);
+  });
+
+  return keys;
+}
+
+export type BigBookLedgerRowsPagedResult = {
+  rows: BigBookLedgerRow[];
+  totalCount: number;
+};
+
+export async function getBigBookLedgerRowsPaged(
+  filters: BigBookEntryFilters & { page: number; pageSize: number }
+): Promise<BigBookLedgerRowsPagedResult> {
+  const supabase = await createClient();
+  const page = Math.max(0, Math.floor(filters.page));
+  const pageSize = Math.max(1, Math.floor(filters.pageSize));
+
+  const scanPageSize = 1000;
+  let offset = 0;
+  const scanRows: LedgerScanRow[] = [];
+
+  while (true) {
+    let query = supabase
+      .from("business_ledger_entries")
+      .select("id, group_id, entry_date, created_at")
+      .order("entry_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .range(offset, offset + scanPageSize - 1);
+
+    query = applyBigBookEntryFilters(query, filters);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    const batch = (data ?? []) as LedgerScanRow[];
+    scanRows.push(...batch);
+    if (batch.length < scanPageSize) break;
+    offset += scanPageSize;
+  }
+
+  const displayKeys = buildLedgerDisplayKeys(scanRows);
+  const totalCount = displayKeys.length;
+  const pageKeys = displayKeys.slice(page * pageSize, page * pageSize + pageSize);
+
+  if (!pageKeys.length) {
+    return { rows: [], totalCount };
+  }
+
+  const standaloneIds = pageKeys.filter((key) => key.kind === "entry").map((key) => key.id);
+  const pageGroupIds = pageKeys.filter((key) => key.kind === "group").map((key) => key.id);
+
+  const entryPromises: Promise<{ data: unknown[] | null; error: { message: string } | null }>[] = [];
+
+  if (standaloneIds.length) {
+    entryPromises.push(
+      Promise.resolve(
+        supabase
+          .from("business_ledger_entries")
+          .select(BIG_BOOK_ENTRY_SELECT)
+          .in("id", standaloneIds)
+          .then((result) => ({ data: result.data as unknown[] | null, error: result.error }))
+      )
+    );
+  } else {
+    entryPromises.push(Promise.resolve({ data: [], error: null }));
+  }
+
+  if (pageGroupIds.length) {
+    entryPromises.push(
+      Promise.resolve(
+        supabase
+          .from("business_ledger_entries")
+          .select(BIG_BOOK_ENTRY_SELECT)
+          .in("group_id", pageGroupIds)
+          .order("entry_date", { ascending: false })
+          .order("created_at", { ascending: false })
+          .then((result) => ({ data: result.data as unknown[] | null, error: result.error }))
+      )
+    );
+  } else {
+    entryPromises.push(Promise.resolve({ data: [], error: null }));
+  }
+
+  const groupPromise = pageGroupIds.length
+    ? supabase
+        .from("business_ledger_entry_groups")
+        .select("id, label, remark, created_by, updated_by, created_at, updated_at")
+        .in("id", pageGroupIds)
+    : Promise.resolve({ data: [] as BigBookEntryGroup[], error: null });
+
+  const [standaloneResult, groupedResult, groupsResult] = await Promise.all([
+    entryPromises[0],
+    entryPromises[1],
+    groupPromise
+  ]);
+
+  if (standaloneResult.error) throw standaloneResult.error;
+  if (groupedResult.error) throw groupedResult.error;
+  if (groupsResult.error) throw groupsResult.error;
+
+  const allRawEntries = [
+    ...((standaloneResult.data ?? []) as RawBigBookEntryRow[]),
+    ...((groupedResult.data ?? []) as RawBigBookEntryRow[])
+  ];
+
+  const actorIds: string[] = [];
+  for (const row of allRawEntries) {
+    if (row.created_by) actorIds.push(row.created_by);
+    if (row.updated_by) actorIds.push(row.updated_by);
+  }
+  for (const group of groupsResult.data ?? []) {
+    if (group.created_by) actorIds.push(group.created_by);
+    if (group.updated_by) actorIds.push(group.updated_by);
+  }
+  const actorMap = await resolveDisplayNameMap(supabase, actorIds);
+
+  const entriesById = new Map<string, BigBookEntry>();
+  const entriesByGroupId = new Map<string, BigBookEntry[]>();
+  for (const raw of allRawEntries) {
+    const entry = mapBigBookEntryRow(raw, actorMap);
+    entriesById.set(entry.id, entry);
+    if (entry.group_id) {
+      const list = entriesByGroupId.get(entry.group_id) ?? [];
+      list.push(entry);
+      entriesByGroupId.set(entry.group_id, list);
     }
   }
 
-  const rows: BigBookEntry[] = (data ?? []).map((row) => {
-    const type = Array.isArray(row.business_ledger_types)
-      ? row.business_ledger_types[0]
-      : row.business_ledger_types;
-    const subType = Array.isArray(row.business_ledger_sub_types)
-      ? row.business_ledger_sub_types[0]
-      : row.business_ledger_sub_types;
-    const vendorType = Array.isArray(row.business_ledger_vendor_types)
-      ? row.business_ledger_vendor_types[0]
-      : row.business_ledger_vendor_types;
-    const vendor = Array.isArray(row.business_ledger_vendors)
-      ? row.business_ledger_vendors[0]
-      : row.business_ledger_vendors;
-    const pocket = Array.isArray(row.big_book_actor_pockets)
-      ? row.big_book_actor_pockets[0]
-      : row.big_book_actor_pockets;
-    const actor = Array.isArray(row.big_book_actors)
-      ? row.big_book_actors[0]
-      : row.big_book_actors;
-    const attachments = (Array.isArray(row.business_ledger_attachments)
-      ? row.business_ledger_attachments
-      : row.business_ledger_attachments
-        ? [row.business_ledger_attachments]
-        : []) as BigBookAttachment[];
+  const groupsById = new Map<string, BigBookEntryGroup>();
+  for (const group of groupsResult.data ?? []) {
+    groupsById.set(group.id, {
+      id: group.id,
+      label: group.label,
+      remark: group.remark ?? null,
+      created_by: group.created_by ?? null,
+      updated_by: group.updated_by ?? null,
+      created_at: group.created_at,
+      updated_at: group.updated_at
+    });
+  }
 
-    return {
-      id: row.id,
-      entry_date: row.entry_date,
-      entry_direction: row.entry_direction as "spending" | "profit",
-      entry_type_id: row.entry_type_id,
-      entry_sub_type_id: row.entry_sub_type_id ?? null,
-      vendor_type_id: row.vendor_type_id ?? null,
-      vendor_id: row.vendor_id ?? null,
-      pocket_id: row.pocket_id ?? null,
-      explanation: row.explanation,
-      amount: Number(row.amount),
-      currency_code: row.currency_code,
-      remark: row.remark,
-      responsible_actor_id: row.responsible_actor_id,
-      created_by: row.created_by,
-      updated_by: row.updated_by,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-      type_name: type?.name ?? "-",
-      type_code: type?.code ?? "-",
-      sub_type_name: subType?.name ?? null,
-      sub_type_code: subType?.code ?? null,
-      vendor_type_name: vendorType?.name ?? null,
-      vendor_name: vendor?.name ?? null,
-      pocket_name: pocket?.name ?? null,
-      actor_code: (actor?.actor_code ?? "A") as "A" | "B",
-      actor_display_name: actor?.display_name ?? "-",
-      creator_display_name: row.created_by ? (actorMap.get(row.created_by) ?? row.created_by) : "-",
-      updater_display_name: row.updated_by ? (actorMap.get(row.updated_by) ?? row.updated_by) : "-",
-      attachments: attachments.map((attachment) => ({
-        ...attachment,
-        file_size: Number(attachment.file_size)
-      }))
-    };
-  });
+  const rows: BigBookLedgerRow[] = [];
+  for (const key of pageKeys) {
+    if (key.kind === "entry") {
+      const entry = entriesById.get(key.id);
+      if (!entry) continue;
+      rows.push({ kind: "entry", sort_date: key.sort_date, entry });
+      continue;
+    }
+    const group = groupsById.get(key.id);
+    const entries = entriesByGroupId.get(key.id) ?? [];
+    if (!group || !entries.length) continue;
+    entries.sort((a, b) => {
+      if (a.entry_date !== b.entry_date) return a.entry_date < b.entry_date ? 1 : -1;
+      return a.created_at < b.created_at ? 1 : -1;
+    });
+    rows.push({ kind: "group", sort_date: key.sort_date, group, entries });
+  }
 
   return { rows, totalCount };
 }

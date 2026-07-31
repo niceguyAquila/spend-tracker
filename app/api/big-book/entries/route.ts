@@ -7,7 +7,7 @@ import {
   bigBookEntryInputSchema,
   bigBookEntryUpdateSchema
 } from "@/lib/validation/big-book";
-import { getBigBookEntriesPaged } from "@/lib/db/queries";
+import { getBigBookEntriesPaged, getBigBookLedgerRowsPaged } from "@/lib/db/queries";
 
 export async function GET(request: Request) {
   const authCheck = await requireAdminApi();
@@ -16,6 +16,7 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
+  const view = searchParams.get("view") === "rows" ? "rows" : "flat";
   const parsed = bigBookEntriesQuerySchema.safeParse({
     typeId: searchParams.getAll("typeId"),
     currencyCode: searchParams.getAll("currencyCode"),
@@ -35,6 +36,10 @@ export async function GET(request: Request) {
   }
 
   try {
+    if (view === "rows") {
+      const result = await getBigBookLedgerRowsPaged(parsed.data);
+      return NextResponse.json(result);
+    }
     const result = await getBigBookEntriesPaged(parsed.data);
     return NextResponse.json(result);
   } catch (error) {

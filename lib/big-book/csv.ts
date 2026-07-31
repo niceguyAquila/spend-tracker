@@ -11,7 +11,14 @@ const REQUIRED_HEADERS = [
   "actor_name"
 ] as const;
 
-const OPTIONAL_HEADERS = ["sub_type_name", "vendor_type_name", "vendor_name", "pocket_name"] as const;
+const OPTIONAL_HEADERS = [
+  "sub_type_name",
+  "vendor_type_name",
+  "vendor_name",
+  "pocket_name",
+  "group_label",
+  "group_remark"
+] as const;
 
 /** Full import/export column order (required + optional). */
 export const BIG_BOOK_CSV_HEADERS = [
@@ -26,11 +33,13 @@ export const BIG_BOOK_CSV_HEADERS = [
   "currency_code",
   "remark",
   "actor_name",
-  "pocket_name"
+  "pocket_name",
+  "group_label",
+  "group_remark"
 ] as const;
 
 export function buildBigBookImportTemplateCsv(): string {
-  const exampleRow = [
+  const standaloneRow = [
     "2026-04-25",
     "spending",
     "Office Supplies",
@@ -42,10 +51,44 @@ export function buildBigBookImportTemplateCsv(): string {
     "IDR",
     "Restock",
     "Actor A",
-    "Petty Cash"
+    "Petty Cash",
+    "",
+    ""
+  ];
+  const groupRowA = [
+    "2026-04-26",
+    "spending",
+    "Office Supplies",
+    "",
+    "Merchant",
+    "Rbee",
+    "Laptop payment IDR leg",
+    "15000000",
+    "IDR",
+    "Part of hardware purchase",
+    "Actor A",
+    "Petty Cash",
+    "Hardware purchase",
+    "Grouped multi-currency buy"
+  ];
+  const groupRowB = [
+    "2026-04-26",
+    "spending",
+    "Office Supplies",
+    "",
+    "Merchant",
+    "Rbee",
+    "Laptop payment USDT leg",
+    "500",
+    "USDT",
+    "Part of hardware purchase",
+    "Actor A",
+    "",
+    "Hardware purchase",
+    "Grouped multi-currency buy"
   ];
   // UTF-8 BOM helps Excel on Windows keep columns when opening the template.
-  return `\uFEFF${[BIG_BOOK_CSV_HEADERS.join(","), exampleRow.join(",")].join("\r\n")}\r\n`;
+  return `\uFEFF${[BIG_BOOK_CSV_HEADERS.join(","), standaloneRow.join(","), groupRowA.join(","), groupRowB.join(",")].join("\r\n")}\r\n`;
 }
 
 type AllowedCurrency = "IDR" | "MYR" | "USDT" | "TRX";
@@ -64,6 +107,8 @@ export type ParsedBigBookCsvRow = {
   remark: string | null;
   actor_name: string;
   pocket_name: string | null;
+  group_label: string | null;
+  group_remark: string | null;
 };
 
 export type ParseBigBookCsvResult = {
@@ -253,6 +298,8 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
     const remark = normalizeOptional(get("remark"));
     const actorName = normalizeRequired(get("actor_name"));
     const pocketName = normalizeOptional(get("pocket_name"));
+    const groupLabel = normalizeOptional(get("group_label"));
+    const groupRemark = normalizeOptional(get("group_remark"));
 
     if (!entryDateRaw || !entryDirectionRaw || !typeName || !explanation || !amountRaw || !currencyRaw || !actorName) {
       errors.push(`Row ${lineNumber}: required fields must not be empty.`);
@@ -293,6 +340,16 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
       continue;
     }
 
+    if (groupRemark && !groupLabel) {
+      errors.push(`Row ${lineNumber}: group_label is required when group_remark is provided.`);
+      continue;
+    }
+
+    if (groupLabel && groupLabel.length < 2) {
+      errors.push(`Row ${lineNumber}: group_label must be at least 2 characters.`);
+      continue;
+    }
+
     parsedRows.push({
       entry_date: entryDate,
       entry_direction: directionParsed.data,
@@ -305,7 +362,9 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
       currency_code: currencyParsed.data,
       remark,
       actor_name: actorName,
-      pocket_name: pocketName
+      pocket_name: pocketName,
+      group_label: groupLabel,
+      group_remark: groupRemark
     });
   }
 

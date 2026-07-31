@@ -197,7 +197,9 @@ export async function POST(request: Request) {
       amount: row.amount,
       currency_code: row.currency_code,
       remark: row.remark ?? "",
-      responsible_actor_id: actorId ?? ""
+      responsible_actor_id: actorId ?? "",
+      group_label: row.group_label,
+      group_remark: row.group_remark
     };
   });
 
@@ -216,6 +218,22 @@ export async function POST(request: Request) {
     }
   }
 
+  // Within one file, each distinct group_label becomes one group. A label used
+  // on only a single row is rejected — groups must contain at least two members.
+  const groupLabelCounts = new Map<string, number>();
+  for (const row of records) {
+    if (!row.group_label) continue;
+    const key = normalizeLookupKey(row.group_label);
+    groupLabelCounts.set(key, (groupLabelCounts.get(key) ?? 0) + 1);
+  }
+  for (const [key, count] of groupLabelCounts) {
+    if (count < 2) {
+      validationErrors.push(
+        `group_label '${key}' appears on only ${count} row(s); a group needs at least 2 transactions.`
+      );
+    }
+  }
+
   if (validationErrors.length > 0) {
     return NextResponse.json(
       {
@@ -228,23 +246,83 @@ export async function POST(request: Request) {
     );
   }
 
+  const groupIdByLabel = new Map<string, string>();
+  const groupRemarkByLabel = new Map<string, string | null>();
+  for (const row of records) {
+    if (!row.group_label) continue;
+    const key = normalizeLookupKey(row.group_label);
+    if (!groupRemarkByLabel.has(key) && row.group_remark) {
+      groupRemarkByLabel.set(key, row.group_remark);
+    } else if (!groupRemarkByLabel.has(key)) {
+      groupRemarkByLabel.set(key, null);
+    }
+  }
+
+  for (const [key, remark] of groupRemarkByLabel) {
+    const labelSource = records.find(
+      (row) => row.group_label && normalizeLookupKey(row.group_label) === key
+    )?.group_label;
+    if (!labelSource) continue;
+
+    const { data: group, error: groupError } = await supabase
+      .from("business_ledger_entry_groups")
+      .insert({
+        label: labelSource,
+        remark,
+        created_by: authCheck.user.id,
+        updated_by: authCheck.user.id
+      })
+      .select("id")
+      .single();
+
+    if (groupError || !group) {
+      return NextResponse.json(
+        { error: groupError?.message ?? `Failed to create group '${labelSource}'.` },
+        { status: 400 }
+      );
+    }
+    groupIdByLabel.set(key, group.id);
+  }
+
   const { error } = await supabase.from("business_ledger_entries").insert(
-    records.map((row) => ({
-      ...row,
-      brand_id: authCheck.activeBrandId,
-      remark: row.remark || null,
-      created_by: authCheck.user.id,
-      updated_by: authCheck.user.id
-    }))
+    records.map((row) => {
+      const groupId = row.group_label
+        ? groupIdByLabel.get(normalizeLookupKey(row.group_label)) ?? null
+        : null;
+      return {
+        entry_date: row.entry_date,
+        entry_direction: row.entry_direction,
+        entry_type_id: row.entry_type_id,
+        entry_sub_type_id: row.entry_sub_type_id,
+        vendor_type_id: row.vendor_type_id,
+        vendor_id: row.vendor_id,
+        pocket_id: row.pocket_id,
+        explanation: row.explanation,
+        amount: row.amount,
+        currency_code: row.currency_code,
+        remark: row.remark || null,
+        responsible_actor_id: row.responsible_actor_id,
+        group_id: groupId,
+        created_by: authCheck.user.id,
+        updated_by: authCheck.user.id
+      };
+    })
   );
 
   if (error) {
+    if (groupIdByLabel.size) {
+      await supabase
+        .from("business_ledger_entry_groups")
+        .delete()
+        .in("id", [...groupIdByLabel.values()]);
+    }
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
   return NextResponse.json({
     ok: true,
     processed: records.length,
-    total_rows: records.length
+    total_rows: records.length,
+    groups_created: groupIdByLabel.size
   });
 }

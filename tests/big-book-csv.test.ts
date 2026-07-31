@@ -17,6 +17,8 @@ describe("parseBigBookCsv", () => {
     expect(result.rows[0].vendor_type_name).toBeNull();
     expect(result.rows[0].vendor_name).toBeNull();
     expect(result.rows[0].pocket_name).toBeNull();
+    expect(result.rows[0].group_label).toBeNull();
+    expect(result.rows[0].group_remark).toBeNull();
     expect(result.rows[1].remark).toBeNull();
     expect(result.rows[1].sub_type_name).toBeNull();
   });
@@ -125,7 +127,7 @@ describe("buildBigBookImportTemplateCsv", () => {
     const csv = buildBigBookImportTemplateCsv();
     const result = parseBigBookCsv(csv);
     expect(result.errors).toEqual([]);
-    expect(result.rows).toHaveLength(1);
+    expect(result.rows).toHaveLength(3);
     expect(result.rows[0]).toMatchObject({
       entry_date: "2026-04-25",
       entry_direction: "spending",
@@ -138,8 +140,47 @@ describe("buildBigBookImportTemplateCsv", () => {
       currency_code: "IDR",
       remark: "Restock",
       actor_name: "Actor A",
-      pocket_name: "Petty Cash"
+      pocket_name: "Petty Cash",
+      group_label: null,
+      group_remark: null
     });
+    expect(result.rows[1]).toMatchObject({
+      group_label: "Hardware purchase",
+      group_remark: "Grouped multi-currency buy",
+      currency_code: "IDR"
+    });
+    expect(result.rows[2]).toMatchObject({
+      group_label: "Hardware purchase",
+      group_remark: "Grouped multi-currency buy",
+      currency_code: "USDT"
+    });
+  });
+});
+
+describe("parseBigBookCsv group columns", () => {
+  it("parses optional group_label and group_remark", () => {
+    const csv = [
+      "entry_date,entry_direction,type_name,explanation,amount,currency_code,remark,actor_name,group_label,group_remark",
+      "2026-04-25,spending,Office Supplies,Leg A,100,IDR,,Actor A,Hardware buy,Note",
+      "2026-04-26,spending,Office Supplies,Leg B,50,USDT,,Actor A,Hardware buy,Note"
+    ].join("\n");
+
+    const result = parseBigBookCsv(csv);
+    expect(result.errors).toEqual([]);
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows[0].group_label).toBe("Hardware buy");
+    expect(result.rows[0].group_remark).toBe("Note");
+  });
+
+  it("rejects group_remark without group_label", () => {
+    const csv = [
+      "entry_date,entry_direction,type_name,explanation,amount,currency_code,remark,actor_name,group_remark",
+      "2026-04-25,spending,Office Supplies,Leg A,100,IDR,,Actor A,Note"
+    ].join("\n");
+
+    const result = parseBigBookCsv(csv);
+    expect(result.rows).toHaveLength(0);
+    expect(result.errors.some((item) => item.includes("group_label is required"))).toBe(true);
   });
 });
 
