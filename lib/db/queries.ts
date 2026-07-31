@@ -757,18 +757,12 @@ export async function getBigBookActorPocketMetrics(): Promise<BigBookActorPocket
     offset += pageSize;
   }
 
-  const byPocket = new Map<string, { inflow: number; outflow: number; entry_count: number }>();
+  const netByPocket = new Map<string, number>();
   for (const row of rows) {
     if (!row.pocket_id) continue;
-    const bucket = byPocket.get(row.pocket_id) ?? { inflow: 0, outflow: 0, entry_count: 0 };
     const amount = Math.abs(Number(row.amount));
-    if (row.entry_direction === "spending") {
-      bucket.outflow += amount;
-    } else {
-      bucket.inflow += amount;
-    }
-    bucket.entry_count += 1;
-    byPocket.set(row.pocket_id, bucket);
+    const signedAmount = row.entry_direction === "spending" ? -amount : amount;
+    netByPocket.set(row.pocket_id, (netByPocket.get(row.pocket_id) ?? 0) + signedAmount);
   }
 
   const actorById = new Map(actors.map((actor) => [actor.id, actor]));
@@ -784,23 +778,15 @@ export async function getBigBookActorPocketMetrics(): Promise<BigBookActorPocket
         actor_id: pocket.actor_id,
         actor_code: (actor?.actor_code ?? "A") as "A" | "B",
         actor_display_name: actor?.display_name ?? "Unknown Actor",
-        pockets: [],
-        total_net: 0
+        pockets: []
       } as BigBookActorPocketMetrics);
 
-    const bucket = byPocket.get(pocket.id) ?? { inflow: 0, outflow: 0, entry_count: 0 };
-    const net = bucket.inflow - bucket.outflow;
     group.pockets.push({
       pocket_id: pocket.id,
-      pocket_code: pocket.code,
       pocket_name: pocket.name,
       is_active: pocket.is_active,
-      inflow: bucket.inflow,
-      outflow: bucket.outflow,
-      net,
-      entry_count: bucket.entry_count
+      net: netByPocket.get(pocket.id) ?? 0
     });
-    group.total_net += net;
     byActor.set(pocket.actor_id, group);
   }
 
