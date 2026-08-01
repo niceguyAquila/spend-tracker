@@ -38,7 +38,12 @@ export default async function BigBookPage() {
       getBigBookActionBy({ includeInactive: true }),
       getBigBookActorPockets({ includeInactive: true }),
       getBigBookActors(),
-      getBigBookLedgerRowsPaged({ page: 0, pageSize: DEFAULT_PAGE_SIZE }),
+      getBigBookLedgerRowsPaged({
+        page: 0,
+        pageSize: DEFAULT_PAGE_SIZE,
+        sortBy: "entry_date",
+        sortDir: "desc"
+      }),
       getBigBookActorCurrencyMetrics(),
       getBigBookActorPocketMetrics(),
       getBigBookVendorActorOutstanding()

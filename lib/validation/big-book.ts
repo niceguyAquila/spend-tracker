@@ -234,6 +234,22 @@ function normalizeMultiSelect<T extends z.ZodTypeAny>(itemSchema: T) {
     });
 }
 
+export const bigBookLedgerSortKeySchema = z.enum([
+  "entry_date",
+  "entry_direction",
+  "type_name",
+  "sub_type_name",
+  "vendor_type_name",
+  "vendor_name",
+  "explanation",
+  "amount",
+  "actor_display_name",
+  "action_by_name",
+  "pocket_name"
+]);
+
+export const bigBookLedgerSortDirSchema = z.enum(["asc", "desc"]);
+
 export const bigBookEntriesQuerySchema = z.object({
   typeId: normalizeMultiSelect(z.string().uuid()),
   currencyCode: normalizeMultiSelect(bigBookCurrencySchema),
@@ -249,7 +265,9 @@ export const bigBookEntriesQuerySchema = z.object({
   dateTo: optionalString,
   query: z.string().max(200).optional().or(z.literal("")).transform((v) => (v ? v : undefined)),
   page: z.coerce.number().int().min(0).default(0),
-  pageSize: z.coerce.number().int().min(1).max(200).default(20)
+  pageSize: z.coerce.number().int().min(1).max(200).default(20),
+  sortBy: bigBookLedgerSortKeySchema.optional().default("entry_date"),
+  sortDir: bigBookLedgerSortDirSchema.optional().default("desc")
 });
 
 export const bigBookCreditsPickerQuerySchema = z.object({

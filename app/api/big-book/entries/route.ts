@@ -113,7 +113,9 @@ export async function GET(request: Request) {
     dateTo: searchParams.get("dateTo") ?? "",
     query: searchParams.get("query") ?? "",
     page: searchParams.get("page") ?? undefined,
-    pageSize: searchParams.get("pageSize") ?? undefined
+    pageSize: searchParams.get("pageSize") ?? undefined,
+    sortBy: searchParams.get("sortBy") ?? undefined,
+    sortDir: searchParams.get("sortDir") ?? undefined
   });
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });

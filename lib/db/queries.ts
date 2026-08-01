@@ -11,6 +11,14 @@ import {
   type BigBookCurrencyTotal
 } from "@/lib/big-book/totals";
 import {
+  buildLedgerDisplayKeys,
+  ledgerSortNeedsNameLookups,
+  type BigBookLedgerSortDir,
+  type BigBookLedgerSortKey,
+  type LedgerNameLookups,
+  type LedgerScanRow
+} from "@/lib/big-book/ledger-display-keys";
+import {
   BigBookActor,
   BigBookActorPocket,
   BigBookActorPocketMetrics,
@@ -893,71 +901,52 @@ export async function getBigBookEntriesPaged(
   return { rows, totalCount };
 }
 
-type LedgerScanRow = {
-  id: string;
-  group_id: string | null;
-  entry_date: string;
-  created_at: string;
-  amount: number;
-  currency_code: BigBookCurrency;
-  entry_direction: "spending" | "profit";
-  pocket_id?: string | null;
-  is_credit?: boolean;
-};
+async function loadLedgerSortNameLookups(
+  sortBy: BigBookLedgerSortKey
+): Promise<LedgerNameLookups> {
+  if (!ledgerSortNeedsNameLookups(sortBy)) return {};
 
-type LedgerDisplayKey =
-  | { kind: "entry"; id: string; sort_date: string; sort_created_at: string }
-  | { kind: "group"; id: string; sort_date: string; sort_created_at: string };
-
-function buildLedgerDisplayKeys(scanRows: LedgerScanRow[]): LedgerDisplayKey[] {
-  const groupMeta = new Map<string, { sort_date: string; sort_created_at: string }>();
-  const keys: LedgerDisplayKey[] = [];
-
-  for (const row of scanRows) {
-    if (row.group_id) {
-      const existing = groupMeta.get(row.group_id);
-      if (!existing) {
-        groupMeta.set(row.group_id, {
-          sort_date: row.entry_date,
-          sort_created_at: row.created_at
-        });
-      } else {
-        const dateNewer = row.entry_date > existing.sort_date;
-        const sameDateNewer =
-          row.entry_date === existing.sort_date && row.created_at > existing.sort_created_at;
-        if (dateNewer || sameDateNewer) {
-          groupMeta.set(row.group_id, {
-            sort_date: row.entry_date,
-            sort_created_at: row.created_at
-          });
-        }
-      }
-      continue;
+  const lookups: LedgerNameLookups = {};
+  switch (sortBy) {
+    case "type_name": {
+      const rows = await getBigBookLedgerTypes({ includeInactive: true });
+      lookups.typeNameById = new Map(rows.map((row) => [row.id, row.name]));
+      break;
     }
-    keys.push({
-      kind: "entry",
-      id: row.id,
-      sort_date: row.entry_date,
-      sort_created_at: row.created_at
-    });
+    case "sub_type_name": {
+      const rows = await getBigBookLedgerSubTypes({ includeInactive: true });
+      lookups.subTypeNameById = new Map(rows.map((row) => [row.id, row.name]));
+      break;
+    }
+    case "vendor_type_name": {
+      const rows = await getBigBookVendorTypes({ includeInactive: true });
+      lookups.vendorTypeNameById = new Map(rows.map((row) => [row.id, row.name]));
+      break;
+    }
+    case "vendor_name": {
+      const rows = await getBigBookVendors({ includeInactive: true });
+      lookups.vendorNameById = new Map(rows.map((row) => [row.id, row.name]));
+      break;
+    }
+    case "action_by_name": {
+      const rows = await getBigBookActionBy({ includeInactive: true });
+      lookups.actionByNameById = new Map(rows.map((row) => [row.id, row.name]));
+      break;
+    }
+    case "pocket_name": {
+      const rows = await getBigBookActorPockets({ includeInactive: true });
+      lookups.pocketNameById = new Map(rows.map((row) => [row.id, row.name]));
+      break;
+    }
+    case "actor_display_name": {
+      const rows = await getBigBookActors();
+      lookups.actorNameById = new Map(rows.map((row) => [row.id, row.display_name]));
+      break;
+    }
+    default:
+      break;
   }
-
-  for (const [groupId, meta] of groupMeta) {
-    keys.push({
-      kind: "group",
-      id: groupId,
-      sort_date: meta.sort_date,
-      sort_created_at: meta.sort_created_at
-    });
-  }
-
-  keys.sort((a, b) => {
-    if (a.sort_date !== b.sort_date) return a.sort_date < b.sort_date ? 1 : -1;
-    if (a.sort_created_at !== b.sort_created_at) return a.sort_created_at < b.sort_created_at ? 1 : -1;
-    return a.id.localeCompare(b.id);
-  });
-
-  return keys;
+  return lookups;
 }
 
 /**
@@ -983,11 +972,18 @@ export type BigBookLedgerRowsPagedResult = {
 };
 
 export async function getBigBookLedgerRowsPaged(
-  filters: BigBookEntryFilters & { page: number; pageSize: number }
+  filters: BigBookEntryFilters & {
+    page: number;
+    pageSize: number;
+    sortBy?: BigBookLedgerSortKey;
+    sortDir?: BigBookLedgerSortDir;
+  }
 ): Promise<BigBookLedgerRowsPagedResult> {
   const supabase = await createClient();
   const page = Math.max(0, Math.floor(filters.page));
   const pageSize = Math.max(1, Math.floor(filters.pageSize));
+  const sortBy = filters.sortBy ?? "entry_date";
+  const sortDir = filters.sortDir ?? "desc";
   const filterStatuses = toFilterArray(filters.creditStatus);
 
   const scanPageSize = 1000;
@@ -998,7 +994,7 @@ export async function getBigBookLedgerRowsPaged(
     let query = supabase
       .from("business_ledger_entries")
       .select(
-        "id, group_id, entry_date, created_at, amount, currency_code, entry_direction, pocket_id, is_credit"
+        "id, group_id, entry_date, created_at, amount, currency_code, entry_direction, pocket_id, is_credit, explanation, entry_type_id, entry_sub_type_id, vendor_type_id, vendor_id, action_by_id, responsible_actor_id"
       )
       .order("entry_date", { ascending: false })
       .order("created_at", { ascending: false })
@@ -1057,7 +1053,8 @@ export async function getBigBookLedgerRowsPaged(
     );
   }
 
-  const displayKeys = buildLedgerDisplayKeys(effectiveScanRows);
+  const lookups = await loadLedgerSortNameLookups(sortBy);
+  const displayKeys = buildLedgerDisplayKeys(effectiveScanRows, { sortBy, sortDir, lookups });
   const totalCount = displayKeys.length;
   const pageKeys = displayKeys.slice(page * pageSize, page * pageSize + pageSize);
 

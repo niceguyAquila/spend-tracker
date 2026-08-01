@@ -1,9 +1,40 @@
 import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/auth-api";
 import { BIG_BOOK_CSV_EXPORT_HEADERS } from "@/lib/big-book/csv";
+import { compareLedgerSortValues, type BigBookLedgerSortKey } from "@/lib/big-book/ledger-display-keys";
 import { bigBookEntriesQuerySchema } from "@/lib/validation/big-book";
 import { getBigBookEntries } from "@/lib/db/queries";
 import { createClient } from "@/lib/supabase/server";
+import type { BigBookEntry } from "@/lib/types";
+
+function exportSortValue(entry: BigBookEntry, sortBy: BigBookLedgerSortKey): string | number | null {
+  switch (sortBy) {
+    case "entry_date":
+      return entry.entry_date || null;
+    case "entry_direction":
+      return entry.entry_direction || null;
+    case "type_name":
+      return entry.type_name?.trim() || null;
+    case "sub_type_name":
+      return entry.sub_type_name?.trim() || null;
+    case "vendor_type_name":
+      return entry.vendor_type_name?.trim() || null;
+    case "vendor_name":
+      return entry.vendor_name?.trim() || null;
+    case "explanation":
+      return entry.explanation?.trim() || null;
+    case "amount":
+      return Number(entry.amount);
+    case "actor_display_name":
+      return entry.actor_display_name?.trim() || null;
+    case "action_by_name":
+      return entry.action_by_name?.trim() || null;
+    case "pocket_name":
+      return entry.pocket_name?.trim() || null;
+    default:
+      return null;
+  }
+}
 
 function escapeCsvCell(value: string | null | undefined): string {
   const str = value == null ? "" : String(value);
@@ -42,7 +73,9 @@ export async function GET(request: Request) {
     dateTo: searchParams.get("dateTo") ?? "",
     query: searchParams.get("query") ?? "",
     page: 0,
-    pageSize: 1
+    pageSize: 1,
+    sortBy: searchParams.get("sortBy") ?? undefined,
+    sortDir: searchParams.get("sortDir") ?? undefined
   });
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
@@ -80,7 +113,19 @@ export async function GET(request: Request) {
       }
     }
 
+    const sortBy = parsed.data.sortBy;
+    const sortDir = parsed.data.sortDir;
     const sortedEntries = [...entries].sort((a, b) => {
+      const valueCmp = compareLedgerSortValues(
+        exportSortValue(a, sortBy),
+        exportSortValue(b, sortBy),
+        sortDir
+      );
+      if (valueCmp !== 0) return valueCmp;
+      if (sortBy === "amount") {
+        const currencyCmp = a.currency_code.localeCompare(b.currency_code);
+        if (currencyCmp !== 0) return currencyCmp;
+      }
       const aGroup = a.group_id ?? "";
       const bGroup = b.group_id ?? "";
       if (aGroup !== bGroup) {

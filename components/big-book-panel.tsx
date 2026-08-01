@@ -41,7 +41,9 @@ import { useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
 import { buildBigBookImportTemplateCsv } from "@/lib/big-book/csv";
+import type { BigBookLedgerSortDir, BigBookLedgerSortKey } from "@/lib/big-book/ledger-display-keys";
 import { rowStripeClass } from "@/lib/ui/table";
+import { useColumnWidths } from "@/lib/ui/use-column-widths";
 import { TableEmptyState } from "@/components/ui/table-empty-state";
 
 type Props = {
@@ -97,6 +99,26 @@ function arraysEqual(left: string[], right: string[]) {
 const SUPPORTED_CURRENCIES: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR", "USDT", "TRX"];
 const LEDGER_SKELETON_ROW_COUNT = 6;
 const LEDGER_COLUMN_COUNT = 16;
+const LEDGER_COLUMN_WIDTH_DEFAULTS: Record<string, number> = {
+  select: 44,
+  entry_date: 110,
+  entry_direction: 90,
+  type_name: 130,
+  sub_type_name: 120,
+  vendor_type_name: 120,
+  vendor_name: 140,
+  explanation: 220,
+  amount: 150,
+  credit: 160,
+  actor_display_name: 110,
+  action_by_name: 120,
+  pocket_name: 120,
+  remark: 180,
+  attachments: 140,
+  actions: 100
+};
+const LEDGER_COLUMN_KEYS = Object.keys(LEDGER_COLUMN_WIDTH_DEFAULTS);
+const DESC_DEFAULT_SORT_KEYS = new Set<BigBookLedgerSortKey>(["entry_date", "amount"]);
 const EMPTY_LEDGER_TOTALS: BigBookLedgerTotals = {
   pageTotals: [],
   pageEntryCount: 0,
@@ -270,6 +292,20 @@ export function BigBookPanel({
   const [draftActionByFilter, setDraftActionByFilter] = useState<string[]>([]);
   const [draftCreditFlagFilter, setDraftCreditFlagFilter] = useState<string[]>([]);
   const [draftCreditStatusFilter, setDraftCreditStatusFilter] = useState<string[]>([]);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [sortBy, setSortBy] = useState<BigBookLedgerSortKey>("entry_date");
+  const [sortDir, setSortDir] = useState<BigBookLedgerSortDir>("desc");
+  const {
+    widths: columnWidths,
+    totalWidth: ledgerTableWidth,
+    resetWidths: resetColumnWidths,
+    getResizeHandleProps
+  } = useColumnWidths({
+    storageKey: "big-book-ledger-column-widths",
+    defaults: LEDGER_COLUMN_WIDTH_DEFAULTS,
+    schemaVersion: 1,
+    minWidth: 60
+  });
   const [openActionMenu, setOpenActionMenu] = useState<{
     id: string;
     top: number;
@@ -444,7 +480,7 @@ export function BigBookPanel({
 
   useEffect(() => {
     ledgerPagination.setPage(0);
-  }, [query, dateFrom, dateTo, typeFilter, currencyFilter, actorFilter, directionFilter, vendorTypeFilter, vendorFilter, pocketFilter, creditFlagFilter, creditStatusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [query, dateFrom, dateTo, typeFilter, currencyFilter, actorFilter, directionFilter, vendorTypeFilter, vendorFilter, pocketFilter, actionByFilter, creditFlagFilter, creditStatusFilter, sortBy, sortDir]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Race-safe request token: ignore stale fetch responses.
   const loadRequestIdRef = useRef(0);
@@ -462,6 +498,8 @@ export function BigBookPanel({
       params.set("view", "rows");
       params.set("page", String(ledgerPagination.page));
       params.set("pageSize", String(ledgerPagination.pageSize));
+      params.set("sortBy", sortBy);
+      params.set("sortDir", sortDir);
       if (query) params.set("query", query);
       if (dateFrom) params.set("dateFrom", dateFrom);
       if (dateTo) params.set("dateTo", dateTo);
@@ -517,7 +555,9 @@ export function BigBookPanel({
     pocketFilter,
     actionByFilter,
     creditFlagFilter,
-    creditStatusFilter
+    creditStatusFilter,
+    sortBy,
+    sortDir
   ]);
 
   useEffect(() => {
@@ -616,7 +656,38 @@ export function BigBookPanel({
     setActionByFilter([]);
     setCreditFlagFilter([]);
     setCreditStatusFilter([]);
+    setAdvancedOpen(false);
   }
+
+  function toggleSort(nextKey: BigBookLedgerSortKey) {
+    if (sortBy === nextKey) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortBy(nextKey);
+    setSortDir(DESC_DEFAULT_SORT_KEYS.has(nextKey) ? "desc" : "asc");
+  }
+
+  function sortMarker(key: BigBookLedgerSortKey) {
+    if (sortBy !== key) return "";
+    return sortDir === "asc" ? " ↑" : " ↓";
+  }
+
+  function ariaSortFor(key: BigBookLedgerSortKey): "ascending" | "descending" | "none" {
+    if (sortBy !== key) return "none";
+    return sortDir === "asc" ? "ascending" : "descending";
+  }
+
+  const advancedDraftCount =
+    (draftCurrencyFilter.length ? 1 : 0) +
+    (draftActorFilter.length ? 1 : 0) +
+    (draftDirectionFilter.length ? 1 : 0) +
+    (draftVendorTypeFilter.length ? 1 : 0) +
+    (draftVendorFilter.length ? 1 : 0) +
+    (draftPocketFilter.length ? 1 : 0) +
+    (draftActionByFilter.length ? 1 : 0) +
+    (draftCreditFlagFilter.length ? 1 : 0) +
+    (draftCreditStatusFilter.length ? 1 : 0);
 
   // Totals reflect ALL ledger rows in the database (computed server-side in
   // `getBigBookActorCurrencyMetrics`), not just the currently rendered page.
@@ -1114,6 +1185,8 @@ export function BigBookPanel({
     setMessage(null);
     try {
       const params = new URLSearchParams();
+      params.set("sortBy", sortBy);
+      params.set("sortDir", sortDir);
       if (query) params.set("query", query);
       if (dateFrom) params.set("dateFrom", dateFrom);
       if (dateTo) params.set("dateTo", dateTo);
@@ -1648,7 +1721,7 @@ export function BigBookPanel({
         key={entry.id}
         className={`border-b border-[rgb(var(--border))] align-top ${stripe}`}
       >
-        <td className="px-3 py-2">
+        <td className="overflow-hidden px-3 py-2">
           {isGroupMember ? null : (
             <input
               type="checkbox"
@@ -1659,8 +1732,10 @@ export function BigBookPanel({
             />
           )}
         </td>
-        <td className={`px-3 py-2 ${isGroupMember ? "pl-8" : ""}`}>{formatDateDisplay(entry.entry_date)}</td>
-        <td className="px-3 py-2">
+        <td className={`overflow-hidden break-words px-3 py-2 ${isGroupMember ? "pl-8" : ""}`}>
+          {formatDateDisplay(entry.entry_date)}
+        </td>
+        <td className="overflow-hidden px-3 py-2">
           <span
             className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${
               entry.entry_direction === "profit"
@@ -1671,26 +1746,30 @@ export function BigBookPanel({
             {entry.entry_direction === "profit" ? "In" : "Out"}
           </span>
         </td>
-        <td className="px-3 py-2">{entry.type_name}</td>
-        <td className="px-3 py-2">
+        <td className="overflow-hidden break-words px-3 py-2">{entry.type_name}</td>
+        <td className="overflow-hidden break-words px-3 py-2">
           {entry.sub_type_name ? entry.sub_type_name : <span className="text-xs text-muted">-</span>}
         </td>
-        <td className="px-3 py-2">
+        <td className="overflow-hidden break-words px-3 py-2">
           {entry.vendor_type_name ? entry.vendor_type_name : <span className="text-xs text-muted">-</span>}
         </td>
-        <td className="px-3 py-2">
+        <td className="overflow-hidden break-words px-3 py-2">
           {entry.vendor_name ? entry.vendor_name : <span className="text-xs text-muted">-</span>}
         </td>
-        <td className="px-3 py-2">{entry.explanation}</td>
-        <td className="px-3 py-2">
+        <td className="overflow-hidden break-words px-3 py-2">{entry.explanation}</td>
+        <td className="overflow-hidden px-3 py-2 text-right tabular-nums whitespace-nowrap">
           <span
-            className={getAmountColorClass(entry.entry_direction === "spending" ? -entry.amount : entry.amount)}
+            className={`inline-flex w-full items-baseline justify-between gap-2 ${getAmountColorClass(
+              entry.entry_direction === "spending" ? -entry.amount : entry.amount
+            )}`}
           >
-            {entry.currency_code}{" "}
-            {formatAmount(entry.amount, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+            <span>{entry.currency_code}</span>
+            <span>
+              {formatAmount(entry.amount, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+            </span>
           </span>
         </td>
-        <td className="px-3 py-2">
+        <td className="overflow-hidden break-words px-3 py-2">
           {entry.is_credit ? (
             <div className="space-y-1">
               <span
@@ -1707,7 +1786,7 @@ export function BigBookPanel({
               </p>
             </div>
           ) : entry.settles_entry_id ? (
-            <span className="inline-flex max-w-[220px] rounded bg-[rgb(var(--info)/0.15)] px-2 py-0.5 text-xs font-medium text-[rgb(var(--info))]">
+            <span className="inline-flex rounded bg-[rgb(var(--info)/0.15)] px-2 py-0.5 text-xs font-medium text-[rgb(var(--info))]">
               Settles:{" "}
               {truncateText(
                 entry.settles_entry?.explanation ||
@@ -1718,16 +1797,16 @@ export function BigBookPanel({
             <span className="text-xs text-muted">-</span>
           )}
         </td>
-        <td className="px-3 py-2">{entry.actor_display_name}</td>
-        <td className="px-3 py-2">
+        <td className="overflow-hidden break-words px-3 py-2">{entry.actor_display_name}</td>
+        <td className="overflow-hidden break-words px-3 py-2">
           {entry.action_by_name ? entry.action_by_name : <span className="text-xs text-muted">-</span>}
         </td>
-        <td className="px-3 py-2">
+        <td className="overflow-hidden break-words px-3 py-2">
           {entry.pocket_name ? entry.pocket_name : <span className="text-xs text-muted">-</span>}
         </td>
-        <td className="px-3 py-2">
+        <td className="overflow-hidden break-words px-3 py-2">
           {entry.remark ? (
-            <div className="flex max-w-[260px] items-start gap-2">
+            <div className="flex items-start gap-2">
               <span className="truncate">{entry.remark}</span>
               <button
                 className="shrink-0 text-xs text-[rgb(var(--info))] underline"
@@ -1741,7 +1820,7 @@ export function BigBookPanel({
             "-"
           )}
         </td>
-        <td className="px-3 py-2">
+        <td className="overflow-hidden break-words px-3 py-2">
           {entry.attachments.length ? (
             <div className="space-y-1">
               <p className="text-xs text-muted">{entry.attachments.length} file(s)</p>
@@ -1763,7 +1842,7 @@ export function BigBookPanel({
             <span className="text-xs text-muted">No files</span>
           )}
         </td>
-        <td className="px-3 py-2">
+        <td className="overflow-hidden px-3 py-2">
           <div className="relative">
             <button
               className="btn-secondary btn-sm"
@@ -1916,7 +1995,16 @@ export function BigBookPanel({
       <section className="card">
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Ledger Records</h2>
-          {isRefreshing || entriesLoading ? <LoadingIndicator label="Refreshing..." /> : null}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              className="text-xs text-[rgb(var(--info))] underline"
+              onClick={resetColumnWidths}
+            >
+              Reset columns
+            </button>
+            {isRefreshing || entriesLoading ? <LoadingIndicator label="Refreshing..." /> : null}
+          </div>
         </div>
         <form
           className="mb-4 space-y-3"
@@ -1965,119 +2053,140 @@ export function BigBookPanel({
                 searchPlaceholder="Search type..."
               />
             </div>
-            <div className="text-sm text-muted">
-              <span className="mb-1 block">Currency</span>
-              <SearchableMultiSelect
-                label="Currency"
-                selectedValues={draftCurrencyFilter}
-                options={currencyOptions}
-                onChange={setDraftCurrencyFilter}
-                searchPlaceholder="Search currency..."
-              />
-            </div>
-            <div className="text-sm text-muted">
-              <span className="mb-1 block">Actor</span>
-              <SearchableMultiSelect
-                label="Actor"
-                selectedValues={draftActorFilter}
-                options={actorOptions}
-                onChange={(next) => {
-                  setDraftActorFilter(next);
-                  if (!next.length) return;
-                  setDraftPocketFilter((prev) =>
-                    prev.filter((pocketId) => {
-                      const pocket = initialPockets.find((row) => row.id === pocketId);
-                      return pocket ? next.includes(pocket.actor_id) : false;
-                    })
-                  );
-                }}
-                searchPlaceholder="Search actor..."
-              />
-            </div>
-            <div className="text-sm text-muted">
-              <span className="mb-1 block">Cash Flow</span>
-              <SearchableMultiSelect
-                label="Cash Flow"
-                selectedValues={draftDirectionFilter}
-                options={directionOptions}
-                onChange={setDraftDirectionFilter}
-                searchPlaceholder="Search direction..."
-              />
-            </div>
-            <div className="text-sm text-muted">
-              <span className="mb-1 block">Vendor Type</span>
-              <SearchableMultiSelect
-                label="Vendor Type"
-                selectedValues={draftVendorTypeFilter}
-                options={vendorTypeOptions}
-                onChange={(next) => {
-                  setDraftVendorTypeFilter(next);
-                  if (!next.length) return;
-                  setDraftVendorFilter((prev) =>
-                    prev.filter((vendorId) => {
-                      const vendor = initialVendors.find((row) => row.id === vendorId);
-                      return vendor ? next.includes(vendor.vendor_type_id) : false;
-                    })
-                  );
-                }}
-                searchPlaceholder="Search vendor type..."
-              />
-            </div>
-            <div className="text-sm text-muted">
-              <span className="mb-1 block">Vendor Name</span>
-              <SearchableMultiSelect
-                label="Vendor Name"
-                selectedValues={draftVendorFilter}
-                options={vendorOptions}
-                onChange={setDraftVendorFilter}
-                searchPlaceholder="Search vendor name..."
-              />
-            </div>
-            <div className="text-sm text-muted">
-              <span className="mb-1 block">Pocket</span>
-              <SearchableMultiSelect
-                label="Pocket"
-                selectedValues={draftPocketFilter}
-                options={pocketOptions}
-                onChange={setDraftPocketFilter}
-                searchPlaceholder="Search pocket..."
-              />
-            </div>
-            <div className="text-sm text-muted">
-              <span className="mb-1 block">Action By</span>
-              <SearchableMultiSelect
-                label="Action By"
-                selectedValues={draftActionByFilter}
-                options={actionByOptions}
-                onChange={setDraftActionByFilter}
-                searchPlaceholder="Search Action By..."
-              />
-            </div>
-            <div className="text-sm text-muted">
-              <span className="mb-1 block">Credit</span>
-              <SearchableMultiSelect
-                label="Credit"
-                selectedValues={draftCreditFlagFilter}
-                options={CREDIT_FLAG_OPTIONS}
-                onChange={setDraftCreditFlagFilter}
-                searchPlaceholder="Search credit type..."
-              />
-            </div>
-            <div className="text-sm text-muted">
-              <span className="mb-1 block">Credit Status</span>
-              <SearchableMultiSelect
-                label="Credit Status"
-                selectedValues={draftCreditStatusFilter}
-                options={CREDIT_STATUS_OPTIONS}
-                onChange={setDraftCreditStatusFilter}
-                searchPlaceholder="Search credit status..."
-              />
-            </div>
           </div>
+          {advancedOpen ? (
+            <div
+              id="ledger-advanced-filters"
+              className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5"
+            >
+              <div className="text-sm text-muted">
+                <span className="mb-1 block">Currency</span>
+                <SearchableMultiSelect
+                  label="Currency"
+                  selectedValues={draftCurrencyFilter}
+                  options={currencyOptions}
+                  onChange={setDraftCurrencyFilter}
+                  searchPlaceholder="Search currency..."
+                />
+              </div>
+              <div className="text-sm text-muted">
+                <span className="mb-1 block">Actor</span>
+                <SearchableMultiSelect
+                  label="Actor"
+                  selectedValues={draftActorFilter}
+                  options={actorOptions}
+                  onChange={(next) => {
+                    setDraftActorFilter(next);
+                    if (!next.length) return;
+                    setDraftPocketFilter((prev) =>
+                      prev.filter((pocketId) => {
+                        const pocket = initialPockets.find((row) => row.id === pocketId);
+                        return pocket ? next.includes(pocket.actor_id) : false;
+                      })
+                    );
+                  }}
+                  searchPlaceholder="Search actor..."
+                />
+              </div>
+              <div className="text-sm text-muted">
+                <span className="mb-1 block">Cash Flow</span>
+                <SearchableMultiSelect
+                  label="Cash Flow"
+                  selectedValues={draftDirectionFilter}
+                  options={directionOptions}
+                  onChange={setDraftDirectionFilter}
+                  searchPlaceholder="Search direction..."
+                />
+              </div>
+              <div className="text-sm text-muted">
+                <span className="mb-1 block">Vendor Type</span>
+                <SearchableMultiSelect
+                  label="Vendor Type"
+                  selectedValues={draftVendorTypeFilter}
+                  options={vendorTypeOptions}
+                  onChange={(next) => {
+                    setDraftVendorTypeFilter(next);
+                    if (!next.length) return;
+                    setDraftVendorFilter((prev) =>
+                      prev.filter((vendorId) => {
+                        const vendor = initialVendors.find((row) => row.id === vendorId);
+                        return vendor ? next.includes(vendor.vendor_type_id) : false;
+                      })
+                    );
+                  }}
+                  searchPlaceholder="Search vendor type..."
+                />
+              </div>
+              <div className="text-sm text-muted">
+                <span className="mb-1 block">Vendor Name</span>
+                <SearchableMultiSelect
+                  label="Vendor Name"
+                  selectedValues={draftVendorFilter}
+                  options={vendorOptions}
+                  onChange={setDraftVendorFilter}
+                  searchPlaceholder="Search vendor name..."
+                />
+              </div>
+              <div className="text-sm text-muted">
+                <span className="mb-1 block">Pocket</span>
+                <SearchableMultiSelect
+                  label="Pocket"
+                  selectedValues={draftPocketFilter}
+                  options={pocketOptions}
+                  onChange={setDraftPocketFilter}
+                  searchPlaceholder="Search pocket..."
+                />
+              </div>
+              <div className="text-sm text-muted">
+                <span className="mb-1 block">Action By</span>
+                <SearchableMultiSelect
+                  label="Action By"
+                  selectedValues={draftActionByFilter}
+                  options={actionByOptions}
+                  onChange={setDraftActionByFilter}
+                  searchPlaceholder="Search Action By..."
+                />
+              </div>
+              <div className="text-sm text-muted">
+                <span className="mb-1 block">Credit</span>
+                <SearchableMultiSelect
+                  label="Credit"
+                  selectedValues={draftCreditFlagFilter}
+                  options={CREDIT_FLAG_OPTIONS}
+                  onChange={setDraftCreditFlagFilter}
+                  searchPlaceholder="Search credit type..."
+                />
+              </div>
+              <div className="text-sm text-muted">
+                <span className="mb-1 block">Credit Status</span>
+                <SearchableMultiSelect
+                  label="Credit Status"
+                  selectedValues={draftCreditStatusFilter}
+                  options={CREDIT_STATUS_OPTIONS}
+                  onChange={setDraftCreditStatusFilter}
+                  searchPlaceholder="Search credit status..."
+                />
+              </div>
+            </div>
+          ) : null}
           <div className="flex flex-wrap items-center justify-end gap-2">
             {filtersDirty ? (
               <span className="mr-auto text-xs text-[rgb(var(--warning))]">Filters changed — click Apply Filters to update results.</span>
             ) : null}
+            <button
+              type="button"
+              className="btn-secondary"
+              aria-expanded={advancedOpen}
+              aria-controls="ledger-advanced-filters"
+              onClick={() => setAdvancedOpen((prev) => !prev)}
+            >
+              Advanced Filters
+              {advancedDraftCount > 0 ? (
+                <span className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[rgb(var(--primary))] px-1.5 text-xs text-white">
+                  {advancedDraftCount}
+                </span>
+              ) : null}
+            </button>
             <button
               type="button"
               className="btn-secondary"
@@ -2119,10 +2228,15 @@ export function BigBookPanel({
           </div>
         ) : null}
         <div className="overflow-x-auto">
-          <table className="data-table min-w-[1920px]">
+          <table className="data-table table-fixed" style={{ width: ledgerTableWidth, minWidth: ledgerTableWidth }}>
+            <colgroup>
+              {LEDGER_COLUMN_KEYS.map((key) => (
+                <col key={key} style={{ width: columnWidths[key] }} />
+              ))}
+            </colgroup>
             <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
               <tr>
-                <th className="px-3 py-2">
+                <th className="relative px-3 py-2">
                   <input
                     type="checkbox"
                     className="h-4 w-4"
@@ -2131,22 +2245,101 @@ export function BigBookPanel({
                     disabled={selectableEntryIds.length === 0}
                     onChange={toggleSelectAllOnPage}
                   />
+                  <span
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize select column"
+                    className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize touch-none select-none hover:bg-[rgb(var(--primary)/0.35)]"
+                    {...getResizeHandleProps("select")}
+                  />
                 </th>
-                <th className="px-3 py-2">Date</th>
-                <th className="px-3 py-2">Cash Flow</th>
-                <th className="px-3 py-2">Type</th>
-                <th className="px-3 py-2">Sub-Type</th>
-                <th className="px-3 py-2">Vendor Type</th>
-                <th className="px-3 py-2">Vendor Name</th>
-                <th className="px-3 py-2">Explanation</th>
-                <th className="px-3 py-2">Amount</th>
-                <th className="px-3 py-2">Credit</th>
-                <th className="px-3 py-2">Actor</th>
-                <th className="px-3 py-2">Action By</th>
-                <th className="px-3 py-2">Pocket</th>
-                <th className="px-3 py-2">Remark</th>
-                <th className="px-3 py-2">Attachments</th>
-                <th className="px-3 py-2">Actions</th>
+                {(
+                  [
+                    ["entry_date", "Date"],
+                    ["entry_direction", "Cash Flow"],
+                    ["type_name", "Type"],
+                    ["sub_type_name", "Sub-Type"],
+                    ["vendor_type_name", "Vendor Type"],
+                    ["vendor_name", "Vendor Name"],
+                    ["explanation", "Explanation"]
+                  ] as Array<[BigBookLedgerSortKey, string]>
+                ).map(([key, label]) => (
+                  <th key={key} className="relative px-3 py-2" aria-sort={ariaSortFor(key)}>
+                    <button type="button" className="font-semibold" onClick={() => toggleSort(key)}>
+                      {label}
+                      {sortMarker(key)}
+                    </button>
+                    <span
+                      role="separator"
+                      aria-orientation="vertical"
+                      aria-label={`Resize ${label} column`}
+                      className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize touch-none select-none hover:bg-[rgb(var(--primary)/0.35)]"
+                      {...getResizeHandleProps(key)}
+                    />
+                  </th>
+                ))}
+                <th className="relative px-3 py-2 text-right" aria-sort={ariaSortFor("amount")}>
+                  <button type="button" className="font-semibold" onClick={() => toggleSort("amount")}>
+                    Amount
+                    {sortMarker("amount")}
+                  </button>
+                  <span
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize Amount column"
+                    className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize touch-none select-none hover:bg-[rgb(var(--primary)/0.35)]"
+                    {...getResizeHandleProps("amount")}
+                  />
+                </th>
+                <th className="relative px-3 py-2">
+                  Credit
+                  <span
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize Credit column"
+                    className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize touch-none select-none hover:bg-[rgb(var(--primary)/0.35)]"
+                    {...getResizeHandleProps("credit")}
+                  />
+                </th>
+                {(
+                  [
+                    ["actor_display_name", "Actor"],
+                    ["action_by_name", "Action By"],
+                    ["pocket_name", "Pocket"]
+                  ] as Array<[BigBookLedgerSortKey, string]>
+                ).map(([key, label]) => (
+                  <th key={key} className="relative px-3 py-2" aria-sort={ariaSortFor(key)}>
+                    <button type="button" className="font-semibold" onClick={() => toggleSort(key)}>
+                      {label}
+                      {sortMarker(key)}
+                    </button>
+                    <span
+                      role="separator"
+                      aria-orientation="vertical"
+                      aria-label={`Resize ${label} column`}
+                      className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize touch-none select-none hover:bg-[rgb(var(--primary)/0.35)]"
+                      {...getResizeHandleProps(key)}
+                    />
+                  </th>
+                ))}
+                {(
+                  [
+                    ["remark", "Remark"],
+                    ["attachments", "Attachments"],
+                    ["actions", "Actions"]
+                  ] as Array<[string, string]>
+                ).map(([key, label]) => (
+                  <th key={key} className="relative px-3 py-2">
+                    {label}
+                    <span
+                      role="separator"
+                      aria-orientation="vertical"
+                      aria-label={`Resize ${label} column`}
+                      className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize touch-none select-none hover:bg-[rgb(var(--primary)/0.35)]"
+                      {...getResizeHandleProps(key)}
+                    />
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>

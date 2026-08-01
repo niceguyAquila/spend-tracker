@@ -378,6 +378,45 @@ describe("big book entries route", () => {
     expect(getBigBookEntriesPagedMock).not.toHaveBeenCalled();
   });
 
+  it("defaults sortBy/sortDir for GET list", async () => {
+    const { GET } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries?view=rows");
+
+    const response = await GET(request);
+    expect(response.status).toBe(200);
+    expect(getBigBookLedgerRowsPagedMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sortBy: "entry_date",
+        sortDir: "desc"
+      })
+    );
+  });
+
+  it("forwards sortBy/sortDir for GET rows view", async () => {
+    const { GET } = await import("@/app/api/big-book/entries/route");
+    const request = new Request(
+      "https://app.localhost/api/big-book/entries?view=rows&sortBy=amount&sortDir=asc"
+    );
+
+    const response = await GET(request);
+    expect(response.status).toBe(200);
+    expect(getBigBookLedgerRowsPagedMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sortBy: "amount",
+        sortDir: "asc"
+      })
+    );
+  });
+
+  it("returns 400 when GET has an unknown sort key", async () => {
+    const { GET } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries?view=rows&sortBy=not_a_column");
+
+    const response = await GET(request);
+    expect(response.status).toBe(400);
+    expect(getBigBookLedgerRowsPagedMock).not.toHaveBeenCalled();
+  });
+
   it("creates a credit entry when is_credit is true", async () => {
     const { POST } = await import("@/app/api/big-book/entries/route");
     const request = new Request("https://app.localhost/api/big-book/entries", {
