@@ -2,16 +2,20 @@
 
 import type { RefObject, ReactNode } from "react";
 import type { BigBookEntry, BigBookEntryGroup } from "@/lib/types";
-import { formatDateDisplay } from "@/lib/display-format";
+import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
 import { summarizeCurrencies } from "@/lib/big-book/totals";
-import { BigBookCurrencyTotals } from "@/components/big-book-currency-totals";
+
+const NET_AMOUNT_FORMAT = { minimumFractionDigits: 2, maximumFractionDigits: 4 } as const;
 
 type Props = {
   group: BigBookEntryGroup;
   entries: BigBookEntry[];
   expanded: boolean;
   onToggle: () => void;
-  colSpan: number;
+  /** Columns between the select checkbox and the amount column. */
+  labelColSpan: number;
+  /** Columns between the amount column and the actions column. */
+  trailingColSpan: number;
   openActionMenu: { id: string; top: number; left: number } | null;
   actionMenuRef: RefObject<HTMLDivElement | null>;
   onOpenActionMenu: (id: string, top: number, left: number) => void;
@@ -27,7 +31,8 @@ export function BigBookGroupHeaderRow({
   entries,
   expanded,
   onToggle,
-  colSpan,
+  labelColSpan,
+  trailingColSpan,
   openActionMenu,
   actionMenuRef,
   onOpenActionMenu,
@@ -52,7 +57,7 @@ export function BigBookGroupHeaderRow({
     <>
       <tr className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] align-top">
         <td className="px-3 py-2" aria-hidden="true" />
-        <td className="px-3 py-2" colSpan={Math.max(1, colSpan - 4)}>
+        <td className="px-3 py-2" colSpan={Math.max(1, labelColSpan)}>
           <div className="flex items-start gap-2">
             <button
               type="button"
@@ -72,9 +77,26 @@ export function BigBookGroupHeaderRow({
             </div>
           </div>
         </td>
-        <td className="px-3 py-2" colSpan={2}>
-          <BigBookCurrencyTotals totals={totals} showNet={false} />
+        <td className="overflow-hidden whitespace-nowrap px-3 py-2 text-right tabular-nums">
+          {totals.length ? (
+            <div className="space-y-1">
+              {totals.map((total) => (
+                <span
+                  key={total.currency}
+                  className={`inline-flex w-full items-baseline justify-between gap-2 ${getAmountColorClass(
+                    total.net
+                  )}`}
+                >
+                  <span>{total.currency}</span>
+                  <span>{formatAmount(total.net, NET_AMOUNT_FORMAT)}</span>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span className="text-xs text-muted">-</span>
+          )}
         </td>
+        <td className="px-3 py-2" colSpan={Math.max(1, trailingColSpan)} aria-hidden="true" />
         <td className="px-3 py-2">
           <div className="relative">
             <button
