@@ -7,7 +7,11 @@ import {
   creditBookEntryInputSchema,
   creditBookEntryUpdateSchema
 } from "@/lib/validation/credit-big-book";
-import { getCreditBookEntriesPaged } from "@/lib/db/queries";
+import {
+  getCreditBookActorCurrencyMetrics,
+  getCreditBookActorOutstandingMetrics,
+  getCreditBookEntriesPaged
+} from "@/lib/db/queries";
 
 export async function GET(request: Request) {
   const authCheck = await requireAdminApi();
@@ -33,8 +37,22 @@ export async function GET(request: Request) {
   }
 
   try {
-    const result = await getCreditBookEntriesPaged(parsed.data);
-    return NextResponse.json(result);
+    const includeMetrics = searchParams.get("includeMetrics") === "1";
+    const metricsPromise = includeMetrics
+      ? Promise.all([getCreditBookActorCurrencyMetrics(), getCreditBookActorOutstandingMetrics()])
+      : null;
+
+    const [result, metrics] = await Promise.all([
+      getCreditBookEntriesPaged(parsed.data),
+      metricsPromise
+    ]);
+    if (!metrics) return NextResponse.json(result);
+    const [actorMetrics, outstandingMetrics] = metrics;
+    return NextResponse.json({
+      ...result,
+      actorMetrics,
+      outstandingMetrics
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to load ledger entries.";
     return NextResponse.json({ error: message }, { status: 500 });

@@ -1,6 +1,6 @@
 "use client";
 
-import type { RefObject, ReactNode } from "react";
+import { memo, useMemo, type RefObject, type ReactNode } from "react";
 import type { BigBookEntry, BigBookEntryGroup } from "@/lib/types";
 import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
 import { summarizeCurrencies } from "@/lib/big-book/totals";
@@ -26,7 +26,7 @@ type Props = {
   children: ReactNode;
 };
 
-export function BigBookGroupHeaderRow({
+function BigBookGroupHeaderRowInner({
   group,
   entries,
   expanded,
@@ -42,14 +42,19 @@ export function BigBookGroupHeaderRow({
   onDelete,
   children
 }: Props) {
-  const dates = entries.map((entry) => entry.entry_date).sort();
-  const dateFrom = dates[0];
-  const dateTo = dates[dates.length - 1];
-  const dateLabel =
-    dateFrom === dateTo
-      ? formatDateDisplay(dateFrom)
-      : `${formatDateDisplay(dateFrom)} – ${formatDateDisplay(dateTo)}`;
-  const totals = summarizeCurrencies(entries);
+  const { dateLabel, totals } = useMemo(() => {
+    const dates = entries.map((entry) => entry.entry_date).sort();
+    const dateFrom = dates[0];
+    const dateTo = dates[dates.length - 1];
+    return {
+      dateLabel:
+        dateFrom === dateTo
+          ? formatDateDisplay(dateFrom)
+          : `${formatDateDisplay(dateFrom)} – ${formatDateDisplay(dateTo)}`,
+      totals: summarizeCurrencies(entries)
+    };
+  }, [entries]);
+
   const menuId = `group:${group.id}`;
   const menuOpen = openActionMenu?.id === menuId;
 
@@ -161,3 +166,5 @@ export function BigBookGroupHeaderRow({
     </>
   );
 }
+
+export const BigBookGroupHeaderRow = memo(BigBookGroupHeaderRowInner);

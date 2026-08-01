@@ -1,9 +1,14 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { createServerClient, type SetAllCookies } from "@supabase/ssr";
 
 import { authCookieOverrides } from "@/lib/security/cookies";
 
-export async function createClient() {
+/**
+ * Request-scoped Supabase server client. React cache() ensures layouts,
+ * pages, and query helpers within one RSC render share a single instance.
+ */
+export const createClient = cache(async function createClient() {
   const cookieStore = await cookies();
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey =
@@ -36,4 +41,4 @@ export async function createClient() {
       }
     }
   });
-}
+});

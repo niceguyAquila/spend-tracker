@@ -1,14 +1,11 @@
 import { CreditBigBookIndividualTypeLedgerPanel } from "@/components/credit-big-book-individual-type-ledger-panel";
 import { PageHeader } from "@/components/ui/page-header";
 import { SetupRequiredCard } from "@/components/ui/setup-required-card";
-import { getCreditBookEntries, getCreditBookLedgerTypes } from "@/lib/db/queries";
+import { getCreditBookLedgerTypes } from "@/lib/db/queries";
 
 export default async function CreditIndividualTypeLedgerPage() {
   try {
-    const [types, entries] = await Promise.all([
-      getCreditBookLedgerTypes({ includeInactive: true }),
-      getCreditBookEntries({ limit: 3000 })
-    ]);
+    const types = await getCreditBookLedgerTypes({ includeInactive: true });
 
     return (
       <div className="space-y-6">
@@ -16,7 +13,7 @@ export default async function CreditIndividualTypeLedgerPage() {
           title="Credit Type Dashboard"
           description="View records and monthly totals for one selected Credit Big Book type."
         />
-        <CreditBigBookIndividualTypeLedgerPanel types={types} entries={entries} />
+        <CreditBigBookIndividualTypeLedgerPanel types={types} />
       </div>
     );
   } catch (error) {

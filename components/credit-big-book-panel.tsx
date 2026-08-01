@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   CreditBookActor,
   CreditBookActorCurrencyMetrics,
@@ -130,8 +129,6 @@ export function CreditBigBookPanel({
   initialActorMetrics,
   initialOutstandingMetrics
 }: Props) {
-  const router = useRouter();
-  const [isRefreshing, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -272,7 +269,7 @@ export function CreditBigBookPanel({
   // the "empty table on first load" mismatch.
   const skipNextLoadRef = useRef(!(initialEntries.length === 0 && initialTotalCount > 0));
 
-  const loadEntries = useCallback(async () => {
+  const loadEntries = useCallback(async (opts?: { includeMetrics?: boolean }) => {
     const requestId = ++loadRequestIdRef.current;
     setEntriesLoading(true);
     setError(null);
@@ -280,6 +277,7 @@ export function CreditBigBookPanel({
       const params = new URLSearchParams();
       params.set("page", String(ledgerPagination.page));
       params.set("pageSize", String(ledgerPagination.pageSize));
+      if (opts?.includeMetrics) params.set("includeMetrics", "1");
       if (query) params.set("query", query);
       if (dateFrom) params.set("dateFrom", dateFrom);
       if (dateTo) params.set("dateTo", dateTo);
@@ -299,6 +297,12 @@ export function CreditBigBookPanel({
       }
       setEntries(Array.isArray(data?.rows) ? data.rows : []);
       setTotalCount(typeof data?.totalCount === "number" ? data.totalCount : 0);
+      if (Array.isArray(data?.actorMetrics)) {
+        setActorCurrencyMetrics(data.actorMetrics);
+      }
+      if (Array.isArray(data?.outstandingMetrics)) {
+        setActorOutstandingMetrics(data.outstandingMetrics);
+      }
     } catch {
       if (loadRequestIdRef.current !== requestId) return;
       setError("Failed to load ledger entries due to a network error.");
@@ -399,8 +403,6 @@ export function CreditBigBookPanel({
     useState<CreditBookActorOutstandingMetrics[]>(initialOutstandingMetrics);
 
   useEffect(() => {
-    // eslint-disable-next-line no-console
-    console.log("[CreditBigBook DEBUG] prop-sync useEffect, initialActorMetrics:", initialActorMetrics);
     setActorCurrencyMetrics(initialActorMetrics);
   }, [initialActorMetrics]);
 
@@ -415,20 +417,10 @@ export function CreditBigBookPanel({
       currency: "IDR" | "MYR" | "USDT" | "TRX",
       delta: number
     ) => {
-      // eslint-disable-next-line no-console
-      console.log("[CreditBigBook DEBUG] applyMetricDelta called", { actorId, actorDisplayName, currency, delta });
       setActorCurrencyMetrics((prev) => {
         const next = prev.map((row) => ({ ...row, totals: { ...row.totals } }));
         const existing = next.find((row) => row.actor_id === actorId);
         if (existing) {
-          // eslint-disable-next-line no-console
-          console.log("[CreditBigBook DEBUG] applyMetricDelta updating existing actor", {
-            actorId,
-            currency,
-            before: existing.totals[currency],
-            delta,
-            after: existing.totals[currency] + delta
-          });
           existing.totals[currency] += delta;
           return next;
         }
@@ -440,8 +432,6 @@ export function CreditBigBookPanel({
           totals: { IDR: 0, MYR: 0, USDT: 0, TRX: 0 }
         };
         inserted.totals[currency] = delta;
-        // eslint-disable-next-line no-console
-        console.log("[CreditBigBook DEBUG] applyMetricDelta inserting new actor", inserted);
         return [...next, inserted].sort((a, b) => a.actor_code.localeCompare(b.actor_code));
       });
     },
@@ -568,10 +558,9 @@ export function CreditBigBookPanel({
   }, [openActionMenu, openSettlementMenu]);
 
   function triggerRefresh() {
-    void loadEntries();
-    startTransition(() => {
-      router.refresh();
-    });
+    // One API call refreshes the table + summary cards. Avoid router.refresh()
+    // which re-runs the full server-component query fan-out.
+    void loadEntries({ includeMetrics: true });
   }
 
   async function createEntry() {
@@ -1123,7 +1112,7 @@ export function CreditBigBookPanel({
       <section className="card">
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Ledger Records</h2>
-          {isRefreshing || entriesLoading ? <LoadingIndicator label="Refreshing..." /> : null}
+          {entriesLoading ? <LoadingIndicator label="Refreshing..." /> : null}
         </div>
         <form
           className="mb-4 space-y-3"

@@ -1,19 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { Modal } from "@/components/ui/modal";
-import type { BigBookEntry, BigBookLedgerType } from "@/lib/types";
-import { buildIndividualTypeMonthlySummary, filterIndividualTypeEntries } from "@/lib/big-book-individual-type-ledger";
+import { LoadingIndicator } from "@/components/ui/loading-indicator";
+import type { BigBookEntry, BigBookLedgerType, BigBookMonthlyCurrencyRow } from "@/lib/types";
 import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
 import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
 import { TableEmptyState } from "@/components/ui/table-empty-state";
 import { rowStripeClass } from "@/lib/ui/table";
+import { handleUnauthorizedResponse } from "@/lib/client/auth-fetch";
 
 type Props = {
   types: BigBookLedgerType[];
-  entries: BigBookEntry[];
 };
 
 function formatSignedAmount(value: number, currencyCode: "IDR" | "MYR" | "USDT") {
@@ -23,7 +23,7 @@ function formatSignedAmount(value: number, currencyCode: "IDR" | "MYR" | "USDT")
   return `${prefix} ${abs}`;
 }
 
-export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
+export function BigBookIndividualTypeLedgerPanel({ types }: Props) {
   const activeTypes = useMemo(() => types.filter((row) => row.is_active), [types]);
   const [selectedTypeId, setSelectedTypeId] = useState("");
   const [pendingTypeId, setPendingTypeId] = useState(activeTypes[0]?.id ?? types[0]?.id ?? "");
@@ -33,6 +33,13 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
   const [currencyFilter, setCurrencyFilter] = useState<string[]>([]);
   const [directionFilter, setDirectionFilter] = useState<Array<"spending" | "profit">>([]);
   const [selectedYear, setSelectedYear] = useState(new Date().getUTCFullYear());
+  const [entries, setEntries] = useState<BigBookEntry[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [monthlyRows, setMonthlyRows] = useState<BigBookMonthlyCurrencyRow[]>([]);
+  const [availableYears, setAvailableYears] = useState<number[]>([new Date().getUTCFullYear()]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const currencyOptions = useMemo(
     () => [
       { value: "IDR", label: "IDR" },
@@ -51,34 +58,12 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
   );
 
   const selectedType = types.find((row) => row.id === selectedTypeId) ?? null;
-
-  const selectedTypeEntries = useMemo(
-    () => entries.filter((entry) => entry.entry_type_id === selectedTypeId),
-    [entries, selectedTypeId]
-  );
-
-  const availableYears = useMemo(() => {
-    const years = new Set<number>();
-    for (const entry of selectedTypeEntries) {
-      const year = Number(entry.entry_date.slice(0, 4));
-      if (Number.isFinite(year) && year > 0) years.add(year);
-    }
-    if (!years.size) years.add(new Date().getUTCFullYear());
-    return [...years].sort((a, b) => b - a);
-  }, [selectedTypeEntries]);
-
-  const visibleEntries = useMemo(() => {
-    return filterIndividualTypeEntries(selectedTypeEntries, {
-      dateFrom: dateFrom || undefined,
-      dateTo: dateTo || undefined,
-      currencyCode: currencyFilter.length ? currencyFilter : undefined,
-      direction: directionFilter.length ? directionFilter : undefined
-    });
-  }, [selectedTypeEntries, dateFrom, dateTo, currencyFilter, directionFilter]);
-
-  const monthlyRows = useMemo(() => {
-    return buildIndividualTypeMonthlySummary(selectedTypeEntries, selectedYear);
-  }, [selectedTypeEntries, selectedYear]);
+  const entriesPagination = useTablePagination(totalCount);
+  const monthlyPagination = useTablePagination(monthlyRows.length);
+  const pagedMonthlyRows = useMemo(() => {
+    const start = monthlyPagination.page * monthlyPagination.pageSize;
+    return monthlyRows.slice(start, start + monthlyPagination.pageSize);
+  }, [monthlyRows, monthlyPagination.page, monthlyPagination.pageSize]);
 
   const grandTotals = useMemo(
     () =>
@@ -93,17 +78,59 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
     [monthlyRows]
   );
 
-  const entriesPagination = useTablePagination(visibleEntries.length);
-  const pagedVisibleEntries = useMemo(
-    () => sliceForPage(visibleEntries, entriesPagination.page, entriesPagination.pageSize),
-    [visibleEntries, entriesPagination.page, entriesPagination.pageSize]
-  );
+  const loadTypeLedger = useCallback(async () => {
+    if (!selectedTypeId) {
+      setEntries([]);
+      setTotalCount(0);
+      setMonthlyRows([]);
+      return;
+    }
 
-  const monthlyPagination = useTablePagination(monthlyRows.length);
-  const pagedMonthlyRows = useMemo(
-    () => sliceForPage(monthlyRows, monthlyPagination.page, monthlyPagination.pageSize),
-    [monthlyRows, monthlyPagination.page, monthlyPagination.pageSize]
-  );
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      params.set("typeId", selectedTypeId);
+      params.set("year", String(selectedYear));
+      params.set("page", String(entriesPagination.page));
+      params.set("pageSize", String(entriesPagination.pageSize));
+      if (dateFrom) params.set("dateFrom", dateFrom);
+      if (dateTo) params.set("dateTo", dateTo);
+      for (const currency of currencyFilter) params.append("currencyCode", currency);
+      for (const direction of directionFilter) params.append("direction", direction);
+
+      const response = await fetch(`/api/big-book/type-ledger?${params.toString()}`);
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(typeof data?.error === "string" ? data.error : "Failed to load type ledger.");
+        return;
+      }
+      setEntries(Array.isArray(data?.entries) ? data.entries : []);
+      setTotalCount(typeof data?.totalCount === "number" ? data.totalCount : 0);
+      setMonthlyRows(Array.isArray(data?.monthlyRows) ? data.monthlyRows : []);
+      if (Array.isArray(data?.availableYears) && data.availableYears.length) {
+        setAvailableYears(data.availableYears);
+      }
+    } catch {
+      setError("Failed to load type ledger due to a network error.");
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    selectedTypeId,
+    selectedYear,
+    entriesPagination.page,
+    entriesPagination.pageSize,
+    dateFrom,
+    dateTo,
+    currencyFilter,
+    directionFilter
+  ]);
+
+  useEffect(() => {
+    void loadTypeLedger();
+  }, [loadTypeLedger]);
 
   useEffect(() => {
     entriesPagination.setPage(0);
@@ -123,16 +150,20 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
               {selectedType ? `Showing records for type: ${selectedType.name}` : "Select a type to start."}
             </p>
           </div>
-          <button
-            className="btn-secondary"
-            onClick={() => {
-              setPendingTypeId(selectedTypeId || activeTypes[0]?.id || types[0]?.id || "");
-              setIsTypeSelectorOpen(true);
-            }}
-          >
-            {selectedType ? "Change Type" : "Select Type"}
-          </button>
+          <div className="flex items-center gap-3">
+            {loading ? <LoadingIndicator label="Loading..." /> : null}
+            <button
+              className="btn-secondary"
+              onClick={() => {
+                setPendingTypeId(selectedTypeId || activeTypes[0]?.id || types[0]?.id || "");
+                setIsTypeSelectorOpen(true);
+              }}
+            >
+              {selectedType ? "Change Type" : "Select Type"}
+            </button>
+          </div>
         </div>
+        {error ? <p className="mt-3 text-sm text-[rgb(var(--danger))]">{error}</p> : null}
       </section>
 
       <section className="card">
@@ -211,11 +242,21 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
           <label className="text-sm text-muted">
             <span className="mb-1 block">Date From</span>
-            <input className="field w-full" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+            <input
+              className="field w-full"
+              type="date"
+              value={dateFrom}
+              onChange={(event) => setDateFrom(event.target.value)}
+            />
           </label>
           <label className="text-sm text-muted">
             <span className="mb-1 block">Date To</span>
-            <input className="field w-full" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+            <input
+              className="field w-full"
+              type="date"
+              value={dateTo}
+              onChange={(event) => setDateTo(event.target.value)}
+            />
           </label>
           <label className="text-sm text-muted">
             <span className="mb-1 block">Currency</span>
@@ -254,7 +295,7 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
               </tr>
             </thead>
             <tbody>
-              {pagedVisibleEntries.map((entry) => (
+              {entries.map((entry) => (
                 <tr key={entry.id}>
                   <td className="px-3 py-2">{formatDateDisplay(entry.entry_date)}</td>
                   <td className="px-3 py-2">{entry.entry_direction === "profit" ? "In" : "Out"}</td>
@@ -262,19 +303,24 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
                   <td className="px-3 py-2">{entry.vendor_type_name ?? "-"}</td>
                   <td className="px-3 py-2">{entry.vendor_name ?? "-"}</td>
                   <td className="px-3 py-2">{entry.explanation}</td>
-                  <td className={`px-3 py-2 ${getAmountColorClass(entry.entry_direction === "spending" ? -entry.amount : entry.amount)}`}>
-                    {entry.currency_code} {formatAmount(entry.amount, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                  <td
+                    className={`px-3 py-2 ${getAmountColorClass(
+                      entry.entry_direction === "spending" ? -entry.amount : entry.amount
+                    )}`}
+                  >
+                    {entry.currency_code}{" "}
+                    {formatAmount(entry.amount, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
                   </td>
-                  <td className="px-3 py-2">
-                    {entry.actor_display_name}
-                  </td>
+                  <td className="px-3 py-2">{entry.actor_display_name}</td>
                 </tr>
               ))}
-              {!visibleEntries.length ? (
+              {!entries.length ? (
                 <TableEmptyState
                   colSpan={8}
                   message={
-                    selectedType ? "No records found for this type and filters." : "No type selected. Click Select Type to begin."
+                    selectedType
+                      ? "No records found for this type and filters."
+                      : "No type selected. Click Select Type to begin."
                   }
                 />
               ) : null}
@@ -282,7 +328,7 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
           </table>
         </div>
         <TablePaginationBar
-          totalCount={visibleEntries.length}
+          totalCount={totalCount}
           page={entriesPagination.page}
           setPage={entriesPagination.setPage}
           pageSize={entriesPagination.pageSize}
@@ -306,10 +352,6 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
               if (!pendingTypeId) return;
               setSelectedTypeId(pendingTypeId);
               setIsTypeSelectorOpen(false);
-              const firstYear = Number(
-                entries.find((entry) => entry.entry_type_id === pendingTypeId)?.entry_date.slice(0, 4) ?? new Date().getUTCFullYear()
-              );
-              setSelectedYear(firstYear);
             }}
           >
             Continue
@@ -318,7 +360,11 @@ export function BigBookIndividualTypeLedgerPanel({ types, entries }: Props) {
       >
         <label className="text-sm text-muted">
           <span className="mb-1 block">Ledger Type</span>
-          <select className="field w-full" value={pendingTypeId} onChange={(event) => setPendingTypeId(event.target.value)}>
+          <select
+            className="field w-full"
+            value={pendingTypeId}
+            onChange={(event) => setPendingTypeId(event.target.value)}
+          >
             <option value="">Select type...</option>
             {types.map((type) => (
               <option key={type.id} value={type.id}>

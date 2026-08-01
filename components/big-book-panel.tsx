@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import type {
   BigBookActionBy,
   BigBookActor,
@@ -21,7 +21,6 @@ import type {
 } from "@/lib/types";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import {
-  BigBookEntryFields,
   createEmptyEntryForm,
   formatAmountInput,
   formatRateInput,
@@ -29,14 +28,24 @@ import {
   type EntryFormState
 } from "@/components/big-book-entry-fields";
 import { BigBookCurrencyTotals } from "@/components/big-book-currency-totals";
-import { BigBookVendorActorOutstandingTable } from "@/components/big-book-vendor-actor-outstanding-table";
+import {
+  BigBookMetricsSection,
+  type BigBookMetricsBundle
+} from "@/components/big-book-metrics-cards";
 import { BigBookGroupHeaderRow } from "@/components/big-book-group-row";
+import { BigBookEntryRow } from "@/components/big-book-entry-row";
+
+// Heavy form UI only needed when a create/edit/settlement modal opens.
+const BigBookEntryFields = dynamic(
+  () => import("@/components/big-book-entry-fields").then((mod) => mod.BigBookEntryFields),
+  { ssr: false, loading: () => <p className="text-sm text-muted">Loading form…</p> }
+);
 import type { BigBookLedgerTotals } from "@/lib/db/queries";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
 import { Modal } from "@/components/ui/modal";
-import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
+import { formatAmount, formatDateDisplay } from "@/lib/display-format";
 import { useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
@@ -62,9 +71,12 @@ type Props = {
   initialLedgerRows: BigBookLedgerRow[];
   initialTotalCount: number;
   initialTotals: BigBookLedgerTotals;
-  initialActorMetrics: BigBookActorCurrencyMetrics[];
-  initialActorPocketMetrics: BigBookActorPocketMetrics[];
-  initialVendorActorOutstanding: BigBookVendorActorOutstandingRow[];
+  /** Streams independently of the ledger so the table can paint first. */
+  metricsPromise: Promise<BigBookMetricsBundle>;
+  /** Optional SSR seed (tests / credit port); when omitted, Suspense streams metrics. */
+  initialActorMetrics?: BigBookActorCurrencyMetrics[];
+  initialActorPocketMetrics?: BigBookActorPocketMetrics[];
+  initialVendorActorOutstanding?: BigBookVendorActorOutstandingRow[];
 };
 
 type ApiErrorShape = {
@@ -102,17 +114,6 @@ function arraysEqual(left: string[], right: string[]) {
 }
 
 const SUPPORTED_CURRENCIES: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR", "USDT", "TRX"];
-
-function TotalsBox({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2">
-      <p className="text-xs uppercase text-[rgb(var(--text-muted))]">{label}</p>
-      <p className={`font-medium ${getAmountColorClass(value)}`}>
-        {formatAmount(value, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
-      </p>
-    </div>
-  );
-}
 
 const LEDGER_SKELETON_ROW_COUNT = 6;
 const LEDGER_COLUMN_COUNT = 16;
@@ -171,17 +172,6 @@ const CREDIT_STATUS_LABELS: Record<BigBookCreditStatus, string> = {
   open: "Open",
   settled: "Settled"
 };
-
-function creditStatusBadgeClass(status: BigBookCreditStatus) {
-  if (status === "settled") return "bg-[rgb(var(--success)/0.15)] text-[rgb(var(--success))]";
-  return "bg-[rgb(var(--warning)/0.15)] text-[rgb(var(--warning))]";
-}
-
-function truncateText(value: string, maxLength = 28) {
-  const trimmed = value.trim();
-  if (trimmed.length <= maxLength) return trimmed;
-  return `${trimmed.slice(0, maxLength - 1)}…`;
-}
 
 // Credit fields never travel with grouped entries (the API rejects them there),
 // so this only runs for the single-entry create/edit payloads.
@@ -299,12 +289,11 @@ export function BigBookPanel({
   initialLedgerRows,
   initialTotalCount,
   initialTotals,
+  metricsPromise,
   initialActorMetrics,
   initialActorPocketMetrics,
   initialVendorActorOutstanding
 }: Props) {
-  const router = useRouter();
-  const [isRefreshing, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -548,7 +537,7 @@ export function BigBookPanel({
   // the "empty table on first load" mismatch.
   const skipNextLoadRef = useRef(!(initialLedgerRows.length === 0 && initialTotalCount > 0));
 
-  const loadEntries = useCallback(async () => {
+  const loadEntries = useCallback(async (opts?: { includeMetrics?: boolean }) => {
     const requestId = ++loadRequestIdRef.current;
     setEntriesLoading(true);
     setError(null);
@@ -559,6 +548,7 @@ export function BigBookPanel({
       params.set("pageSize", String(ledgerPagination.pageSize));
       params.set("sortBy", sortBy);
       params.set("sortDir", sortDir);
+      if (opts?.includeMetrics) params.set("includeMetrics", "1");
       if (query) params.set("query", query);
       if (dateFrom) params.set("dateFrom", dateFrom);
       if (dateTo) params.set("dateTo", dateTo);
@@ -585,6 +575,23 @@ export function BigBookPanel({
       setLedgerRows(nextRows);
       setTotalCount(typeof data?.totalCount === "number" ? data.totalCount : 0);
       setTotals(data?.totals ?? EMPTY_LEDGER_TOTALS);
+      if (
+        Array.isArray(data?.actorMetrics) ||
+        Array.isArray(data?.actorPocketMetrics) ||
+        Array.isArray(data?.vendorActorOutstanding)
+      ) {
+        setMetricsOverride((prev) => ({
+          actorMetrics: Array.isArray(data?.actorMetrics)
+            ? data.actorMetrics
+            : (prev?.actorMetrics ?? []),
+          actorPocketMetrics: Array.isArray(data?.actorPocketMetrics)
+            ? data.actorPocketMetrics
+            : (prev?.actorPocketMetrics ?? []),
+          vendorActorOutstanding: Array.isArray(data?.vendorActorOutstanding)
+            ? data.vendorActorOutstanding
+            : (prev?.vendorActorOutstanding ?? [])
+        }));
+      }
       // Drop ticked ids that are no longer on screen, so grouping can never act
       // on a row the user cannot currently see.
       const visibleIds = new Set(
@@ -750,27 +757,18 @@ export function BigBookPanel({
 
   // Totals reflect ALL ledger rows in the database (computed server-side in
   // `getBigBookActorCurrencyMetrics`), not just the currently rendered page.
-  // Held in local state so we can apply optimistic deltas on create/delete; the
-  // useEffect below re-syncs to the authoritative SSR prop on every refresh,
-  // so any drift heals automatically when `router.refresh()` completes.
-  const [actorCurrencyMetrics, setActorCurrencyMetrics] =
-    useState<BigBookActorCurrencyMetrics[]>(initialActorMetrics);
-
-  useEffect(() => {
-    setActorCurrencyMetrics(initialActorMetrics);
-  }, [initialActorMetrics]);
-
-  const combinedCurrencyTotals = useMemo(
-    () =>
-      actorCurrencyMetrics.reduce(
-        (acc, metric) => {
-          for (const currency of SUPPORTED_CURRENCIES) acc[currency] += metric.totals[currency];
-          return acc;
-        },
-        { IDR: 0, MYR: 0, USDT: 0, TRX: 0 } as BigBookActorCurrencyMetrics["totals"]
-      ),
-    [actorCurrencyMetrics]
-  );
+  // `null` means "still streaming from metricsPromise via Suspense"; after the
+  // first mutation refresh we hold an override so cards update in place.
+  const [metricsOverride, setMetricsOverride] = useState<BigBookMetricsBundle | null>(() => {
+    if (!initialActorMetrics && !initialActorPocketMetrics && !initialVendorActorOutstanding) {
+      return null;
+    }
+    return {
+      actorMetrics: initialActorMetrics ?? [],
+      actorPocketMetrics: initialActorPocketMetrics ?? [],
+      vendorActorOutstanding: initialVendorActorOutstanding ?? []
+    };
+  });
 
   const applyMetricDelta = useCallback(
     (
@@ -784,22 +782,29 @@ export function BigBookPanel({
       // excluded server-side too, so applying a delta here would only show a
       // wrong number until the refresh lands.
       if (pocketId) return;
-      setActorCurrencyMetrics((prev) => {
-        const next = prev.map((row) => ({ ...row, totals: { ...row.totals } }));
+      setMetricsOverride((prev) => {
+        const base = prev ?? {
+          actorMetrics: [],
+          actorPocketMetrics: [],
+          vendorActorOutstanding: []
+        };
+        const next = base.actorMetrics.map((row) => ({ ...row, totals: { ...row.totals } }));
         const existing = next.find((row) => row.actor_id === actorId);
         if (existing) {
           existing.totals[currency] += delta;
-          return next;
+        } else {
+          const actorMeta = initialActors.find((actor) => actor.id === actorId);
+          const inserted: BigBookActorCurrencyMetrics = {
+            actor_id: actorId,
+            actor_code: (actorMeta?.actor_code ?? "A") as "A" | "B",
+            actor_display_name: actorMeta?.display_name ?? actorDisplayName,
+            totals: { IDR: 0, MYR: 0, USDT: 0, TRX: 0 }
+          };
+          inserted.totals[currency] = delta;
+          next.push(inserted);
+          next.sort((a, b) => a.actor_code.localeCompare(b.actor_code));
         }
-        const actorMeta = initialActors.find((actor) => actor.id === actorId);
-        const inserted: BigBookActorCurrencyMetrics = {
-          actor_id: actorId,
-          actor_code: (actorMeta?.actor_code ?? "A") as "A" | "B",
-          actor_display_name: actorMeta?.display_name ?? actorDisplayName,
-          totals: { IDR: 0, MYR: 0, USDT: 0, TRX: 0 }
-        };
-        inserted.totals[currency] = delta;
-        return [...next, inserted].sort((a, b) => a.actor_code.localeCompare(b.actor_code));
+        return { ...base, actorMetrics: next };
       });
     },
     [initialActors]
@@ -853,7 +858,25 @@ export function BigBookPanel({
   const allSelectableSelected =
     selectableEntryIds.length > 0 && selectableEntryIds.every((id) => selectedEntryIds.has(id));
 
-  function toggleEntrySelected(entryId: string) {
+  const onViewRemark = useCallback((entryId: string, text: string) => {
+    setViewingRemark({ entryId, text });
+  }, []);
+
+  const onViewAttachment = useCallback(
+    (attachmentId: string) => {
+      void viewAttachment(attachmentId);
+    },
+    // viewAttachment closes over setState only; keep stable for memoized rows.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  const onToggleActionMenu = useCallback((entryId: string, triggerEl: HTMLButtonElement) => {
+    toggleActionMenu(entryId, triggerEl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const toggleEntrySelected = useCallback((entryId: string) => {
     setSelectedEntryIds((prev) => {
       const next = new Set(prev);
       if (next.has(entryId)) {
@@ -863,7 +886,7 @@ export function BigBookPanel({
       }
       return next;
     });
-  }
+  }, []);
 
   function toggleSelectAllOnPage() {
     setSelectedEntryIds((prev) => {
@@ -965,10 +988,10 @@ export function BigBookPanel({
   }, [openActionMenu]);
 
   function triggerRefresh() {
-    void loadEntries();
-    startTransition(() => {
-      router.refresh();
-    });
+    // One API call refreshes the table + summary cards. Avoid router.refresh()
+    // here — it re-runs the full server-component query fan-out and doubles
+    // the cost of every create/update/delete.
+    void loadEntries({ includeMetrics: true });
   }
 
   function resetGroupCreateForm() {
@@ -1071,23 +1094,41 @@ export function BigBookPanel({
 
       const createdEntryId = data.id as string;
       if (createAttachmentFiles.length > 0) {
-        for (const file of createAttachmentFiles) {
-          const formData = new FormData();
-          formData.append("ledger_entry_id", createdEntryId);
-          formData.append("file", file);
-          const uploadResponse = await secureFetch("/api/big-book/attachments", {
-            method: "POST",
-            body: formData
-          });
-          if (handleUnauthorizedResponse(uploadResponse)) return;
-          const uploadData = await uploadResponse.json();
-          if (!uploadResponse.ok) {
-            setError(extractApiError(uploadData.error, `Entry created, but failed to upload ${file.name}.`));
-            setPendingEntryConfirm(false);
-            setCreateModalOpen(false);
-            triggerRefresh();
-            return;
-          }
+        const uploadResults = await Promise.all(
+          createAttachmentFiles.map(async (file) => {
+            const formData = new FormData();
+            formData.append("ledger_entry_id", createdEntryId);
+            formData.append("file", file);
+            const uploadResponse = await secureFetch("/api/big-book/attachments", {
+              method: "POST",
+              body: formData
+            });
+            if (handleUnauthorizedResponse(uploadResponse)) {
+              return { ok: false as const, fileName: file.name, aborted: true };
+            }
+            const uploadData = await uploadResponse.json();
+            if (!uploadResponse.ok) {
+              return {
+                ok: false as const,
+                fileName: file.name,
+                aborted: false,
+                error: extractApiError(uploadData.error, `Entry created, but failed to upload ${file.name}.`)
+              };
+            }
+            return { ok: true as const, fileName: file.name };
+          })
+        );
+        if (uploadResults.some((result) => !result.ok && result.aborted)) return;
+        const failedUpload = uploadResults.find(
+          (result): result is { ok: false; aborted: false; fileName: string; error: string } =>
+            !result.ok && !result.aborted
+        );
+        if (failedUpload) {
+          setError(failedUpload.error);
+          setPendingEntryConfirm(false);
+          setCreateModalOpen(false);
+          triggerRefresh();
+          return;
         }
       }
 
@@ -1492,20 +1533,38 @@ export function BigBookPanel({
     setError(null);
     setMessage(null);
     try {
-      for (const file of files) {
-        const formData = new FormData();
-        formData.append("ledger_entry_id", pendingUploadEntryId);
-        formData.append("file", file);
-        const response = await secureFetch("/api/big-book/attachments", {
-          method: "POST",
-          body: formData
-        });
-        if (handleUnauthorizedResponse(response)) return;
-        const data = await response.json();
-        if (!response.ok) {
-          setError(extractApiError(data.error, `Failed to upload ${file.name}.`));
-          return;
-        }
+      const uploadResults = await Promise.all(
+        files.map(async (file) => {
+          const formData = new FormData();
+          formData.append("ledger_entry_id", pendingUploadEntryId);
+          formData.append("file", file);
+          const response = await secureFetch("/api/big-book/attachments", {
+            method: "POST",
+            body: formData
+          });
+          if (handleUnauthorizedResponse(response)) {
+            return { ok: false as const, aborted: true, fileName: file.name };
+          }
+          const data = await response.json();
+          if (!response.ok) {
+            return {
+              ok: false as const,
+              aborted: false,
+              fileName: file.name,
+              error: extractApiError(data.error, `Failed to upload ${file.name}.`)
+            };
+          }
+          return { ok: true as const, fileName: file.name };
+        })
+      );
+      if (uploadResults.some((result) => !result.ok && result.aborted)) return;
+      const failedUpload = uploadResults.find(
+        (result): result is { ok: false; aborted: false; fileName: string; error: string } =>
+          !result.ok && !result.aborted
+      );
+      if (failedUpload) {
+        setError(failedUpload.error);
+        return;
       }
       setMessage("Attachment(s) uploaded.");
       setPendingUploadEntryId(null);
@@ -1831,146 +1890,20 @@ export function BigBookPanel({
       ? "bg-[rgb(var(--surface-muted))]/40"
       : rowStripeClass(standaloneEntryStripeIndex.get(entry.id) ?? 0);
     return (
-      <tr
+      <BigBookEntryRow
         key={entry.id}
-        className={`border-b border-[rgb(var(--border))] align-top ${stripe}`}
-      >
-        <td className="overflow-hidden px-3 py-2">
-          {isGroupMember ? null : (
-            <input
-              type="checkbox"
-              className="h-4 w-4"
-              aria-label={`Select transaction ${entry.explanation}`}
-              checked={selectedEntryIds.has(entry.id)}
-              onChange={() => toggleEntrySelected(entry.id)}
-            />
-          )}
-        </td>
-        <td className={`overflow-hidden break-words px-3 py-2 ${isGroupMember ? "pl-8" : ""}`}>
-          {formatDateDisplay(entry.entry_date)}
-        </td>
-        <td className="overflow-hidden px-3 py-2">
-          <span
-            className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${
-              entry.entry_direction === "profit"
-                ? "bg-[rgb(var(--success)/0.15)] text-[rgb(var(--success))]"
-                : "bg-[rgb(var(--warning)/0.15)] text-[rgb(var(--warning))]"
-            }`}
-          >
-            {entry.entry_direction === "profit" ? "In" : "Out"}
-          </span>
-        </td>
-        <td className="overflow-hidden break-words px-3 py-2">{entry.type_name}</td>
-        <td className="overflow-hidden break-words px-3 py-2">
-          {entry.sub_type_name ? entry.sub_type_name : <span className="text-xs text-muted">-</span>}
-        </td>
-        <td className="overflow-hidden break-words px-3 py-2">
-          {entry.vendor_type_name ? entry.vendor_type_name : <span className="text-xs text-muted">-</span>}
-        </td>
-        <td className="overflow-hidden break-words px-3 py-2">
-          {entry.vendor_name ? entry.vendor_name : <span className="text-xs text-muted">-</span>}
-        </td>
-        <td className="overflow-hidden break-words px-3 py-2">{entry.actor_display_name}</td>
-        <td className="overflow-hidden break-words px-3 py-2">
-          {entry.action_by_name ? entry.action_by_name : <span className="text-xs text-muted">-</span>}
-        </td>
-        <td className="overflow-hidden break-words px-3 py-2">{entry.explanation}</td>
-        <td className="overflow-hidden px-3 py-2 text-right tabular-nums whitespace-nowrap">
-          <span
-            className={`inline-flex w-full items-baseline justify-between gap-2 ${getAmountColorClass(
-              entry.entry_direction === "spending" ? -entry.amount : entry.amount
-            )}`}
-          >
-            <span>{entry.currency_code}</span>
-            <span>
-              {formatAmount(entry.amount, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
-            </span>
-          </span>
-        </td>
-        <td className="overflow-hidden break-words px-3 py-2">
-          {entry.is_credit ? (
-            <div className="space-y-1">
-              <span
-                className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${creditStatusBadgeClass(
-                  entry.credit_status ?? "open"
-                )}`}
-              >
-                {CREDIT_STATUS_LABELS[entry.credit_status ?? "open"]}
-              </span>
-              {entry.credit_settled_at ? (
-                <p className="text-xs text-muted">
-                  Closed {formatDateDisplay(entry.credit_settled_at.slice(0, 10))}
-                </p>
-              ) : null}
-            </div>
-          ) : entry.settles_entry_id ? (
-            <span className="inline-flex rounded bg-[rgb(var(--info)/0.15)] px-2 py-0.5 text-xs font-medium text-[rgb(var(--info))]">
-              Settles:{" "}
-              {truncateText(
-                entry.settles_entry?.explanation ||
-                  (entry.settles_entry ? formatDateDisplay(entry.settles_entry.entry_date) : "credit")
-              )}
-            </span>
-          ) : (
-            <span className="text-xs text-muted">-</span>
-          )}
-        </td>
-        <td className="overflow-hidden break-words px-3 py-2">
-          {entry.pocket_name ? entry.pocket_name : <span className="text-xs text-muted">-</span>}
-        </td>
-        <td className="overflow-hidden break-words px-3 py-2">
-          {entry.remark ? (
-            <div className="flex items-start gap-2">
-              <span className="truncate">{entry.remark}</span>
-              <button
-                className="shrink-0 text-xs text-[rgb(var(--info))] underline"
-                type="button"
-                onClick={() => setViewingRemark({ entryId: entry.id, text: entry.remark ?? "" })}
-              >
-                View
-              </button>
-            </div>
-          ) : (
-            "-"
-          )}
-        </td>
-        <td className="overflow-hidden break-words px-3 py-2">
-          {entry.attachments.length ? (
-            <div className="space-y-1">
-              <p className="text-xs text-muted">{entry.attachments.length} file(s)</p>
-              <ul className="space-y-1">
-                {entry.attachments.map((attachment) => (
-                  <li key={attachment.id}>
-                    <button
-                      className="text-xs text-[rgb(var(--info))] underline"
-                      onClick={() => void viewAttachment(attachment.id)}
-                      disabled={attachmentViewingId === attachment.id}
-                    >
-                      {attachmentViewingId === attachment.id ? "Loading..." : attachment.file_name}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <span className="text-xs text-muted">No files</span>
-          )}
-        </td>
-        <td className="overflow-hidden px-3 py-2">
-          <div className="relative">
-            <button
-              className="btn-secondary btn-sm"
-              aria-label="Open actions menu"
-              aria-expanded={openActionMenu?.id === entry.id}
-              aria-haspopup="menu"
-              onClick={(event) => toggleActionMenu(entry.id, event.currentTarget)}
-              disabled={criticalPending}
-            >
-              Actions
-            </button>
-          </div>
-        </td>
-      </tr>
+        entry={entry}
+        isGroupMember={isGroupMember}
+        stripeClass={stripe}
+        selected={selectedEntryIds.has(entry.id)}
+        actionMenuOpen={openActionMenu?.id === entry.id}
+        criticalPending={criticalPending}
+        attachmentViewingId={attachmentViewingId}
+        onToggleSelected={toggleEntrySelected}
+        onViewRemark={onViewRemark}
+        onViewAttachment={onViewAttachment}
+        onToggleActionMenu={onToggleActionMenu}
+      />
     );
   }
 
@@ -2003,74 +1936,7 @@ export function BigBookPanel({
         </div>
       </section>
 
-      <section className="card">
-        <h2 className="text-lg font-semibold">Grand Total by Actor (All Time)</h2>
-        <p className="mt-1 text-sm text-muted">
-          Total amount grouped by actor and currency across all Big Book records. Pocket transactions are excluded
-          from the actor columns and reported under Pocket Totals instead.
-        </p>
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <article className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-4">
-            <p className="font-semibold">All Actors</p>
-            <div className="mt-3 space-y-2 text-sm">
-              {SUPPORTED_CURRENCIES.map((currency) => (
-                <TotalsBox key={currency} label={currency} value={combinedCurrencyTotals[currency]} />
-              ))}
-            </div>
-          </article>
-
-          {actorCurrencyMetrics.map((metric) => (
-            <article
-              key={metric.actor_id}
-              className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-4"
-            >
-              <p className="font-semibold">Actor {metric.actor_display_name}</p>
-              <div className="mt-3 space-y-2 text-sm">
-                {SUPPORTED_CURRENCIES.map((currency) => (
-                  <TotalsBox key={currency} label={currency} value={metric.totals[currency]} />
-                ))}
-              </div>
-            </article>
-          ))}
-          {!actorCurrencyMetrics.length ? (
-            <p className="text-sm text-muted sm:col-span-1 xl:col-span-2">No actor totals yet.</p>
-          ) : null}
-
-          <article className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-4">
-            <p className="font-semibold">Pocket Totals by Actor</p>
-            {initialActorPocketMetrics.length ? (
-              <div className="mt-3 space-y-4 text-sm">
-                {initialActorPocketMetrics.map((group) => (
-                  <div key={group.actor_id} className="space-y-2">
-                    <p className="text-xs font-medium uppercase text-[rgb(var(--text-muted))]">
-                      {group.actor_display_name}
-                    </p>
-                    {group.pockets.map((pocket) => (
-                      <TotalsBox
-                        key={pocket.pocket_id}
-                        label={`${pocket.pocket_name}${!pocket.is_active ? " (Inactive)" : ""}`}
-                        value={pocket.net}
-                      />
-                    ))}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-3 text-sm text-muted">
-                No pockets yet. Add one under Big Book Settings to start tracking pocket totals.
-              </p>
-            )}
-          </article>
-        </div>
-      </section>
-
-      <section className="card">
-        <h2 className="text-lg font-semibold">Outstanding Credit by Vendor and Actor (All Time)</h2>
-        <p className="mt-1 text-sm text-muted">
-          Total of open credits (not yet marked settled) by vendor and actor, per currency.
-        </p>
-        <BigBookVendorActorOutstandingTable rows={initialVendorActorOutstanding} />
-      </section>
+      <BigBookMetricsSection promise={metricsPromise} override={metricsOverride} />
 
       <section className="card">
         <div className="mb-4 flex items-center justify-between gap-3">
@@ -2083,7 +1949,7 @@ export function BigBookPanel({
             >
               Reset columns
             </button>
-            {isRefreshing || entriesLoading ? <LoadingIndicator label="Refreshing..." /> : null}
+            {entriesLoading ? <LoadingIndicator label="Refreshing..." /> : null}
           </div>
         </div>
         <form

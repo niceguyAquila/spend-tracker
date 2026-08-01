@@ -8,7 +8,13 @@ import {
   bigBookEntryInputSchema,
   bigBookEntryUpdateSchema
 } from "@/lib/validation/big-book";
-import { getBigBookEntriesPaged, getBigBookLedgerRowsPaged } from "@/lib/db/queries";
+import {
+  getBigBookActorCurrencyMetrics,
+  getBigBookActorPocketMetrics,
+  getBigBookEntriesPaged,
+  getBigBookLedgerRowsPaged,
+  getBigBookVendorActorOutstanding
+} from "@/lib/db/queries";
 
 type BigBookCurrency = "IDR" | "MYR" | "USDT" | "TRX";
 
@@ -122,12 +128,45 @@ export async function GET(request: Request) {
   }
 
   try {
+    // Metrics are independent of pagination filters — fetch in parallel so one
+    // client request can refresh the table and the summary cards without a
+    // full router.refresh() round trip.
+    const includeMetrics = searchParams.get("includeMetrics") === "1";
+    const metricsPromise = includeMetrics
+      ? Promise.all([
+          getBigBookActorCurrencyMetrics(),
+          getBigBookActorPocketMetrics(),
+          getBigBookVendorActorOutstanding()
+        ])
+      : null;
+
     if (view === "rows") {
-      const result = await getBigBookLedgerRowsPaged(parsed.data);
-      return NextResponse.json(result);
+      const [result, metrics] = await Promise.all([
+        getBigBookLedgerRowsPaged(parsed.data),
+        metricsPromise
+      ]);
+      if (!metrics) return NextResponse.json(result);
+      const [actorMetrics, actorPocketMetrics, vendorActorOutstanding] = metrics;
+      return NextResponse.json({
+        ...result,
+        actorMetrics,
+        actorPocketMetrics,
+        vendorActorOutstanding
+      });
     }
-    const result = await getBigBookEntriesPaged(parsed.data);
-    return NextResponse.json(result);
+
+    const [result, metrics] = await Promise.all([
+      getBigBookEntriesPaged(parsed.data),
+      metricsPromise
+    ]);
+    if (!metrics) return NextResponse.json(result);
+    const [actorMetrics, actorPocketMetrics, vendorActorOutstanding] = metrics;
+    return NextResponse.json({
+      ...result,
+      actorMetrics,
+      actorPocketMetrics,
+      vendorActorOutstanding
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to load ledger entries.";
     return NextResponse.json({ error: message }, { status: 500 });

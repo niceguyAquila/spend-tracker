@@ -33,15 +33,17 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
     from: vi.fn((table: string) => {
       if (table === "credit_ledger_attachments") {
+        const eqChain: {
+          eq: ReturnType<typeof vi.fn>;
+          maybeSingle: typeof maybeSingleMock;
+        } = {
+          eq: vi.fn(),
+          maybeSingle: maybeSingleMock
+        };
+        eqChain.eq.mockReturnValue(eqChain);
         return {
           insert: insertMock,
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              eq: vi.fn(() => ({
-                maybeSingle: maybeSingleMock
-              }))
-            }))
-          }))
+          select: vi.fn(() => eqChain)
         };
       }
       return {};
@@ -99,7 +101,9 @@ describe("credit big book attachments routes", () => {
 
   it("returns signed URL for attachment viewing", async () => {
     const { GET } = await import("@/app/api/credit-big-book/attachments/view/route");
-    const request = new Request("https://app.localhost/api/credit-big-book/attachments/view?id=att-1");
+    const request = new Request(
+      "https://app.localhost/api/credit-big-book/attachments/view?id=11111111-1111-4111-8111-111111111111"
+    );
 
     const response = await GET(request);
     const data = await response.json();

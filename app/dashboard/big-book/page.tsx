@@ -15,39 +15,50 @@ import { BigBookPanel } from "@/components/big-book-panel";
 import { PageHeader } from "@/components/ui/page-header";
 import { SetupRequiredCard } from "@/components/ui/setup-required-card";
 import { DEFAULT_PAGE_SIZE } from "@/lib/table-pagination";
+import { perfTimed } from "@/lib/perf";
+import type { BigBookMetricsBundle } from "@/components/big-book-metrics-cards";
 
 export default async function BigBookPage() {
   try {
-    const [
-      types,
-      subTypes,
-      vendorTypes,
-      vendors,
-      actionBy,
-      pockets,
-      actors,
-      entriesPage,
+    const pageEnd =
+      process.env.PERF_DEBUG === "1"
+        ? (() => {
+            const start = performance.now();
+            return () =>
+              console.log(`[perf] big-book/page core: ${(performance.now() - start).toFixed(1)}ms`);
+          })()
+        : () => undefined;
+
+    // Metrics stream separately via Suspense so the ledger table is not blocked.
+    const metricsPromise: Promise<BigBookMetricsBundle> = Promise.all([
+      perfTimed("getBigBookActorCurrencyMetrics", () => getBigBookActorCurrencyMetrics()),
+      perfTimed("getBigBookActorPocketMetrics", () => getBigBookActorPocketMetrics()),
+      perfTimed("getBigBookVendorActorOutstanding", () => getBigBookVendorActorOutstanding())
+    ]).then(([actorMetrics, actorPocketMetrics, vendorActorOutstanding]) => ({
       actorMetrics,
       actorPocketMetrics,
       vendorActorOutstanding
-    ] = await Promise.all([
-      getBigBookLedgerTypes({ includeInactive: true }),
-      getBigBookLedgerSubTypes({ includeInactive: true }),
-      getBigBookVendorTypes({ includeInactive: true }),
-      getBigBookVendors({ includeInactive: true }),
-      getBigBookActionBy({ includeInactive: true }),
-      getBigBookActorPockets({ includeInactive: true }),
-      getBigBookActors(),
-      getBigBookLedgerRowsPaged({
-        page: 0,
-        pageSize: DEFAULT_PAGE_SIZE,
-        sortBy: "entry_date",
-        sortDir: "desc"
-      }),
-      getBigBookActorCurrencyMetrics(),
-      getBigBookActorPocketMetrics(),
-      getBigBookVendorActorOutstanding()
-    ]);
+    }));
+
+    const [types, subTypes, vendorTypes, vendors, actionBy, pockets, actors, entriesPage] =
+      await Promise.all([
+        perfTimed("getBigBookLedgerTypes", () => getBigBookLedgerTypes({ includeInactive: true })),
+        perfTimed("getBigBookLedgerSubTypes", () => getBigBookLedgerSubTypes({ includeInactive: true })),
+        perfTimed("getBigBookVendorTypes", () => getBigBookVendorTypes({ includeInactive: true })),
+        perfTimed("getBigBookVendors", () => getBigBookVendors({ includeInactive: true })),
+        perfTimed("getBigBookActionBy", () => getBigBookActionBy({ includeInactive: true })),
+        perfTimed("getBigBookActorPockets", () => getBigBookActorPockets({ includeInactive: true })),
+        perfTimed("getBigBookActors", () => getBigBookActors()),
+        perfTimed("getBigBookLedgerRowsPaged", () =>
+          getBigBookLedgerRowsPaged({
+            page: 0,
+            pageSize: DEFAULT_PAGE_SIZE,
+            sortBy: "entry_date",
+            sortDir: "desc"
+          })
+        )
+      ]);
+    pageEnd();
 
     return (
       <div className="space-y-6">
@@ -66,9 +77,7 @@ export default async function BigBookPage() {
           initialLedgerRows={entriesPage.rows}
           initialTotalCount={entriesPage.totalCount}
           initialTotals={entriesPage.totals}
-          initialActorMetrics={actorMetrics}
-          initialActorPocketMetrics={actorPocketMetrics}
-          initialVendorActorOutstanding={vendorActorOutstanding}
+          metricsPromise={metricsPromise}
         />
       </div>
     );

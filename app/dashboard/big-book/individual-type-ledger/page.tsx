@@ -1,14 +1,13 @@
 import { BigBookIndividualTypeLedgerPanel } from "@/components/big-book-individual-type-ledger-panel";
 import { PageHeader } from "@/components/ui/page-header";
 import { SetupRequiredCard } from "@/components/ui/setup-required-card";
-import { getBigBookEntries, getBigBookLedgerTypes } from "@/lib/db/queries";
+import { getBigBookLedgerTypes } from "@/lib/db/queries";
 
 export default async function IndividualTypeLedgerPage() {
   try {
-    const [types, entries] = await Promise.all([
-      getBigBookLedgerTypes({ includeInactive: true }),
-      getBigBookEntries({ limit: 3000 })
-    ]);
+    // Types only — entries are fetched on demand for the selected type so we
+    // never hydrate thousands of joined rows into the client bundle.
+    const types = await getBigBookLedgerTypes({ includeInactive: true });
 
     return (
       <div className="space-y-6">
@@ -16,7 +15,7 @@ export default async function IndividualTypeLedgerPage() {
           title="Transaction Type Dashboard"
           description="View records and monthly totals for one selected Big Book type."
         />
-        <BigBookIndividualTypeLedgerPanel types={types} entries={entries} />
+        <BigBookIndividualTypeLedgerPanel types={types} />
       </div>
     );
   } catch (error) {
