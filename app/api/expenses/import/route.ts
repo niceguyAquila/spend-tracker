@@ -3,10 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireFinanceApi } from "@/lib/auth-api";
 import { assertCsrfAndOrigin } from "@/lib/security/origin";
 import { parseSpendingCsv, spendingDedupeKey } from "@/lib/spending/csv";
-import {
-  ensureUncategorizedCategory,
-  ensureUncategorizedSubcategory
-} from "@/lib/spending/uncategorized";
+import { ensureUncategorizedCategory } from "@/lib/spending/uncategorized";
 import { expenseInputSchema } from "@/lib/validation/expense";
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
@@ -63,23 +60,34 @@ export async function POST(request: Request) {
   const supabase = await createClient();
   const brandId = authCheck.activeBrandId;
 
-  const [{ data: categories, error: categoriesError }, { data: subcategories, error: subcategoriesError }] =
-    await Promise.all([
-      supabase
-        .from("expense_categories")
-        .select("id, name, is_active")
-        .eq("brand_id", brandId)
-        .eq("is_active", true),
-      supabase
-        .from("expense_subcategories")
-        .select("id, category_id, name, is_active")
-        .eq("brand_id", brandId)
-        .eq("is_active", true)
-    ]);
+  const [
+    { data: categories, error: categoriesError },
+    { data: types, error: typesError },
+    { data: staffRows, error: staffError }
+  ] = await Promise.all([
+    supabase
+      .from("expense_categories")
+      .select("id, name, is_active")
+      .eq("brand_id", brandId)
+      .eq("is_active", true),
+    supabase
+      .from("expense_types")
+      .select("id, name, is_active")
+      .eq("brand_id", brandId)
+      .eq("is_active", true),
+    supabase
+      .from("expense_staff")
+      .select("id, name, is_active")
+      .eq("brand_id", brandId)
+      .eq("is_active", true)
+  ]);
 
-  if (categoriesError || subcategoriesError) {
+  if (categoriesError || typesError || staffError) {
     return NextResponse.json(
-      { error: categoriesError?.message ?? subcategoriesError?.message ?? "Failed to load categories." },
+      {
+        error:
+          categoriesError?.message ?? typesError?.message ?? staffError?.message ?? "Failed to load lookups."
+      },
       { status: 400 }
     );
   }
@@ -88,15 +96,16 @@ export async function POST(request: Request) {
   for (const row of categories ?? []) {
     categoryNameToId.set(normalizeLookupKey(row.name), row.id);
   }
-
-  // Sub-category names are unique only within a parent category.
-  const subKeyToId = new Map<string, string>();
-  for (const row of subcategories ?? []) {
-    subKeyToId.set(`${row.category_id}::${normalizeLookupKey(row.name)}`, row.id);
+  const typeNameToId = new Map<string, string>();
+  for (const row of types ?? []) {
+    typeNameToId.set(normalizeLookupKey(row.name), row.id);
+  }
+  const staffNameToId = new Map<string, string>();
+  for (const row of staffRows ?? []) {
+    staffNameToId.set(normalizeLookupKey(row.name), row.id);
   }
 
   let uncategorizedCategoryId: string | null = null;
-  const uncategorizedSubByCategory = new Map<string, string>();
 
   async function resolveUncategorizedCategory(): Promise<string> {
     if (uncategorizedCategoryId) return uncategorizedCategoryId;
@@ -106,23 +115,16 @@ export async function POST(request: Request) {
     return created.id;
   }
 
-  async function resolveUncategorizedSubcategory(categoryId: string): Promise<string> {
-    const cached = uncategorizedSubByCategory.get(categoryId);
-    if (cached) return cached;
-    const created = await ensureUncategorizedSubcategory(supabase, brandId, categoryId);
-    uncategorizedSubByCategory.set(categoryId, created.id);
-    subKeyToId.set(`${categoryId}::${normalizeLookupKey(created.name)}`, created.id);
-    return created.id;
-  }
-
   type ResolvedRow = {
     expense_date: string;
     entry_direction: "spending" | "profit";
+    currency_code: "IDR" | "MYR" | "USDT" | "TRX";
     category_id: string;
-    subcategory_id: string;
+    type_id: string | null;
+    staff_id: string | null;
     amount: number;
-    note: string;
-    reference: string;
+    description: string;
+    remarks: string;
   };
 
   const records: ResolvedRow[] = [];
@@ -147,29 +149,20 @@ export async function POST(request: Request) {
       }
     }
 
-    let subcategoryId: string | null = null;
-    if (row.subcategory_name) {
-      subcategoryId = subKeyToId.get(`${categoryId}::${normalizeLookupKey(row.subcategory_name)}`) ?? null;
-    }
-    if (!subcategoryId) {
-      try {
-        subcategoryId = await resolveUncategorizedSubcategory(categoryId);
-      } catch (error) {
-        validationErrors.push(
-          `Row ${lineNumber}: ${error instanceof Error ? error.message : "Failed to resolve Uncategorized sub-category."}`
-        );
-        continue;
-      }
-    }
+    // Blank or unknown type/staff import as null (no Uncategorized fallback).
+    const typeId = row.type_name ? (typeNameToId.get(normalizeLookupKey(row.type_name)) ?? null) : null;
+    const staffId = row.staff_name ? (staffNameToId.get(normalizeLookupKey(row.staff_name)) ?? null) : null;
 
     const candidate = {
       expense_date: row.expense_date,
       entry_direction: row.entry_direction,
+      currency_code: row.currency_code,
       category_id: categoryId,
-      subcategory_id: subcategoryId,
+      type_id: typeId,
+      staff_id: staffId,
       amount: row.amount,
-      note: row.note ?? "",
-      reference: row.reference ?? ""
+      description: row.description ?? "",
+      remarks: row.remarks ?? ""
     };
 
     const schemaValidation = expenseInputSchema.safeParse(candidate);
@@ -187,11 +180,13 @@ export async function POST(request: Request) {
     records.push({
       expense_date: schemaValidation.data.expense_date,
       entry_direction: schemaValidation.data.entry_direction,
+      currency_code: schemaValidation.data.currency_code,
       category_id: schemaValidation.data.category_id,
-      subcategory_id: schemaValidation.data.subcategory_id,
+      type_id: schemaValidation.data.type_id ?? null,
+      staff_id: schemaValidation.data.staff_id ?? null,
       amount: schemaValidation.data.amount,
-      note: schemaValidation.data.note ?? "",
-      reference: schemaValidation.data.reference ?? ""
+      description: schemaValidation.data.description ?? "",
+      remarks: schemaValidation.data.remarks ?? ""
     });
   }
 
@@ -207,7 +202,6 @@ export async function POST(request: Request) {
     );
   }
 
-  // Collapse in-file duplicates on the same key as uq_expenses_dedupe.
   const seen = new Set<string>();
   const uniqueRecords: ResolvedRow[] = [];
   let skippedInFile = 0;
@@ -231,19 +225,18 @@ export async function POST(request: Request) {
       expense_date: row.expense_date,
       brand_id: brandId,
       entry_direction: row.entry_direction,
+      currency_code: row.currency_code,
       category_id: row.category_id,
-      subcategory_id: row.subcategory_id,
+      type_id: row.type_id,
+      staff_id: row.staff_id,
       amount: row.amount,
-      note: row.note || null,
-      reference: row.reference || null,
+      description: row.description || null,
+      remarks: row.remarks || null,
       source: "csv_import",
       created_by: actorId,
       updated_by: actorId
     }));
 
-    // ignoreDuplicates without onConflict becomes ON CONFLICT DO NOTHING, which
-    // covers the expression-based uq_expenses_dedupe index. RETURNING only
-    // yields rows that were actually inserted.
     const { data, error } = await supabase.from("expenses").upsert(chunk, { ignoreDuplicates: true }).select("id");
 
     if (error) {

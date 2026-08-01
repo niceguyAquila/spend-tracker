@@ -58,8 +58,10 @@ import {
   Brand,
   DashboardReportRow,
   ExpenseCategory,
-  ExpenseSubcategory,
+  ExpenseStaff,
+  ExpenseType,
   ExpenseWithNames,
+  SpendingCurrencyCode,
   WebTransactionComparisonMetrics,
   WebTransactionComparisonResult,
   WebTransactionComparisonRow,
@@ -85,22 +87,53 @@ export async function getCategories(brandId: string, options?: { includeInactive
   return data ?? [];
 }
 
-export async function getSubcategories(brandId: string, categoryId?: string): Promise<ExpenseSubcategory[]> {
+export async function getExpenseTypes(
+  brandId: string,
+  options?: { includeInactive?: boolean }
+): Promise<ExpenseType[]> {
   const supabase = await createClient();
   let query = supabase
-    .from("expense_subcategories")
-    .select("id, brand_id, category_id, name, is_active")
+    .from("expense_types")
+    .select("id, brand_id, code, name, is_active, sort_order, created_at, updated_at")
     .eq("brand_id", brandId)
-    .eq("is_active", true)
-    .order("name");
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
 
-  if (categoryId) {
-    query = query.eq("category_id", categoryId);
+  if (!options?.includeInactive) {
+    query = query.eq("is_active", true);
   }
 
   const { data, error } = await query;
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []).map((row) => ({ ...row, sort_order: Number(row.sort_order) }));
+}
+
+export async function getExpenseStaff(
+  brandId: string,
+  options?: { includeInactive?: boolean }
+): Promise<ExpenseStaff[]> {
+  const supabase = await createClient();
+  let query = supabase
+    .from("expense_staff")
+    .select("id, brand_id, code, name, is_active, sort_order, created_at, updated_at")
+    .eq("brand_id", brandId)
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+
+  if (!options?.includeInactive) {
+    query = query.eq("is_active", true);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []).map((row) => ({ ...row, sort_order: Number(row.sort_order) }));
+}
+
+function normalizeCurrencyCode(value: unknown): SpendingCurrencyCode {
+  if (value === "MYR" || value === "USDT" || value === "TRX" || value === "IDR") {
+    return value;
+  }
+  return "IDR";
 }
 
 export async function getExpenses(params: {
@@ -108,7 +141,9 @@ export async function getExpenses(params: {
   month?: string;
   categoryId?: string;
   categoryIds?: string[];
-  subcategoryIds?: string[];
+  typeIds?: string[];
+  staffIds?: string[];
+  currencyCodes?: SpendingCurrencyCode[];
   directions?: Array<"spending" | "profit">;
   dateFrom?: string;
   dateTo?: string;
@@ -119,9 +154,10 @@ export async function getExpenses(params: {
     .from("expenses")
     .select(
       `
-      id, brand_id, expense_date, month_key, entry_direction, amount, category_id, subcategory_id, note, reference, source, created_by, updated_by, created_at, updated_at,
+      id, brand_id, expense_date, month_key, entry_direction, amount, currency_code, category_id, type_id, staff_id, description, remarks, source, created_by, updated_by, created_at, updated_at,
       expense_categories(name),
-      expense_subcategories(name)
+      expense_types(name),
+      expense_staff(name)
     `
     )
     .eq("brand_id", params.brandId)
@@ -137,8 +173,14 @@ export async function getExpenses(params: {
   if (params?.categoryIds?.length) {
     query = query.in("category_id", params.categoryIds);
   }
-  if (params?.subcategoryIds?.length) {
-    query = query.in("subcategory_id", params.subcategoryIds);
+  if (params?.typeIds?.length) {
+    query = query.in("type_id", params.typeIds);
+  }
+  if (params?.staffIds?.length) {
+    query = query.in("staff_id", params.staffIds);
+  }
+  if (params?.currencyCodes?.length) {
+    query = query.in("currency_code", params.currencyCodes);
   }
   if (params?.directions?.length) {
     query = query.in("entry_direction", params.directions);
@@ -172,9 +214,8 @@ export async function getExpenses(params: {
     const category = Array.isArray(row.expense_categories)
       ? row.expense_categories[0]
       : row.expense_categories;
-    const subcategory = Array.isArray(row.expense_subcategories)
-      ? row.expense_subcategories[0]
-      : row.expense_subcategories;
+    const type = Array.isArray(row.expense_types) ? row.expense_types[0] : row.expense_types;
+    const staff = Array.isArray(row.expense_staff) ? row.expense_staff[0] : row.expense_staff;
 
     return {
       id: row.id,
@@ -183,17 +224,20 @@ export async function getExpenses(params: {
       month_key: row.month_key,
       entry_direction: (row.entry_direction === "profit" ? "profit" : "spending") as "spending" | "profit",
       amount: Number(row.amount),
+      currency_code: normalizeCurrencyCode(row.currency_code),
       category_id: row.category_id,
-      subcategory_id: row.subcategory_id,
-      note: row.note,
-      reference: row.reference,
+      type_id: row.type_id ?? null,
+      staff_id: row.staff_id ?? null,
+      description: row.description,
+      remarks: row.remarks,
       source: row.source,
       created_by: row.created_by,
       updated_by: row.updated_by,
       created_at: row.created_at,
       updated_at: row.updated_at,
       category_name: category?.name ?? "-",
-      subcategory_name: subcategory?.name ?? "-",
+      type_name: type?.name ?? null,
+      staff_name: staff?.name ?? null,
       creator_display_name: row.created_by ? (actorMap.get(row.created_by) ?? row.created_by) : "-",
       updater_display_name: row.updated_by ? (actorMap.get(row.updated_by) ?? row.updated_by) : "-"
     };
@@ -1960,20 +2004,9 @@ export async function getCategorySplit(brandId: string, month?: string) {
   return data ?? [];
 }
 
-export async function getSubcategoryMovement(brandId: string, month?: string) {
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("get_subcategory_movement", {
-    input_brand_id: brandId,
-    input_month: month ?? null
-  });
-  if (error) throw error;
-  return data ?? [];
-}
-
 export async function getDashboardReportRows(params: {
   brandId: string;
   categoryIds?: string[];
-  subcategoryIds?: string[];
   monthKeys?: string[];
 }): Promise<DashboardReportRow[]> {
   const supabase = await createClient();
@@ -1982,12 +2015,11 @@ export async function getDashboardReportRows(params: {
     .select(
       `
       category_id,
-      subcategory_id,
       month_key,
       entry_direction,
+      currency_code,
       amount,
-      expense_categories(name),
-      expense_subcategories(name)
+      expense_categories(name)
     `
     )
     .eq("brand_id", params.brandId)
@@ -1995,9 +2027,6 @@ export async function getDashboardReportRows(params: {
 
   if (params?.categoryIds?.length) {
     query = query.in("category_id", params.categoryIds);
-  }
-  if (params?.subcategoryIds?.length) {
-    query = query.in("subcategory_id", params.subcategoryIds);
   }
   if (params?.monthKeys?.length) {
     query = query.in("month_key", params.monthKeys);
@@ -2010,17 +2039,13 @@ export async function getDashboardReportRows(params: {
     const category = Array.isArray(row.expense_categories)
       ? row.expense_categories[0]
       : row.expense_categories;
-    const subcategory = Array.isArray(row.expense_subcategories)
-      ? row.expense_subcategories[0]
-      : row.expense_subcategories;
 
     return {
       category_id: row.category_id,
       category_name: category?.name ?? "-",
-      subcategory_id: row.subcategory_id,
-      subcategory_name: subcategory?.name ?? "-",
       month_key: row.month_key,
       entry_direction: (row.entry_direction === "profit" ? "profit" : "spending") as "spending" | "profit",
+      currency_code: normalizeCurrencyCode(row.currency_code),
       amount: Number(row.amount)
     };
   });

@@ -4,6 +4,7 @@ import { requireFinanceApi } from "@/lib/auth-api";
 import { escapeCsvCell, formatAmountForCsv } from "@/lib/csv/primitives";
 import { SPENDING_CSV_EXPORT_HEADERS } from "@/lib/spending/csv";
 import { getExpenses } from "@/lib/db/queries";
+import { spendingCurrencySchema } from "@/lib/validation/expense";
 
 const MAX_EXPORT_ROWS = 50_000;
 
@@ -14,7 +15,9 @@ const exportQuerySchema = z.object({
   query: z.string().optional(),
   direction: z.array(z.enum(["spending", "profit"])).optional(),
   categoryId: z.array(z.string().uuid()).optional(),
-  subcategoryId: z.array(z.string().uuid()).optional()
+  typeId: z.array(z.string().uuid()).optional(),
+  staffId: z.array(z.string().uuid()).optional(),
+  currency: z.array(spendingCurrencySchema).optional()
 });
 
 export async function GET(request: Request) {
@@ -31,7 +34,9 @@ export async function GET(request: Request) {
     query: searchParams.get("query") ?? undefined,
     direction: searchParams.getAll("direction").filter(Boolean),
     categoryId: searchParams.getAll("categoryId").filter(Boolean),
-    subcategoryId: searchParams.getAll("subcategoryId").filter(Boolean)
+    typeId: searchParams.getAll("typeId").filter(Boolean),
+    staffId: searchParams.getAll("staffId").filter(Boolean),
+    currency: searchParams.getAll("currency").filter(Boolean)
   });
 
   if (!parsed.success) {
@@ -46,7 +51,9 @@ export async function GET(request: Request) {
     dateTo: filters.dateTo || undefined,
     directions: filters.direction?.length ? filters.direction : undefined,
     categoryIds: filters.categoryId?.length ? filters.categoryId : undefined,
-    subcategoryIds: filters.subcategoryId?.length ? filters.subcategoryId : undefined,
+    typeIds: filters.typeId?.length ? filters.typeId : undefined,
+    staffIds: filters.staffId?.length ? filters.staffId : undefined,
+    currencyCodes: filters.currency?.length ? filters.currency : undefined,
     limit: MAX_EXPORT_ROWS
   });
 
@@ -55,11 +62,13 @@ export async function GET(request: Request) {
     ? rows.filter((row) => {
         const haystack = [
           row.category_name,
-          row.subcategory_name,
-          row.note ?? "",
-          row.reference ?? "",
+          row.type_name ?? "",
+          row.staff_name ?? "",
+          row.description ?? "",
+          row.remarks ?? "",
           row.source,
-          row.creator_display_name
+          row.creator_display_name,
+          row.currency_code
         ]
           .join(" ")
           .toLowerCase();
@@ -72,12 +81,14 @@ export async function GET(request: Request) {
   for (const row of filtered) {
     const cells = [
       row.expense_date,
-      row.entry_direction,
+      row.type_name ?? "",
       row.category_name === "-" ? "" : row.category_name,
-      row.subcategory_name === "-" ? "" : row.subcategory_name,
+      row.description ?? "",
+      row.staff_name ?? "",
+      row.currency_code,
       formatAmountForCsv(Math.abs(Number(row.amount))),
-      row.note ?? "",
-      row.reference ?? "",
+      row.entry_direction,
+      row.remarks ?? "",
       row.source,
       row.creator_display_name === "-" ? "" : row.creator_display_name
     ].map(escapeCsvCell);

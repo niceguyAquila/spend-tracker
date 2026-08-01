@@ -1,17 +1,16 @@
-import type { DashboardReportRow } from "@/lib/types";
+import type { DashboardReportRow, SpendingCurrencyCode } from "@/lib/types";
+
+export const SPENDING_CURRENCY_ORDER: SpendingCurrencyCode[] = ["IDR", "MYR", "USDT", "TRX"];
 
 export type SpendingPivotRow = {
   categoryId: string;
   categoryName: string;
-  subcategoryId: string;
-  subcategoryName: string;
   byMonth: Record<string, number>;
   subtotal: number;
 };
 
 export type SpendingPivotResult = {
   pivotRows: SpendingPivotRow[];
-  categorySubtotals: Record<string, { byMonth: Record<string, number>; subtotal: number }>;
   monthGrandTotals: Record<string, number>;
 };
 
@@ -22,7 +21,7 @@ export function buildSpendingPivot(
   const groupedRows = new Map<string, SpendingPivotRow>();
 
   for (const row of rows) {
-    const key = `${row.category_id}:${row.subcategory_id}`;
+    const key = row.category_id;
     const existing = groupedRows.get(key);
     if (!existing) {
       const byMonth = Object.fromEntries(monthColumns.map((monthKey) => [monthKey, 0]));
@@ -30,8 +29,6 @@ export function buildSpendingPivot(
       groupedRows.set(key, {
         categoryId: row.category_id,
         categoryName: row.category_name,
-        subcategoryId: row.subcategory_id,
-        subcategoryName: row.subcategory_name,
         byMonth,
         subtotal: row.amount
       });
@@ -42,33 +39,22 @@ export function buildSpendingPivot(
     existing.subtotal += row.amount;
   }
 
-  const pivotRows = [...groupedRows.values()].sort((a, b) => {
-    if (a.categoryName !== b.categoryName) return a.categoryName.localeCompare(b.categoryName);
-    return a.subcategoryName.localeCompare(b.subcategoryName);
-  });
+  const pivotRows = [...groupedRows.values()].sort((a, b) =>
+    a.categoryName.localeCompare(b.categoryName)
+  );
 
   const monthGrandTotals = Object.fromEntries(monthColumns.map((monthKey) => [monthKey, 0])) as Record<
     string,
     number
   >;
-  const categorySubtotals: Record<string, { byMonth: Record<string, number>; subtotal: number }> = {};
 
   for (const row of pivotRows) {
-    if (!categorySubtotals[row.categoryId]) {
-      categorySubtotals[row.categoryId] = {
-        byMonth: Object.fromEntries(monthColumns.map((monthKey) => [monthKey, 0])),
-        subtotal: 0
-      };
-    }
-
     for (const monthKey of monthColumns) {
-      categorySubtotals[row.categoryId].byMonth[monthKey] += row.byMonth[monthKey] ?? 0;
       monthGrandTotals[monthKey] += row.byMonth[monthKey] ?? 0;
     }
-    categorySubtotals[row.categoryId].subtotal += row.subtotal;
   }
 
-  return { pivotRows, categorySubtotals, monthGrandTotals };
+  return { pivotRows, monthGrandTotals };
 }
 
 export function buildSpendingNetByMonth(
@@ -95,4 +81,22 @@ export function partitionSpendingRowsByDirection(rows: DashboardReportRow[]) {
     }
   }
   return { outflowRows, inflowRows };
+}
+
+/** One block per currency that has rows; currencies with no rows are omitted. */
+export function partitionSpendingRowsByCurrency(
+  rows: DashboardReportRow[]
+): Array<{ currency: SpendingCurrencyCode; rows: DashboardReportRow[] }> {
+  const map = new Map<SpendingCurrencyCode, DashboardReportRow[]>();
+  for (const row of rows) {
+    const list = map.get(row.currency_code) ?? [];
+    list.push(row);
+    map.set(row.currency_code, list);
+  }
+
+  return SPENDING_CURRENCY_ORDER.flatMap((currency) => {
+    const currencyRows = map.get(currency);
+    if (!currencyRows?.length) return [];
+    return [{ currency, rows: currencyRows }];
+  });
 }

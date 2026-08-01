@@ -22,13 +22,29 @@ export type ExpenseCategory = {
   is_active: boolean;
 };
 
-export type ExpenseSubcategory = {
+export type ExpenseType = {
   id: string;
   brand_id: string;
-  category_id: string;
+  code: string;
   name: string;
   is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
 };
+
+export type ExpenseStaff = {
+  id: string;
+  brand_id: string;
+  code: string;
+  name: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SpendingCurrencyCode = "IDR" | "MYR" | "USDT" | "TRX";
 
 export type Expense = {
   id: string;
@@ -37,10 +53,12 @@ export type Expense = {
   month_key: string;
   entry_direction: "spending" | "profit";
   amount: number;
+  currency_code: SpendingCurrencyCode;
   category_id: string;
-  subcategory_id: string;
-  note: string | null;
-  reference: string | null;
+  type_id: string | null;
+  staff_id: string | null;
+  description: string | null;
+  remarks: string | null;
   source: string;
   created_by: string | null;
   updated_by: string | null;
@@ -50,7 +68,8 @@ export type Expense = {
 
 export type ExpenseWithNames = Expense & {
   category_name: string;
-  subcategory_name: string;
+  type_name: string | null;
+  staff_name: string | null;
   creator_display_name: string;
   updater_display_name: string;
 };
@@ -58,10 +77,9 @@ export type ExpenseWithNames = Expense & {
 export type DashboardReportRow = {
   category_id: string;
   category_name: string;
-  subcategory_id: string;
-  subcategory_name: string;
   month_key: string;
   entry_direction: "spending" | "profit";
+  currency_code: SpendingCurrencyCode;
   amount: number;
 };
 

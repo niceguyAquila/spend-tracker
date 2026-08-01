@@ -74,8 +74,8 @@ this checklist verifies.
 ## Role and access checks
 
 - Verify `viewer` can read dashboard pages but cannot mutate via
-  `/api/expenses` and `/api/subcategories`.
-- Verify `finance` can mutate transactions/subcategories.
+  `/api/expenses`, `/api/expense-types`, and `/api/expense-staff`.
+- Verify `finance` can mutate transactions/types/staff.
 - Verify `admin` can access `/api/admin/*` and manage users.
 
 ## Middleware coverage
@@ -84,7 +84,8 @@ this checklist verifies.
   `/login`:
   - `/api/expenses`
   - `/api/categories`
-  - `/api/subcategories`
+  - `/api/expense-types`
+  - `/api/expense-staff`
   - `/api/brands`
   - `/api/admin`
   - `/api/web-transactions`

@@ -4,34 +4,33 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import type { AppRole, ExpenseCategory, ExpenseSubcategory, ExpenseWithNames } from "@/lib/types";
+import type {
+  AppRole,
+  ExpenseCategory,
+  ExpenseStaff,
+  ExpenseType,
+  ExpenseWithNames,
+  SpendingCurrencyCode
+} from "@/lib/types";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { TableEmptyState } from "@/components/ui/table-empty-state";
 import { SpendingCsvToolbar } from "@/components/spending-csv-toolbar";
+import { formatAmountInput, parseAmountInput } from "@/components/big-book-entry-fields";
 import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
 
 type Props = {
   rows: ExpenseWithNames[];
   categories: ExpenseCategory[];
-  subcategories: ExpenseSubcategory[];
+  types: ExpenseType[];
+  staff: ExpenseStaff[];
   activeMonth: string;
   monthOptions: string[];
   role: AppRole;
 };
 
-const currencyFormatter = new Intl.NumberFormat("id-ID");
-
-function parseAmountInput(value: string) {
-  return value.replace(/[^\d]/g, "");
-}
-
-function formatAmountInput(value: string) {
-  const parsed = parseAmountInput(value);
-  if (!parsed) return "";
-  return currencyFormatter.format(Number(parsed));
-}
+const CURRENCY_OPTIONS: SpendingCurrencyCode[] = ["IDR", "MYR", "USDT", "TRX"];
 
 function extractApiError(error: unknown, fallback: string) {
   if (typeof error === "string" && error.trim().length > 0) {
@@ -59,9 +58,17 @@ function extractApiError(error: unknown, fallback: string) {
   return fallback;
 }
 
-type SortKey = "expense_date" | "entry_direction" | "category_name" | "subcategory_name" | "amount";
+type SortKey =
+  | "expense_date"
+  | "type_name"
+  | "category_name"
+  | "staff_name"
+  | "currency_code"
+  | "amount"
+  | "entry_direction";
 type SortDirection = "asc" | "desc";
 type DirectionFilter = "" | "spending" | "profit";
+type CurrencyFilter = "" | SpendingCurrencyCode;
 
 function formatMonthLabel(monthKey: string) {
   return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(
@@ -72,11 +79,13 @@ function formatMonthLabel(monthKey: string) {
 type EditDraft = {
   expense_date: string;
   entry_direction: "spending" | "profit";
+  type_id: string;
   category_id: string;
-  subcategory_id: string;
+  description: string;
+  staff_id: string;
+  currency_code: SpendingCurrencyCode;
   amount: string;
-  note: string;
-  reference: string;
+  remarks: string;
 };
 
 function signedExpenseAmount(row: Pick<ExpenseWithNames, "amount" | "entry_direction">) {
@@ -88,19 +97,27 @@ function directionLabel(direction: "spending" | "profit") {
   return direction === "profit" ? "In" : "Out";
 }
 
+function sortValue(row: ExpenseWithNames, key: SortKey) {
+  if (key === "type_name") return row.type_name ?? "";
+  if (key === "staff_name") return row.staff_name ?? "";
+  return String(row[key] ?? "");
+}
+
 function isEditDraftDirty(row: ExpenseWithNames, draft: EditDraft) {
   const draftAmount = Number(parseAmountInput(draft.amount));
   if (!Number.isFinite(draftAmount) || draftAmount !== row.amount) return true;
   if (draft.expense_date !== row.expense_date) return true;
   if (draft.entry_direction !== row.entry_direction) return true;
   if (draft.category_id !== row.category_id) return true;
-  if (draft.subcategory_id !== row.subcategory_id) return true;
-  if ((draft.note ?? "") !== (row.note ?? "")) return true;
-  if ((draft.reference ?? "") !== (row.reference ?? "")) return true;
+  if ((draft.type_id || null) !== row.type_id) return true;
+  if ((draft.staff_id || null) !== row.staff_id) return true;
+  if (draft.currency_code !== row.currency_code) return true;
+  if ((draft.description ?? "") !== (row.description ?? "")) return true;
+  if ((draft.remarks ?? "") !== (row.remarks ?? "")) return true;
   return false;
 }
 
-export function TransactionTable({ rows, categories, subcategories, activeMonth, monthOptions, role }: Props) {
+export function TransactionTable({ rows, categories, types, staff, activeMonth, monthOptions, role }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -108,7 +125,9 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
-  const [subcategoryFilter, setSubcategoryFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [staffFilter, setStaffFilter] = useState("");
+  const [currencyFilter, setCurrencyFilter] = useState<CurrencyFilter>("");
   const [directionFilter, setDirectionFilter] = useState<DirectionFilter>("");
   const [sortKey, setSortKey] = useState<SortKey>("expense_date");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
@@ -125,23 +144,26 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
   const [draft, setDraft] = useState<EditDraft>({
     expense_date: "",
     entry_direction: "spending",
+    type_id: "",
     category_id: "",
-    subcategory_id: "",
+    description: "",
+    staff_id: "",
+    currency_code: "IDR",
     amount: "",
-    note: "",
-    reference: ""
+    remarks: ""
   });
-
-  const subcategoryFilterOptions = useMemo(() => {
-    if (!categoryFilter) return subcategories;
-    return subcategories.filter((item) => item.category_id === categoryFilter);
-  }, [categoryFilter, subcategories]);
 
   const filteredRows = useMemo(() => {
     const normalized = query.toLowerCase().trim();
     const baseRows = rows.filter((row) => {
       if (normalized) {
-        const matchesQuery = [row.category_name, row.subcategory_name, row.note ?? "", row.reference ?? ""]
+        const matchesQuery = [
+          row.description ?? "",
+          row.remarks ?? "",
+          row.type_name ?? "",
+          row.category_name,
+          row.staff_name ?? ""
+        ]
           .join(" ")
           .toLowerCase()
           .includes(normalized);
@@ -150,7 +172,9 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
       if (dateFrom && row.expense_date < dateFrom) return false;
       if (dateTo && row.expense_date > dateTo) return false;
       if (categoryFilter && row.category_id !== categoryFilter) return false;
-      if (subcategoryFilter && row.subcategory_id !== subcategoryFilter) return false;
+      if (typeFilter && row.type_id !== typeFilter) return false;
+      if (staffFilter && row.staff_id !== staffFilter) return false;
+      if (currencyFilter && row.currency_code !== currencyFilter) return false;
       if (directionFilter && row.entry_direction !== directionFilter) return false;
       return true;
     });
@@ -161,12 +185,24 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
         const right = signedExpenseAmount(b);
         return sortDirection === "asc" ? left - right : right - left;
       }
-      const left = a[sortKey];
-      const right = b[sortKey];
+      const left = sortValue(a, sortKey);
+      const right = sortValue(b, sortKey);
       const compared = left.localeCompare(right);
       return sortDirection === "asc" ? compared : -compared;
     });
-  }, [query, rows, dateFrom, dateTo, categoryFilter, subcategoryFilter, directionFilter, sortKey, sortDirection]);
+  }, [
+    query,
+    rows,
+    dateFrom,
+    dateTo,
+    categoryFilter,
+    typeFilter,
+    staffFilter,
+    currencyFilter,
+    directionFilter,
+    sortKey,
+    sortDirection
+  ]);
 
   const pagination = useTablePagination(filteredRows.length);
   const pagedRows = useMemo(
@@ -174,9 +210,22 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
     [filteredRows, pagination.page, pagination.pageSize]
   );
 
+  const { setPage } = pagination;
   useEffect(() => {
-    pagination.setPage(0);
-  }, [query, dateFrom, dateTo, categoryFilter, subcategoryFilter, directionFilter, sortKey, sortDirection]); // eslint-disable-line react-hooks/exhaustive-deps
+    setPage(0);
+  }, [
+    query,
+    dateFrom,
+    dateTo,
+    categoryFilter,
+    typeFilter,
+    staffFilter,
+    currencyFilter,
+    directionFilter,
+    sortKey,
+    sortDirection,
+    setPage
+  ]);
 
   function updateMonth(monthKey: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -250,18 +299,20 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
     setDraft({
       expense_date: row.expense_date,
       entry_direction: row.entry_direction,
+      type_id: row.type_id ?? "",
       category_id: row.category_id,
-      subcategory_id: row.subcategory_id,
+      description: row.description ?? "",
+      staff_id: row.staff_id ?? "",
+      currency_code: row.currency_code,
       amount: formatAmountInput(String(row.amount)),
-      note: row.note ?? "",
-      reference: row.reference ?? ""
+      remarks: row.remarks ?? ""
     });
   }
 
   async function saveEdit() {
     if (!editingId) return;
-    if (!draft.expense_date || !draft.category_id || !draft.subcategory_id) {
-      setMessage("Date, category, and sub-category are required.");
+    if (!draft.expense_date || !draft.category_id) {
+      setMessage("Date and category are required.");
       return;
     }
     const amountValue = Number(parseAmountInput(draft.amount));
@@ -277,8 +328,15 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: editingId,
-          ...draft,
-          amount: amountValue
+          expense_date: draft.expense_date,
+          entry_direction: draft.entry_direction,
+          currency_code: draft.currency_code,
+          category_id: draft.category_id,
+          type_id: draft.type_id || null,
+          staff_id: draft.staff_id || null,
+          amount: amountValue,
+          description: draft.description,
+          remarks: draft.remarks
         })
       });
       if (handleUnauthorizedResponse(response)) {
@@ -361,19 +419,21 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
               query,
               direction: directionFilter,
               categoryId: categoryFilter,
-              subcategoryId: subcategoryFilter
+              typeId: typeFilter,
+              staffId: staffFilter,
+              currency: currencyFilter
             }}
           />
           <input
             className="field max-w-xs"
-            placeholder="Search note, category..."
+            placeholder="Search description, remarks..."
             value={query}
             disabled={criticalPending}
             onChange={(event) => setQuery(event.target.value)}
           />
         </div>
       </div>
-      <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-4 xl:grid-cols-8">
         <label className="text-sm text-[rgb(var(--text-muted))]">
           <span className="mb-1 block">Month</span>
           <select
@@ -410,16 +470,32 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
           />
         </label>
         <label className="text-sm text-[rgb(var(--text-muted))]">
-          <span className="mb-1 block">Direction</span>
+          <span className="mb-1 block">Cash flow</span>
           <select
             className="field"
             value={directionFilter}
             disabled={criticalPending}
             onChange={(event) => setDirectionFilter(event.target.value as DirectionFilter)}
           >
-            <option value="">All directions</option>
+            <option value="">All</option>
             <option value="spending">Out</option>
             <option value="profit">In</option>
+          </select>
+        </label>
+        <label className="text-sm text-[rgb(var(--text-muted))]">
+          <span className="mb-1 block">Type</span>
+          <select
+            className="field"
+            value={typeFilter}
+            disabled={criticalPending}
+            onChange={(event) => setTypeFilter(event.target.value)}
+          >
+            <option value="">All types</option>
+            {types.map((type) => (
+              <option key={type.id} value={type.id}>
+                {type.name}
+              </option>
+            ))}
           </select>
         </label>
         <label className="text-sm text-[rgb(var(--text-muted))]">
@@ -428,10 +504,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
             className="field"
             value={categoryFilter}
             disabled={criticalPending}
-            onChange={(event) => {
-              setCategoryFilter(event.target.value);
-              setSubcategoryFilter("");
-            }}
+            onChange={(event) => setCategoryFilter(event.target.value)}
           >
             <option value="">All categories</option>
             {categories.map((category) => (
@@ -442,24 +515,40 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
           </select>
         </label>
         <label className="text-sm text-[rgb(var(--text-muted))]">
-          <span className="mb-1 block">Sub-category</span>
+          <span className="mb-1 block">Staff</span>
           <select
             className="field"
-            value={subcategoryFilter}
+            value={staffFilter}
             disabled={criticalPending}
-            onChange={(event) => setSubcategoryFilter(event.target.value)}
+            onChange={(event) => setStaffFilter(event.target.value)}
           >
-            <option value="">All sub-categories</option>
-            {subcategoryFilterOptions.map((sub) => (
-              <option key={sub.id} value={sub.id}>
-                {sub.name}
+            <option value="">All staff</option>
+            {staff.map((member) => (
+              <option key={member.id} value={member.id}>
+                {member.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm text-[rgb(var(--text-muted))]">
+          <span className="mb-1 block">Currency</span>
+          <select
+            className="field"
+            value={currencyFilter}
+            disabled={criticalPending}
+            onChange={(event) => setCurrencyFilter(event.target.value as CurrencyFilter)}
+          >
+            <option value="">All currencies</option>
+            {CURRENCY_OPTIONS.map((code) => (
+              <option key={code} value={code}>
+                {code}
               </option>
             ))}
           </select>
         </label>
       </div>
       <div className="overflow-x-auto">
-        <table className="data-table data-table-zebra min-w-[1120px]">
+        <table className="data-table data-table-zebra min-w-[1400px]">
           <thead>
             <tr>
               <th className="px-3 py-2">
@@ -468,8 +557,8 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
                 </button>
               </th>
               <th className="px-3 py-2">
-                <button className="font-medium" disabled={criticalPending} onClick={() => toggleSort("entry_direction")}>
-                  Direction{renderSortIndicator("entry_direction")}
+                <button className="font-medium" disabled={criticalPending} onClick={() => toggleSort("type_name")}>
+                  Type{renderSortIndicator("type_name")}
                 </button>
               </th>
               <th className="px-3 py-2">
@@ -477,9 +566,15 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
                   Category{renderSortIndicator("category_name")}
                 </button>
               </th>
+              <th className="px-3 py-2">Description</th>
               <th className="px-3 py-2">
-                <button className="font-medium" disabled={criticalPending} onClick={() => toggleSort("subcategory_name")}>
-                  Sub-category{renderSortIndicator("subcategory_name")}
+                <button className="font-medium" disabled={criticalPending} onClick={() => toggleSort("staff_name")}>
+                  Staff{renderSortIndicator("staff_name")}
+                </button>
+              </th>
+              <th className="px-3 py-2">
+                <button className="font-medium" disabled={criticalPending} onClick={() => toggleSort("currency_code")}>
+                  Currency{renderSortIndicator("currency_code")}
                 </button>
               </th>
               <th className="px-3 py-2">
@@ -487,8 +582,12 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
                   Amount{renderSortIndicator("amount")}
                 </button>
               </th>
-              <th className="px-3 py-2">Note</th>
-              <th className="px-3 py-2">Reference</th>
+              <th className="px-3 py-2">
+                <button className="font-medium" disabled={criticalPending} onClick={() => toggleSort("entry_direction")}>
+                  Cash flow{renderSortIndicator("entry_direction")}
+                </button>
+              </th>
+              <th className="px-3 py-2">Remarks</th>
               <th className="px-3 py-2">Created By</th>
               <th className="px-3 py-2">Actions</th>
             </tr>
@@ -496,7 +595,6 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
           <tbody>
             {pagedRows.map((row) => {
               const isEditing = editingId === row.id;
-              const allowedSubs = subcategories.filter((item) => item.category_id === draft.category_id);
               const signedAmount = signedExpenseAmount(row);
               return (
                 <tr key={row.id}>
@@ -516,11 +614,24 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
                     )}
                   </td>
                   <td className="px-3 py-2">
-                    {isEditing
-                      ? directionSelect(draft.entry_direction, (entry_direction) =>
-                          setDraft((prev) => ({ ...prev, entry_direction }))
-                        )
-                      : directionLabel(row.entry_direction)}
+                    {isEditing ? (
+                      <select
+                        className="field"
+                        value={draft.type_id}
+                        onChange={(event) => setDraft((prev) => ({ ...prev, type_id: event.target.value }))}
+                      >
+                        <option value="">None</option>
+                        {types.map((type) => (
+                          <option key={type.id} value={type.id}>
+                            {type.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : row.type_name ? (
+                      row.type_name
+                    ) : (
+                      <span className="text-xs text-muted">-</span>
+                    )}
                   </td>
                   <td className="px-3 py-2">
                     {isEditing ? (
@@ -531,8 +642,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
                         onChange={(event) =>
                           setDraft((prev) => ({
                             ...prev,
-                            category_id: event.target.value,
-                            subcategory_id: ""
+                            category_id: event.target.value
                           }))
                         }
                       >
@@ -548,32 +658,69 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
                   </td>
                   <td className="px-3 py-2">
                     {isEditing ? (
+                      <input
+                        className="field"
+                        value={draft.description}
+                        onChange={(event) =>
+                          setDraft((prev) => ({ ...prev, description: event.target.value }))
+                        }
+                      />
+                    ) : row.description ? (
+                      row.description
+                    ) : (
+                      <span className="text-xs text-muted">-</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    {isEditing ? (
+                      <select
+                        className="field"
+                        value={draft.staff_id}
+                        onChange={(event) => setDraft((prev) => ({ ...prev, staff_id: event.target.value }))}
+                      >
+                        <option value="">None</option>
+                        {staff.map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {member.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : row.staff_name ? (
+                      row.staff_name
+                    ) : (
+                      <span className="text-xs text-muted">-</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    {isEditing ? (
                       <select
                         className="field"
                         required
-                        value={draft.subcategory_id}
+                        value={draft.currency_code}
                         onChange={(event) =>
-                          setDraft((prev) => ({ ...prev, subcategory_id: event.target.value }))
+                          setDraft((prev) => ({
+                            ...prev,
+                            currency_code: event.target.value as SpendingCurrencyCode
+                          }))
                         }
                       >
-                        <option value="">Select</option>
-                        {allowedSubs.map((sub) => (
-                          <option key={sub.id} value={sub.id}>
-                            {sub.name}
+                        {CURRENCY_OPTIONS.map((code) => (
+                          <option key={code} value={code}>
+                            {code}
                           </option>
                         ))}
                       </select>
                     ) : (
-                      row.subcategory_name
+                      row.currency_code
                     )}
                   </td>
-                  <td className={`px-3 py-2 ${isEditing ? "" : getAmountColorClass(signedAmount)}`}>
+                  <td className="overflow-hidden px-3 py-2 text-right tabular-nums whitespace-nowrap">
                     {isEditing ? (
                       <div className="flex items-center rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))]">
-                        <span className="px-2 text-xs text-[rgb(var(--text-muted))]">IDR</span>
+                        <span className="px-2 text-xs text-[rgb(var(--text-muted))]">{draft.currency_code}</span>
                         <input
                           className="w-28 py-2 pr-2 text-sm outline-none"
-                          inputMode="numeric"
+                          inputMode="decimal"
                           required
                           value={draft.amount}
                           onChange={(event) =>
@@ -582,31 +729,37 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
                         />
                       </div>
                     ) : (
-                      `IDR ${formatAmount(signedAmount, { locale: "id-ID", minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                      <span
+                        className={`inline-flex w-full items-baseline justify-between gap-2 ${getAmountColorClass(signedAmount)}`}
+                      >
+                        <span>{row.currency_code}</span>
+                        <span>
+                          {formatAmount(Math.abs(row.amount), {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 4
+                          })}
+                        </span>
+                      </span>
                     )}
+                  </td>
+                  <td className="px-3 py-2">
+                    {isEditing
+                      ? directionSelect(draft.entry_direction, (entry_direction) =>
+                          setDraft((prev) => ({ ...prev, entry_direction }))
+                        )
+                      : directionLabel(row.entry_direction)}
                   </td>
                   <td className="px-3 py-2">
                     {isEditing ? (
                       <input
                         className="field"
-                        value={draft.note}
-                        onChange={(event) => setDraft((prev) => ({ ...prev, note: event.target.value }))}
+                        value={draft.remarks}
+                        onChange={(event) => setDraft((prev) => ({ ...prev, remarks: event.target.value }))}
                       />
+                    ) : row.remarks ? (
+                      row.remarks
                     ) : (
-                      row.note
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    {isEditing ? (
-                      <input
-                        className="field"
-                        value={draft.reference}
-                        onChange={(event) =>
-                          setDraft((prev) => ({ ...prev, reference: event.target.value }))
-                        }
-                      />
-                    ) : (
-                      row.reference
+                      <span className="text-xs text-muted">-</span>
                     )}
                   </td>
                   <td className="px-3 py-2">{row.creator_display_name}</td>
@@ -671,7 +824,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
               );
             })}
             {!filteredRows.length ? (
-              <TableEmptyState colSpan={9} message="No transactions found for the selected month and filters." />
+              <TableEmptyState colSpan={11} message="No transactions found for the selected month and filters." />
             ) : null}
           </tbody>
         </table>
@@ -706,24 +859,20 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
           pendingDelete ? (
             <ul className="list-inside list-disc space-y-1 text-[rgb(var(--text-muted))]">
               <li>Date: {formatDateDisplay(pendingDelete.expense_date)}</li>
-              <li>Direction: {directionLabel(pendingDelete.entry_direction)}</li>
+              <li>Cash flow: {directionLabel(pendingDelete.entry_direction)}</li>
               <li>
-                Amount: IDR{" "}
-                {formatAmount(signedExpenseAmount(pendingDelete), {
-                  locale: "id-ID",
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 0
+                Amount: {pendingDelete.currency_code}{" "}
+                {formatAmount(Math.abs(pendingDelete.amount), {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 4
                 })}
               </li>
               <li>
-                {pendingDelete.category_name} — {pendingDelete.subcategory_name}
+                {pendingDelete.category_name}
+                {pendingDelete.description ? ` — ${pendingDelete.description}` : ""}
               </li>
-              {(pendingDelete.note ?? pendingDelete.reference) ? (
-                <li className="break-words">
-                  {pendingDelete.note ? `Note: ${pendingDelete.note}` : null}
-                  {pendingDelete.note && pendingDelete.reference ? " · " : null}
-                  {pendingDelete.reference ? `Ref: ${pendingDelete.reference}` : null}
-                </li>
+              {pendingDelete.remarks ? (
+                <li className="break-words">Remarks: {pendingDelete.remarks}</li>
               ) : null}
             </ul>
           ) : null

@@ -3,11 +3,12 @@ import { DashboardReportFilters } from "@/components/dashboard-report-filters";
 import { DashboardReportTable } from "@/components/dashboard-report-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { SetupRequiredCard } from "@/components/ui/setup-required-card";
-import { getCategories, getDashboardReportRows, getSubcategories } from "@/lib/db/queries";
+import { getCategories, getDashboardReportRows } from "@/lib/db/queries";
 import { requireAllowedUser } from "@/lib/auth";
 import {
   buildSpendingNetByMonth,
   buildSpendingPivot,
+  partitionSpendingRowsByCurrency,
   partitionSpendingRowsByDirection
 } from "@/lib/spending/pivot";
 
@@ -40,33 +41,19 @@ export default async function SpendingOverviewPage({ searchParams }: DashboardPa
     const { activeBrandId } = await requireAllowedUser();
     const resolvedParams = (await searchParams) ?? {};
     const selectedCategoryIds = normalizeArrayParam(resolvedParams.category);
-    const selectedSubcategoryIds = normalizeArrayParam(resolvedParams.subcategory);
     const monthFromRaw = normalizeSingleParam(resolvedParams.monthFrom);
     const monthToRaw = normalizeSingleParam(resolvedParams.monthTo);
 
-    const [categories, subcategories, allReportRows] = await Promise.all([
+    const [categories, allReportRows] = await Promise.all([
       getCategories(activeBrandId),
-      getSubcategories(activeBrandId),
       getDashboardReportRows({ brandId: activeBrandId })
     ]);
 
     const categoryIdSet = new Set(categories.map((item) => item.id));
     const validSelectedCategoryIds = selectedCategoryIds.filter((id) => categoryIdSet.has(id));
 
-    const scopedSubcategories = validSelectedCategoryIds.length
-      ? subcategories.filter((item) => validSelectedCategoryIds.includes(item.category_id))
-      : subcategories;
-    const filteredSubcategories = scopedSubcategories.filter(
-      (item) => item.name.trim().toLowerCase() !== "select sub-category"
-    );
-    const subcategoryIdSet = new Set(filteredSubcategories.map((item) => item.id));
-    const validSelectedSubcategoryIds = selectedSubcategoryIds.filter((id) => subcategoryIdSet.has(id));
-
     const baseRows = allReportRows.filter((row) => {
       if (validSelectedCategoryIds.length && !validSelectedCategoryIds.includes(row.category_id)) return false;
-      if (validSelectedSubcategoryIds.length && !validSelectedSubcategoryIds.includes(row.subcategory_id)) {
-        return false;
-      }
       return true;
     });
 
@@ -97,34 +84,20 @@ export default async function SpendingOverviewPage({ searchParams }: DashboardPa
       return true;
     });
 
-    const { outflowRows, inflowRows } = partitionSpendingRowsByDirection(filteredRows);
-    const outflowPivot = buildSpendingPivot(outflowRows, activeMonthColumns);
-    const inflowPivot = buildSpendingPivot(inflowRows, activeMonthColumns);
-    const netByMonth = buildSpendingNetByMonth(
-      inflowPivot.monthGrandTotals,
-      outflowPivot.monthGrandTotals,
-      activeMonthColumns
-    );
+    const currencyBlocks = partitionSpendingRowsByCurrency(filteredRows);
 
-    const filterKey = [
-      validSelectedCategoryIds.join(","),
-      validSelectedSubcategoryIds.join(","),
-      rangeStart ?? "",
-      rangeEnd ?? ""
-    ].join("|");
+    const filterKey = [validSelectedCategoryIds.join(","), rangeStart ?? "", rangeEnd ?? ""].join("|");
 
     return (
       <div className="space-y-6">
-        <PageHeader title="Spending Overview" description="Monthly and category spending reports." />
+        <PageHeader
+          title="Spending Overview"
+          description="Monthly and category spending reports, grouped per currency."
+        />
 
         <DashboardReportFilters
           key={filterKey}
           categories={categories.map((item) => ({ value: item.id, label: item.name }))}
-          subcategories={filteredSubcategories.map((item) => ({
-            value: item.id,
-            label: item.name,
-            categoryId: item.category_id
-          }))}
           months={monthOptions.map((monthKey) => ({
             value: monthKey,
             label: new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(
@@ -132,7 +105,6 @@ export default async function SpendingOverviewPage({ searchParams }: DashboardPa
             )
           }))}
           selectedCategoryIds={validSelectedCategoryIds}
-          selectedSubcategoryIds={validSelectedSubcategoryIds}
           selectedMonthFrom={rangeStart}
           selectedMonthTo={rangeEnd}
         />
@@ -144,25 +116,44 @@ export default async function SpendingOverviewPage({ searchParams }: DashboardPa
           </p>
         ) : null}
 
-        <DashboardReportTable
-          title="Outflow"
-          description="Cash leaving the brand (spending)."
-          monthColumns={activeMonthColumns}
-          rows={outflowPivot.pivotRows}
-          categorySubtotals={outflowPivot.categorySubtotals}
-          monthGrandTotals={outflowPivot.monthGrandTotals}
-        />
+        {!currencyBlocks.length && !rangeHasNoOverlap ? (
+          <p className="text-sm text-muted">No spending rows match the current filters.</p>
+        ) : null}
 
-        <DashboardReportTable
-          title="Inflow"
-          description="Cash entering the brand (profit)."
-          monthColumns={activeMonthColumns}
-          rows={inflowPivot.pivotRows}
-          categorySubtotals={inflowPivot.categorySubtotals}
-          monthGrandTotals={inflowPivot.monthGrandTotals}
-          netRow={netByMonth}
-          netRowLabel="Net (Inflow − Outflow)"
-        />
+        {currencyBlocks.map(({ currency, rows }) => {
+          const { outflowRows, inflowRows } = partitionSpendingRowsByDirection(rows);
+          const outflowPivot = buildSpendingPivot(outflowRows, activeMonthColumns);
+          const inflowPivot = buildSpendingPivot(inflowRows, activeMonthColumns);
+          const netByMonth = buildSpendingNetByMonth(
+            inflowPivot.monthGrandTotals,
+            outflowPivot.monthGrandTotals,
+            activeMonthColumns
+          );
+
+          return (
+            <div key={currency} className="space-y-4">
+              <h2 className="text-base font-semibold text-[rgb(var(--text))]">{currency}</h2>
+              <DashboardReportTable
+                title={`${currency} Outflow`}
+                description="Cash leaving the brand (spending)."
+                currencyCode={currency}
+                monthColumns={activeMonthColumns}
+                rows={outflowPivot.pivotRows}
+                monthGrandTotals={outflowPivot.monthGrandTotals}
+              />
+              <DashboardReportTable
+                title={`${currency} Inflow`}
+                description="Cash entering the brand (profit)."
+                currencyCode={currency}
+                monthColumns={activeMonthColumns}
+                rows={inflowPivot.pivotRows}
+                monthGrandTotals={inflowPivot.monthGrandTotals}
+                netRow={netByMonth}
+                netRowLabel="Net (Inflow − Outflow)"
+              />
+            </div>
+          );
+        })}
       </div>
     );
   } catch (error) {

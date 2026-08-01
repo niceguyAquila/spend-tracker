@@ -6,7 +6,7 @@ export default function HomePage() {
       <section className="card w-full max-w-content-narrow text-center">
         <h1 className="mb-2 text-2xl font-semibold">Multi-Brand Spend Tracker</h1>
         <p className="mb-5 text-sm text-muted">
-          Track monthly operational spending with direct entry, dynamic sub-categories, and dashboard insights.
+          Track monthly operational spending with direct entry, types, staff, multi-currency, and dashboard insights.
         </p>
         <Link href="/dashboard" className="btn inline-block">
           Open Dashboard

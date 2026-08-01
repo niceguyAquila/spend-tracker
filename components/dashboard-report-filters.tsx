@@ -7,15 +7,12 @@ import { LoadingIndicator } from "@/components/ui/loading-indicator";
 type Option = {
   value: string;
   label: string;
-  categoryId?: string;
 };
 
 type FilterProps = {
   categories: Option[];
-  subcategories: Option[];
   months: Option[];
   selectedCategoryIds: string[];
-  selectedSubcategoryIds: string[];
   selectedMonthFrom: string | null;
   selectedMonthTo: string | null;
 };
@@ -105,14 +102,14 @@ function SearchableDropdown({ label, options, selected, onChange, disabled = fal
         />
         <div className="max-h-56 space-y-1 overflow-auto text-sm">
           {filteredOptions.map((option) => (
-            <label key={option.value} className="flex items-center gap-2 px-1 py-1">
+            <label key={option.value} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-[rgb(var(--surface-muted))]">
               <input
                 type="checkbox"
                 checked={selected.includes(option.value)}
                 disabled={disabled}
                 onChange={() => toggleValue(option.value)}
               />
-              <span>{option.label}</span>
+              {option.label}
             </label>
           ))}
           {!filteredOptions.length ? <p className="px-1 py-1 text-[rgb(var(--text-muted))]">No options found.</p> : null}
@@ -142,21 +139,15 @@ function SearchableSingleMonthPicker({
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const rootRef = useRef<HTMLDetailsElement | null>(null);
-  const selectedLabel = value ? options.find((item) => item.value === value)?.label ?? value : null;
-
+  const selectedLabel = options.find((item) => item.value === value)?.label ?? placeholder;
   const filteredOptions = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return options;
     return options.filter((item) => item.label.toLowerCase().includes(normalized));
   }, [options, query]);
 
-  function pick(next: string) {
+  function pick(next: string | null) {
     onChange(next);
-    setIsOpen(false);
-  }
-
-  function clearSelection() {
-    onChange(null);
     setIsOpen(false);
   }
 
@@ -177,58 +168,64 @@ function SearchableSingleMonthPicker({
   }, [isOpen]);
 
   return (
-    <details
-      ref={rootRef}
-      className="relative"
-      open={isOpen}
-      onClick={(event) => {
-        if (disabled) event.preventDefault();
-      }}
-      onToggle={(event) => setIsOpen(event.currentTarget.open)}
-    >
-      <summary className="field mt-1 cursor-pointer list-none">
-        {label}: {selectedLabel ?? placeholder}
-      </summary>
-      <div className="absolute z-10 mt-2 w-full min-w-64 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2 shadow-lg">
-        <div className="mb-2 flex items-center gap-2 text-xs">
-          <button className="btn-secondary btn-sm" type="button" onClick={clearSelection} disabled={disabled}>
+    <label className="text-sm text-muted">
+      <span className="mb-1 block">{label}</span>
+      <details
+        ref={rootRef}
+        className="relative"
+        open={isOpen}
+        onClick={(event) => {
+          if (disabled) event.preventDefault();
+        }}
+        onToggle={(event) => setIsOpen(event.currentTarget.open)}
+      >
+        <summary className="field mt-1 list-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">
+          {selectedLabel}
+        </summary>
+        <div className="absolute z-10 mt-2 w-full min-w-64 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2 shadow-lg">
+          <button
+            className="btn-secondary btn-sm mb-2"
+            type="button"
+            disabled={disabled}
+            onClick={() => pick(null)}
+          >
             Clear
           </button>
+          <input
+            className="field mb-2"
+            placeholder={`Search ${label.toLowerCase()}...`}
+            value={query}
+            disabled={disabled}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <div className="max-h-56 space-y-1 overflow-auto text-sm">
+            {filteredOptions.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-[rgb(var(--surface-muted))] ${
+                  value === option.value ? "bg-[rgb(var(--surface-muted))] font-medium" : ""
+                }`}
+                disabled={disabled}
+                onClick={() => pick(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+            {!filteredOptions.length ? (
+              <p className="px-1 py-1 text-[rgb(var(--text-muted))]">No options found.</p>
+            ) : null}
+          </div>
         </div>
-        <input
-          className="field mb-2"
-          placeholder={`Search ${label.toLowerCase()}...`}
-          value={query}
-          disabled={disabled}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-        <div className="max-h-56 space-y-1 overflow-auto text-sm">
-          {filteredOptions.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-[rgb(var(--surface-muted))] ${
-                value === option.value ? "bg-[rgb(var(--surface-muted))] font-medium" : ""
-              }`}
-              disabled={disabled}
-              onClick={() => pick(option.value)}
-            >
-              {option.label}
-            </button>
-          ))}
-          {!filteredOptions.length ? <p className="px-1 py-1 text-[rgb(var(--text-muted))]">No options found.</p> : null}
-        </div>
-      </div>
-    </details>
+      </details>
+    </label>
   );
 }
 
 export function DashboardReportFilters({
   categories,
-  subcategories,
   months,
   selectedCategoryIds,
-  selectedSubcategoryIds,
   selectedMonthFrom,
   selectedMonthTo
 }: FilterProps) {
@@ -237,19 +234,16 @@ export function DashboardReportFilters({
   const [isPending, startTransition] = useTransition();
 
   const [categoryValues, setCategoryValues] = useState<string[]>(selectedCategoryIds);
-  const [subcategoryValues, setSubcategoryValues] = useState<string[]>(selectedSubcategoryIds);
   const [monthFrom, setMonthFrom] = useState<string | null>(selectedMonthFrom);
   const [monthTo, setMonthTo] = useState<string | null>(selectedMonthTo);
 
   function applyFilters(
     nextCategoryValues: string[],
-    nextSubcategoryValues: string[],
     nextMonthFrom: string | null,
     nextMonthTo: string | null
   ) {
     const params = new URLSearchParams();
     nextCategoryValues.forEach((value) => params.append("category", value));
-    nextSubcategoryValues.forEach((value) => params.append("subcategory", value));
     if (nextMonthFrom) params.set("monthFrom", nextMonthFrom);
     if (nextMonthTo) params.set("monthTo", nextMonthTo);
 
@@ -261,7 +255,6 @@ export function DashboardReportFilters({
 
   function resetFilters() {
     setCategoryValues([]);
-    setSubcategoryValues([]);
     setMonthFrom(null);
     setMonthTo(null);
     startTransition(() => {
@@ -271,34 +264,20 @@ export function DashboardReportFilters({
 
   return (
     <section className="card">
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-4">
-        <SearchableDropdown
-          label="Category"
-          options={categories}
-          selected={categoryValues}
-          disabled={isPending}
-          onChange={(next) => {
-            setCategoryValues(next);
-            const validSubcategoryIds = new Set(
-              subcategories
-                .filter((item) => !next.length || (item.categoryId && next.includes(item.categoryId)))
-                .map((item) => item.value)
-            );
-            const nextSubcategoryValues = subcategoryValues.filter((value) => validSubcategoryIds.has(value));
-            setSubcategoryValues(nextSubcategoryValues);
-            applyFilters(next, nextSubcategoryValues, monthFrom, monthTo);
-          }}
-        />
-        <SearchableDropdown
-          label="Sub-category"
-          options={subcategories}
-          selected={subcategoryValues}
-          disabled={isPending}
-          onChange={(next) => {
-            setSubcategoryValues(next);
-            applyFilters(categoryValues, next, monthFrom, monthTo);
-          }}
-        />
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        <label className="text-sm text-muted">
+          <span className="mb-1 block">Category</span>
+          <SearchableDropdown
+            label="Category"
+            options={categories}
+            selected={categoryValues}
+            disabled={isPending}
+            onChange={(next) => {
+              setCategoryValues(next);
+              applyFilters(next, monthFrom, monthTo);
+            }}
+          />
+        </label>
         <SearchableSingleMonthPicker
           label="From month"
           placeholder="Earliest in data"
@@ -307,7 +286,7 @@ export function DashboardReportFilters({
           disabled={isPending}
           onChange={(next) => {
             setMonthFrom(next);
-            applyFilters(categoryValues, subcategoryValues, next, monthTo);
+            applyFilters(categoryValues, next, monthTo);
           }}
         />
         <SearchableSingleMonthPicker
@@ -318,7 +297,7 @@ export function DashboardReportFilters({
           disabled={isPending}
           onChange={(next) => {
             setMonthTo(next);
-            applyFilters(categoryValues, subcategoryValues, monthFrom, next);
+            applyFilters(categoryValues, monthFrom, next);
           }}
         />
       </div>

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { Modal } from "@/components/ui/modal";
 import { buildSpendingImportTemplateCsv } from "@/lib/spending/csv";
-import type { AppRole } from "@/lib/types";
+import type { AppRole, SpendingCurrencyCode } from "@/lib/types";
 
 export type SpendingCsvExportFilters = {
   month: string;
@@ -14,7 +14,9 @@ export type SpendingCsvExportFilters = {
   query: string;
   direction: "" | "spending" | "profit";
   categoryId: string;
-  subcategoryId: string;
+  typeId: string;
+  staffId: string;
+  currency: "" | SpendingCurrencyCode;
 };
 
 type Props = {
@@ -68,7 +70,9 @@ export function SpendingCsvToolbar({ role, filters, disabled = false }: Props) {
       if (filters.dateTo) params.set("dateTo", filters.dateTo);
       if (filters.direction) params.append("direction", filters.direction);
       if (filters.categoryId) params.append("categoryId", filters.categoryId);
-      if (filters.subcategoryId) params.append("subcategoryId", filters.subcategoryId);
+      if (filters.typeId) params.append("typeId", filters.typeId);
+      if (filters.staffId) params.append("staffId", filters.staffId);
+      if (filters.currency) params.append("currency", filters.currency);
 
       const url = `/api/expenses/export${params.toString() ? `?${params.toString()}` : ""}`;
       const response = await fetch(url);
@@ -237,8 +241,8 @@ export function SpendingCsvToolbar({ role, filters, disabled = false }: Props) {
                 Download the template, fill multiple rows, then import all at once.
               </p>
               <p className="mt-1 text-xs text-muted">
-                Blank or unknown category / sub-category names fall back to Uncategorized. Duplicate rows
-                already in the ledger are skipped. Use entry_direction values spending or profit.
+                Blank or unknown category names fall back to Uncategorized. Blank or unknown type/staff import as
+                empty. Duplicate rows already in the ledger are skipped. Use cash_flow values spending or profit.
               </p>
               {error ? <p className="mt-2 text-sm text-[rgb(var(--danger))]">{error}</p> : null}
             </div>

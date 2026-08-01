@@ -1,6 +1,6 @@
 # Aquila Big Book
 
-Next.js + Supabase application for tracking monthly operational spending with dynamic sub-categories.
+Next.js + Supabase application for tracking monthly operational spending with types, staff, and multi-currency.
 
 ## Stack
 
@@ -29,7 +29,7 @@ Next.js + Supabase application for tracking monthly operational spending with dy
 
 - `/dashboard` - KPI and monthly analytics dashboard
 - `/dashboard/transactions` - daily entry + ledger (edit/delete)
-- `/dashboard/settings/categories` - sub-category manager
+- `/dashboard/settings/categories` - category, type, and staff manager
 - `/dashboard/admin/users` - admin-only invite and access management
 - `/login` - internal login page
 

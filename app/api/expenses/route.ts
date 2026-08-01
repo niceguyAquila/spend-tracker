@@ -4,6 +4,12 @@ import { requireFinanceApi } from "@/lib/auth-api";
 import { expenseInputSchema } from "@/lib/validation/expense";
 import { assertCsrfAndOrigin } from "@/lib/security/origin";
 
+function emptyToNull(value: string | null | undefined) {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+}
+
 export async function POST(request: Request) {
   if (!(await assertCsrfAndOrigin(request))) {
     return NextResponse.json({ error: "Invalid request origin or CSRF token." }, { status: 403 });
@@ -32,11 +38,13 @@ export async function POST(request: Request) {
       expense_date: payload.expense_date,
       brand_id: activeBrandId,
       entry_direction: payload.entry_direction,
+      currency_code: payload.currency_code,
       category_id: payload.category_id,
-      subcategory_id: payload.subcategory_id,
+      type_id: payload.type_id || null,
+      staff_id: payload.staff_id || null,
       amount: payload.amount,
-      note: payload.note || null,
-      reference: payload.reference || null,
+      description: emptyToNull(payload.description),
+      remarks: emptyToNull(payload.remarks),
       source: "manual",
       created_by: actorId,
       updated_by: actorId
@@ -83,11 +91,13 @@ export async function PATCH(request: Request) {
       expense_date: payload.expense_date,
       brand_id: activeBrandId,
       entry_direction: payload.entry_direction,
+      currency_code: payload.currency_code,
       category_id: payload.category_id,
-      subcategory_id: payload.subcategory_id,
+      type_id: payload.type_id || null,
+      staff_id: payload.staff_id || null,
       amount: payload.amount,
-      note: payload.note || null,
-      reference: payload.reference || null,
+      description: emptyToNull(payload.description),
+      remarks: emptyToNull(payload.remarks),
       updated_by: actorId
     })
     .eq("id", id)

@@ -1,14 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { ExpenseCategory, ExpenseSubcategory } from "@/lib/types";
+import type { ExpenseCategory, ExpenseStaff, ExpenseType, SpendingCurrencyCode } from "@/lib/types";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
+import { formatAmountInput, parseAmountInput } from "@/components/big-book-entry-fields";
 
 type Props = {
   categories: ExpenseCategory[];
-  subcategories: ExpenseSubcategory[];
+  types: ExpenseType[];
+  staff: ExpenseStaff[];
   defaultCategoryId?: string;
   submitLabel?: string;
 };
@@ -16,25 +18,18 @@ type Props = {
 type FormState = {
   expense_date: string;
   entry_direction: "spending" | "profit";
+  type_id: string;
   category_id: string;
-  subcategory_id: string;
+  description: string;
+  staff_id: string;
+  currency_code: SpendingCurrencyCode;
   amount: string;
-  note: string;
-  reference: string;
+  remarks: string;
 };
 
 const today = new Date().toISOString().slice(0, 10);
-const currencyFormatter = new Intl.NumberFormat("id-ID");
 
-function parseAmountInput(value: string) {
-  return value.replace(/[^\d]/g, "");
-}
-
-function formatAmountInput(value: string) {
-  const parsed = parseAmountInput(value);
-  if (!parsed) return "";
-  return currencyFormatter.format(Number(parsed));
-}
+const CURRENCY_OPTIONS: SpendingCurrencyCode[] = ["IDR", "MYR", "USDT", "TRX"];
 
 function extractApiError(error: unknown, fallback: string) {
   if (typeof error === "string" && error.trim().length > 0) {
@@ -64,7 +59,8 @@ function extractApiError(error: unknown, fallback: string) {
 
 export function TransactionForm({
   categories,
-  subcategories,
+  types,
+  staff,
   defaultCategoryId,
   submitLabel = "Save"
 }: Props) {
@@ -72,25 +68,17 @@ export function TransactionForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [newSubcategoryName, setNewSubcategoryName] = useState("");
-  const [newSubcategoryCategoryId, setNewSubcategoryCategoryId] = useState(
-    defaultCategoryId ?? categories[0]?.id ?? ""
-  );
-  const [creatingSubcategory, setCreatingSubcategory] = useState(false);
   const [form, setForm] = useState<FormState>({
     expense_date: today,
     entry_direction: "spending",
+    type_id: "",
     category_id: defaultCategoryId ?? categories[0]?.id ?? "",
-    subcategory_id: "",
+    description: "",
+    staff_id: "",
+    currency_code: "IDR",
     amount: "",
-    note: "",
-    reference: ""
+    remarks: ""
   });
-
-  const availableSubcategories = useMemo(
-    () => subcategories.filter((item) => item.category_id === form.category_id && item.is_active),
-    [form.category_id, subcategories]
-  );
 
   async function handleSave(addAnother: boolean) {
     if (!form.expense_date) {
@@ -99,10 +87,6 @@ export function TransactionForm({
     }
     if (!form.category_id) {
       setError("Category is required.");
-      return;
-    }
-    if (!form.subcategory_id) {
-      setError("Sub-category is required.");
       return;
     }
     const amountValue = Number(parseAmountInput(form.amount));
@@ -120,8 +104,15 @@ export function TransactionForm({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...form,
-          amount: amountValue
+          expense_date: form.expense_date,
+          entry_direction: form.entry_direction,
+          currency_code: form.currency_code,
+          category_id: form.category_id,
+          type_id: form.type_id || null,
+          staff_id: form.staff_id || null,
+          amount: amountValue,
+          description: form.description,
+          remarks: form.remarks
         })
       });
       if (handleUnauthorizedResponse(response)) {
@@ -136,7 +127,7 @@ export function TransactionForm({
 
       setSuccess("Transaction saved.");
       if (addAnother) {
-        setForm((prev) => ({ ...prev, amount: "", note: "", reference: "" }));
+        setForm((prev) => ({ ...prev, amount: "", description: "", remarks: "" }));
       } else {
         setForm((prev) => ({ ...prev, amount: "" }));
       }
@@ -146,41 +137,6 @@ export function TransactionForm({
     } finally {
       setSaving(false);
     }
-  }
-
-  async function handleCreateSubcategory() {
-    if (!newSubcategoryName.trim() || !newSubcategoryCategoryId) return;
-    setCreatingSubcategory(true);
-    setError(null);
-
-    const response = await secureFetch("/api/subcategories", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        category_id: newSubcategoryCategoryId,
-        name: newSubcategoryName.trim()
-      })
-    });
-    if (handleUnauthorizedResponse(response)) {
-      setCreatingSubcategory(false);
-      return;
-    }
-    const data = await response.json();
-    setCreatingSubcategory(false);
-
-    if (!response.ok) {
-      setError(extractApiError(data.error, "Failed to create sub-category."));
-      return;
-    }
-
-    setSuccess("Sub-category created.");
-    setNewSubcategoryName("");
-    setForm((prev) => ({
-      ...prev,
-      category_id: newSubcategoryCategoryId,
-      subcategory_id: data.id
-    }));
-    router.refresh();
   }
 
   return (
@@ -200,7 +156,7 @@ export function TransactionForm({
           />
         </label>
         <label className="text-sm">
-          Direction *
+          Cash flow *
           <select
             className="field mt-1"
             required
@@ -218,19 +174,29 @@ export function TransactionForm({
           </select>
         </label>
         <label className="text-sm">
+          Type
+          <select
+            className="field mt-1"
+            disabled={saving}
+            value={form.type_id}
+            onChange={(event) => setForm((prev) => ({ ...prev, type_id: event.target.value }))}
+          >
+            <option value="">Select type (optional)</option>
+            {types.map((type) => (
+              <option key={type.id} value={type.id}>
+                {type.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm">
           Category *
           <select
             className="field mt-1"
             required
             disabled={saving}
             value={form.category_id}
-            onChange={(event) =>
-              setForm((prev) => ({
-                ...prev,
-                category_id: event.target.value,
-                subcategory_id: ""
-              }))
-            }
+            onChange={(event) => setForm((prev) => ({ ...prev, category_id: event.target.value }))}
           >
             {categories.map((category) => (
               <option key={category.id} value={category.id}>
@@ -239,19 +205,49 @@ export function TransactionForm({
             ))}
           </select>
         </label>
+        <label className="text-sm lg:col-span-2 xl:col-span-1">
+          Description
+          <input
+            className="field mt-1"
+            placeholder="Optional description"
+            disabled={saving}
+            value={form.description}
+            onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
+          />
+        </label>
         <label className="text-sm">
-          Sub-category *
+          Staff
+          <select
+            className="field mt-1"
+            disabled={saving}
+            value={form.staff_id}
+            onChange={(event) => setForm((prev) => ({ ...prev, staff_id: event.target.value }))}
+          >
+            <option value="">Select staff (optional)</option>
+            {staff.map((member) => (
+              <option key={member.id} value={member.id}>
+                {member.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm">
+          Currency *
           <select
             className="field mt-1"
             required
             disabled={saving}
-            value={form.subcategory_id}
-            onChange={(event) => setForm((prev) => ({ ...prev, subcategory_id: event.target.value }))}
+            value={form.currency_code}
+            onChange={(event) =>
+              setForm((prev) => ({
+                ...prev,
+                currency_code: event.target.value as SpendingCurrencyCode
+              }))
+            }
           >
-            <option value="">Select sub-category</option>
-            {availableSubcategories.map((subcategory) => (
-              <option key={subcategory.id} value={subcategory.id}>
-                {subcategory.name}
+            {CURRENCY_OPTIONS.map((code) => (
+              <option key={code} value={code}>
+                {code}
               </option>
             ))}
           </select>
@@ -259,10 +255,10 @@ export function TransactionForm({
         <label className="text-sm">
           Amount *
           <div className="mt-1 flex items-center rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))]">
-            <span className="px-3 text-sm text-[rgb(var(--text-muted))]">IDR</span>
+            <span className="px-3 text-sm text-[rgb(var(--text-muted))]">{form.currency_code}</span>
             <input
               className="w-full rounded-r-md bg-transparent py-2 pr-3 text-sm text-[rgb(var(--text))] outline-none"
-              inputMode="numeric"
+              inputMode="decimal"
               required
               disabled={saving}
               placeholder="0"
@@ -273,24 +269,14 @@ export function TransactionForm({
             />
           </div>
         </label>
-        <label className="text-sm">
-          Note
-          <input
-            className="field mt-1"
-            placeholder="Optional note"
-            disabled={saving}
-            value={form.note}
-            onChange={(event) => setForm((prev) => ({ ...prev, note: event.target.value }))}
-          />
-        </label>
-        <label className="text-sm">
-          Reference
+        <label className="text-sm lg:col-span-2 xl:col-span-1">
+          Remarks
           <input
             className="field mt-1"
             placeholder="Invoice / transfer ref"
             disabled={saving}
-            value={form.reference}
-            onChange={(event) => setForm((prev) => ({ ...prev, reference: event.target.value }))}
+            value={form.remarks}
+            onChange={(event) => setForm((prev) => ({ ...prev, remarks: event.target.value }))}
           />
         </label>
       </div>
@@ -302,35 +288,6 @@ export function TransactionForm({
         <button className="btn-secondary" disabled={saving} onClick={() => handleSave(true)}>
           Save + Add Another
         </button>
-      </div>
-
-      <div className="mt-5 rounded-md border border-[rgb(var(--border))] p-4">
-        <p className="text-sm font-medium">Create sub-category inline</p>
-        <p className="mt-1 text-xs text-muted">
-          Choose the target category for this new sub-category.
-        </p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <select
-            className="field max-w-xs"
-            value={newSubcategoryCategoryId}
-            onChange={(event) => setNewSubcategoryCategoryId(event.target.value)}
-          >
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-          <input
-            className="field max-w-xs"
-            placeholder="New sub-category name"
-            value={newSubcategoryName}
-            onChange={(event) => setNewSubcategoryName(event.target.value)}
-          />
-          <button className="btn-secondary" onClick={handleCreateSubcategory} disabled={creatingSubcategory}>
-            {creatingSubcategory ? "Creating..." : "Create"}
-          </button>
-        </div>
       </div>
 
       {error ? <p className="mt-3 text-sm text-[rgb(var(--danger))]">{error}</p> : null}

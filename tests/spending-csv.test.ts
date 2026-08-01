@@ -11,8 +11,8 @@ describe("parseSpendingCsv", () => {
   it("parses a valid row with optional blanks", () => {
     const csv = [
       SPENDING_CSV_HEADERS.join(","),
-      "2026-04-25,spending,Ads,Facebook,150000,April boost,INV-001",
-      "2026-04-26,profit,,,50000,,"
+      "2026-04-25,Ads,Facebook,April boost,John,IDR,150000,spending,INV-001",
+      "2026-04-26,,,Rebate,,USDT,50,profit,"
     ].join("\n");
 
     const result = parseSpendingCsv(csv);
@@ -21,60 +21,58 @@ describe("parseSpendingCsv", () => {
     expect(result.rows[0]).toMatchObject({
       expense_date: "2026-04-25",
       entry_direction: "spending",
-      category_name: "Ads",
-      subcategory_name: "Facebook",
+      currency_code: "IDR",
+      type_name: "Ads",
+      category_name: "Facebook",
+      staff_name: "John",
       amount: 150000,
-      note: "April boost",
-      reference: "INV-001"
+      description: "April boost",
+      remarks: "INV-001"
     });
     expect(result.rows[1]).toMatchObject({
       expense_date: "2026-04-26",
       entry_direction: "profit",
+      currency_code: "USDT",
+      type_name: null,
       category_name: null,
-      subcategory_name: null,
-      amount: 50000,
-      note: null,
-      reference: null
+      staff_name: null,
+      amount: 50,
+      description: "Rebate",
+      remarks: null
     });
   });
 
   it("normalizes YYYY-MMM-DD dates and strips amount commas", () => {
-    const csv = [SPENDING_CSV_HEADERS.join(","), "2026-Apr-01,spending,Ads,,1,500.50,,"].join("\n");
-    // amount cell "1,500.50" needs quoting when it contains a comma
     const quoted = [
       SPENDING_CSV_HEADERS.join(","),
-      '2026-Apr-01,spending,Ads,,"1,500.50",,'
+      '2026-Apr-01,,,,"",IDR,"1,500.50",spending,'
     ].join("\n");
 
     const result = parseSpendingCsv(quoted);
     expect(result.errors).toEqual([]);
     expect(result.rows[0]?.expense_date).toBe("2026-04-01");
     expect(result.rows[0]?.amount).toBe(1500.5);
-    expect(csv).toBeTruthy();
   });
 
   it("rejects missing required headers", () => {
-    const result = parseSpendingCsv("expense_date,amount\n2026-04-01,100");
+    const result = parseSpendingCsv("date,amount\n2026-04-01,100");
     expect(result.rows).toEqual([]);
     expect(result.errors.some((item) => item.includes("Missing required header"))).toBe(true);
   });
 
-  it("rejects invalid direction, date, and amount", () => {
-    const csv = [
-      SPENDING_CSV_HEADERS.join(","),
-      "2026-02-30,out,Ads,Facebook,0,,"
-    ].join("\n");
+  it("rejects invalid cash_flow, date, and amount", () => {
+    const csv = [SPENDING_CSV_HEADERS.join(","), "2026-02-30,,,,,,0,out,"].join("\n");
     const result = parseSpendingCsv(csv);
     expect(result.rows).toEqual([]);
     expect(result.errors.length).toBeGreaterThan(0);
   });
 
   it("accepts semicolon-delimited Excel exports and strips BOM", () => {
-    const csv = `\uFEFF${SPENDING_CSV_HEADERS.join(";")}\r\n2026-04-25;spending;Ads;Facebook;150000;note;ref`;
+    const csv = `\uFEFF${SPENDING_CSV_HEADERS.join(";")}\r\n2026-04-25;Ads;Facebook;note;John;IDR;150000;spending;ref`;
     const result = parseSpendingCsv(csv);
     expect(result.errors).toEqual([]);
     expect(result.rows).toHaveLength(1);
-    expect(result.rows[0]?.category_name).toBe("Ads");
+    expect(result.rows[0]?.category_name).toBe("Facebook");
   });
 });
 
@@ -99,24 +97,28 @@ describe("buildSpendingImportTemplateCsv", () => {
 });
 
 describe("spendingDedupeKey", () => {
-  it("normalizes blank note/reference the same way as the expression index", () => {
+  it("normalizes blank description/remarks and null FKs like the expression index", () => {
     const a = spendingDedupeKey({
       entry_direction: "spending",
       expense_date: "2026-04-01",
+      currency_code: "IDR",
       amount: 100,
       category_id: "c1",
-      subcategory_id: "s1",
-      note: "  ",
-      reference: null
+      type_id: null,
+      staff_id: null,
+      description: "  ",
+      remarks: null
     });
     const b = spendingDedupeKey({
       entry_direction: "spending",
       expense_date: "2026-04-01",
+      currency_code: "IDR",
       amount: 100,
       category_id: "c1",
-      subcategory_id: "s1",
-      note: "",
-      reference: ""
+      type_id: null,
+      staff_id: null,
+      description: "",
+      remarks: ""
     });
     expect(a).toBe(b);
   });

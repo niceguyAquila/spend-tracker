@@ -2,50 +2,48 @@ import { describe, expect, it } from "vitest";
 import { expenseInputSchema } from "@/lib/validation/expense";
 
 const validBase = {
-  expense_date: "2026-08-01",
+  expense_date: "2026-04-01",
   category_id: "11111111-1111-4111-8111-111111111111",
-  subcategory_id: "22222222-2222-4222-8222-222222222222",
-  amount: 15000,
-  note: "",
-  reference: ""
+  amount: 100,
+  description: "",
+  remarks: ""
 };
 
-describe("expenseInputSchema entry_direction", () => {
-  it("defaults entry_direction to spending when omitted", () => {
-    const parsed = expenseInputSchema.safeParse(validBase);
-    expect(parsed.success).toBe(true);
-    if (!parsed.success) return;
-    expect(parsed.data.entry_direction).toBe("spending");
+describe("expenseInputSchema entry_direction and currency", () => {
+  it("defaults entry_direction to spending and currency to IDR", () => {
+    const parsed = expenseInputSchema.parse(validBase);
+    expect(parsed.entry_direction).toBe("spending");
+    expect(parsed.currency_code).toBe("IDR");
   });
 
-  it("accepts profit and spending", () => {
-    expect(expenseInputSchema.safeParse({ ...validBase, entry_direction: "profit" }).success).toBe(
-      true
+  it("accepts spending and profit", () => {
+    expect(expenseInputSchema.parse({ ...validBase, entry_direction: "spending" }).entry_direction).toBe(
+      "spending"
     );
-    expect(expenseInputSchema.safeParse({ ...validBase, entry_direction: "spending" }).success).toBe(
-      true
+    expect(expenseInputSchema.parse({ ...validBase, entry_direction: "profit" }).entry_direction).toBe(
+      "profit"
     );
   });
 
-  it("rejects invalid entry_direction values", () => {
-    const parsed = expenseInputSchema.safeParse({ ...validBase, entry_direction: "transfer" });
-    expect(parsed.success).toBe(false);
+  it("rejects unknown directions", () => {
+    expect(expenseInputSchema.safeParse({ ...validBase, entry_direction: "transfer" }).success).toBe(false);
   });
 
-  it("round-trips direction for PATCH-style payloads", () => {
-    const parsed = expenseInputSchema.safeParse({
+  it("accepts optional type_id and staff_id as null", () => {
+    const parsed = expenseInputSchema.parse({
       ...validBase,
-      entry_direction: "profit",
-      note: "top-up",
-      reference: "REF-1"
+      type_id: null,
+      staff_id: null,
+      currency_code: "USDT",
+      description: "top-up",
+      remarks: "REF-1"
     });
-    expect(parsed.success).toBe(true);
-    if (!parsed.success) return;
-    expect(parsed.data).toMatchObject({
-      entry_direction: "profit",
-      amount: 15000,
-      note: "top-up",
-      reference: "REF-1"
+    expect(parsed).toMatchObject({
+      currency_code: "USDT",
+      type_id: null,
+      staff_id: null,
+      description: "top-up",
+      remarks: "REF-1"
     });
   });
 });

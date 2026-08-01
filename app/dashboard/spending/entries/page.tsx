@@ -3,7 +3,13 @@ import { TransactionForm } from "@/components/transaction-form";
 import { TransactionTable } from "@/components/transaction-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { SetupRequiredCard } from "@/components/ui/setup-required-card";
-import { getCategories, getExpenseMonthKeys, getExpenses, getSubcategories } from "@/lib/db/queries";
+import {
+  getCategories,
+  getExpenseMonthKeys,
+  getExpenses,
+  getExpenseStaff,
+  getExpenseTypes
+} from "@/lib/db/queries";
 import { requireAllowedUser } from "@/lib/auth";
 
 type SearchParamValue = string | string[] | undefined;
@@ -38,9 +44,10 @@ export default async function SpendingEntriesPage({ searchParams }: SpendingEntr
     const resolvedParams = (await searchParams) ?? {};
     const selectedMonth = normalizeSingleParam(resolvedParams.month);
 
-    const [categories, subcategories, fetchedMonthOptions] = await Promise.all([
+    const [categories, types, staff, fetchedMonthOptions] = await Promise.all([
       getCategories(activeBrandId),
-      getSubcategories(activeBrandId),
+      getExpenseTypes(activeBrandId),
+      getExpenseStaff(activeBrandId),
       getExpenseMonthKeys(activeBrandId)
     ]);
 
@@ -60,7 +67,7 @@ export default async function SpendingEntriesPage({ searchParams }: SpendingEntr
         <PageHeader title="Spending Entries" description="Create and manage spending transactions." />
 
         {(role === "finance" || role === "admin") ? (
-          <TransactionForm categories={categories} subcategories={subcategories} submitLabel="Add Spending" />
+          <TransactionForm categories={categories} types={types} staff={staff} submitLabel="Add Spending" />
         ) : (
           <section className="card">
             <h2 className="text-lg font-semibold">Quick Add Transaction</h2>
@@ -73,7 +80,8 @@ export default async function SpendingEntriesPage({ searchParams }: SpendingEntr
         <TransactionTable
           rows={rows}
           categories={categories}
-          subcategories={subcategories}
+          types={types}
+          staff={staff}
           activeMonth={activeMonth}
           monthOptions={monthOptions}
           role={role}

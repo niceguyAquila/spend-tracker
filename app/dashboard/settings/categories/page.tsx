@@ -1,21 +1,25 @@
 import { CategoryManager } from "@/components/category-manager";
 import { PageHeader } from "@/components/ui/page-header";
 import { SetupRequiredCard } from "@/components/ui/setup-required-card";
-import { getCategories, getSubcategories } from "@/lib/db/queries";
+import { getCategories, getExpenseStaff, getExpenseTypes } from "@/lib/db/queries";
 import { requireAllowedRole } from "@/lib/auth";
 
 export default async function CategorySettingsPage() {
   try {
     const { activeBrandId } = await requireAllowedRole(["finance", "admin"]);
-    const [categories, subcategories] = await Promise.all([
+    const [categories, types, staff] = await Promise.all([
       getCategories(activeBrandId, { includeInactive: true }),
-      getSubcategories(activeBrandId)
+      getExpenseTypes(activeBrandId, { includeInactive: true }),
+      getExpenseStaff(activeBrandId, { includeInactive: true })
     ]);
 
     return (
       <div className="space-y-6">
-        <PageHeader title="Categories" description="Manage spending categories and sub-categories." />
-        <CategoryManager categories={categories} subcategories={subcategories} />
+        <PageHeader
+          title="Categories"
+          description="Manage spending categories, types, and staff."
+        />
+        <CategoryManager categories={categories} types={types} staff={staff} />
       </div>
     );
   } catch (error) {

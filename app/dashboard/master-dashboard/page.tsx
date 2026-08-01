@@ -10,6 +10,7 @@ import { getBigBookEntries, getBigBookLedgerTypeByCode, getDashboardReportRows }
 import {
   buildSpendingNetByMonth,
   buildSpendingPivot,
+  partitionSpendingRowsByCurrency,
   partitionSpendingRowsByDirection
 } from "@/lib/spending/pivot";
 
@@ -130,18 +131,11 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
     const spendingMonthColumns = Array.from(new Set(filteredSpendingRows.map((row) => row.month_key))).sort((a, b) =>
       a.localeCompare(b)
     );
-    const { outflowRows, inflowRows } = partitionSpendingRowsByDirection(filteredSpendingRows);
-    const outflowPivot = buildSpendingPivot(outflowRows, spendingMonthColumns);
-    const inflowPivot = buildSpendingPivot(inflowRows, spendingMonthColumns);
-    const spendingNetByMonth = buildSpendingNetByMonth(
-      inflowPivot.monthGrandTotals,
-      outflowPivot.monthGrandTotals,
-      spendingMonthColumns
-    );
+    const spendingCurrencyBlocks = partitionSpendingRowsByCurrency(filteredSpendingRows);
     const unifiedRows: UnifiedCashflowRow[] = [
       ...filteredSpendingRows.map((row) => ({
         source: "web_spending" as const,
-        currency: "IDR" as const,
+        currency: row.currency_code,
         signedAmount: row.entry_direction === "profit" ? Math.abs(row.amount) : -Math.abs(row.amount)
       })),
       ...bigBookEntries.map((entry) => ({
@@ -235,25 +229,38 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
           <MasterDashboardCashflowTable sourceRowsByCurrency={sourceRowsByCurrency} />
         </section>
 
-        <DashboardReportTable
-          title={`Web Spending Outflow (${selectedBrand.name})`}
-          description="Expense outflows grouped by category and sub-category across available months."
-          monthColumns={spendingMonthColumns}
-          rows={outflowPivot.pivotRows}
-          categorySubtotals={outflowPivot.categorySubtotals}
-          monthGrandTotals={outflowPivot.monthGrandTotals}
-        />
-
-        <DashboardReportTable
-          title={`Web Spending Inflow (${selectedBrand.name})`}
-          description="Expense inflows grouped by category and sub-category across available months."
-          monthColumns={spendingMonthColumns}
-          rows={inflowPivot.pivotRows}
-          categorySubtotals={inflowPivot.categorySubtotals}
-          monthGrandTotals={inflowPivot.monthGrandTotals}
-          netRow={spendingNetByMonth}
-          netRowLabel="Net (Inflow − Outflow)"
-        />
+        {spendingCurrencyBlocks.map(({ currency, rows }) => {
+          const { outflowRows, inflowRows } = partitionSpendingRowsByDirection(rows);
+          const outflowPivot = buildSpendingPivot(outflowRows, spendingMonthColumns);
+          const inflowPivot = buildSpendingPivot(inflowRows, spendingMonthColumns);
+          const spendingNetByMonth = buildSpendingNetByMonth(
+            inflowPivot.monthGrandTotals,
+            outflowPivot.monthGrandTotals,
+            spendingMonthColumns
+          );
+          return (
+            <div key={currency} className="space-y-4">
+              <DashboardReportTable
+                title={`Web Spending ${currency} Outflow (${selectedBrand.name})`}
+                description="Expense outflows grouped by category across available months."
+                currencyCode={currency}
+                monthColumns={spendingMonthColumns}
+                rows={outflowPivot.pivotRows}
+                monthGrandTotals={outflowPivot.monthGrandTotals}
+              />
+              <DashboardReportTable
+                title={`Web Spending ${currency} Inflow (${selectedBrand.name})`}
+                description="Expense inflows grouped by category across available months."
+                currencyCode={currency}
+                monthColumns={spendingMonthColumns}
+                rows={inflowPivot.pivotRows}
+                monthGrandTotals={inflowPivot.monthGrandTotals}
+                netRow={spendingNetByMonth}
+                netRowLabel="Net (Inflow − Outflow)"
+              />
+            </div>
+          );
+        })}
 
         <section className="card">
           <h2 className="text-lg font-semibold">Big Book Ledger for Brand Type</h2>
