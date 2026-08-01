@@ -4,14 +4,15 @@
  * category_name / subcategory_name is blank or does not match an existing name.
  */
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type LooseClient = { from: (table: string) => any };
+import type { createClient } from "@/lib/supabase/server";
+
+export type SpendingDbClient = Awaited<ReturnType<typeof createClient>>;
 
 export const UNCATEGORIZED_CATEGORY_CODE = "UNCATEGORIZED";
 export const UNCATEGORIZED_NAME = "Uncategorized";
 
 export async function ensureUncategorizedCategory(
-  client: LooseClient,
+  client: SpendingDbClient,
   brandId: string
 ): Promise<{ id: string; name: string }> {
   const { data: existing, error: lookupError } = await client
@@ -60,7 +61,7 @@ export async function ensureUncategorizedCategory(
 }
 
 export async function ensureUncategorizedSubcategory(
-  client: LooseClient,
+  client: SpendingDbClient,
   brandId: string,
   categoryId: string
 ): Promise<{ id: string; name: string }> {

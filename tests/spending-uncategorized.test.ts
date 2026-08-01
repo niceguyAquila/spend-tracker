@@ -9,6 +9,8 @@ import {
 const BRAND_ID = "brand-1";
 const CATEGORY_ID = "cat-1";
 
+type ClientArg = Parameters<typeof ensureUncategorizedCategory>[0];
+
 function createClient(handlers: {
   categoryLookup?: { data: unknown; error: unknown };
   categoryInsert?: { data: unknown; error: unknown };
@@ -16,11 +18,11 @@ function createClient(handlers: {
   subLookup?: { data: unknown; error: unknown };
   subInsert?: { data: unknown; error: unknown };
   subRaced?: { data: unknown; error: unknown };
-}) {
+}): ClientArg {
   let categorySelectCount = 0;
   let subSelectCount = 0;
 
-  return {
+  const stub = {
     from: vi.fn((table: string) => {
       if (table === "expense_categories") {
         return {
@@ -66,6 +68,8 @@ function createClient(handlers: {
       };
     })
   };
+
+  return stub as unknown as ClientArg;
 }
 
 describe("ensureUncategorizedCategory", () => {
