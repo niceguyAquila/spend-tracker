@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { TransactionForm } from "@/components/transaction-form";
 import { TransactionTable } from "@/components/transaction-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { SetupRequiredCard } from "@/components/ui/setup-required-card";
@@ -34,7 +33,7 @@ function getCurrentMonthKey() {
 export async function generateMetadata(): Promise<Metadata> {
   const { activeBrand } = await requireAllowedUser();
   return {
-    title: `${activeBrand.name} - Add Spending`
+    title: `${activeBrand.name} - Spending Entries`
   };
 }
 
@@ -65,17 +64,6 @@ export default async function SpendingEntriesPage({ searchParams }: SpendingEntr
     return (
       <div className="space-y-6">
         <PageHeader title="Spending Entries" description="Create and manage spending transactions." />
-
-        {(role === "finance" || role === "admin") ? (
-          <TransactionForm categories={categories} types={types} staff={staff} submitLabel="Add Spending" />
-        ) : (
-          <section className="card">
-            <h2 className="text-lg font-semibold">Quick Add Transaction</h2>
-            <p className="mt-2 text-sm text-muted">
-              Viewer role can view spending data, but only finance/admin can create new spending records.
-            </p>
-          </section>
-        )}
 
         <TransactionTable
           rows={rows}

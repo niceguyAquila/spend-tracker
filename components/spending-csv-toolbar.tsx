@@ -12,11 +12,11 @@ export type SpendingCsvExportFilters = {
   dateFrom: string;
   dateTo: string;
   query: string;
-  direction: "" | "spending" | "profit";
-  categoryId: string;
-  typeId: string;
-  staffId: string;
-  currency: "" | SpendingCurrencyCode;
+  direction: Array<"spending" | "profit">;
+  categoryId: string[];
+  typeId: string[];
+  staffId: string[];
+  currency: SpendingCurrencyCode[];
 };
 
 type Props = {
@@ -65,11 +65,11 @@ export function SpendingCsvToolbar({ role, filters, disabled = false }: Props) {
       if (filters.query) params.set("query", filters.query);
       if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
       if (filters.dateTo) params.set("dateTo", filters.dateTo);
-      if (filters.direction) params.append("direction", filters.direction);
-      if (filters.categoryId) params.append("categoryId", filters.categoryId);
-      if (filters.typeId) params.append("typeId", filters.typeId);
-      if (filters.staffId) params.append("staffId", filters.staffId);
-      if (filters.currency) params.append("currency", filters.currency);
+      for (const value of filters.direction) params.append("direction", value);
+      for (const value of filters.categoryId) params.append("categoryId", value);
+      for (const value of filters.typeId) params.append("typeId", value);
+      for (const value of filters.staffId) params.append("staffId", value);
+      for (const value of filters.currency) params.append("currency", value);
 
       const url = `/api/expenses/export${params.toString() ? `?${params.toString()}` : ""}`;
       const response = await fetch(url);
