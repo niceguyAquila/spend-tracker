@@ -195,10 +195,28 @@ export async function POST(request: Request) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
+
+  if (payload.close_credit && settlement.settles_entry_id) {
+    const { error: closeError } = await supabase
+      .from("business_ledger_entries")
+      .update({
+        credit_settled_at: new Date().toISOString(),
+        credit_settled_by: actorId,
+        credit_settlement_note: payload.credit_settlement_note ?? null,
+        updated_by: actorId
+      })
+      .eq("id", settlement.settles_entry_id);
+
+    if (closeError) {
+      return NextResponse.json({ error: closeError.message }, { status: 400 });
+    }
+  }
+
   return NextResponse.json({
     id: data.id,
     settlement_conversion_rate: settlement.settlement_conversion_rate,
-    settlement_amount_in_credit_currency: settlement.settlement_amount_in_credit_currency
+    settlement_amount_in_credit_currency: settlement.settlement_amount_in_credit_currency,
+    credit_closed: Boolean(payload.close_credit && settlement.settles_entry_id)
   });
 }
 

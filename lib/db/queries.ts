@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import {
   computeBigBookCreditStatus,
-  computeOutstanding,
   aggregateVendorActorOutstanding
 } from "@/lib/big-book/credit";
 import {
@@ -435,7 +434,7 @@ export type BigBookEntryFilters = {
 };
 
 const BIG_BOOK_ENTRY_SELECT = `
-  id, group_id, entry_date, entry_direction, entry_type_id, entry_sub_type_id, vendor_type_id, vendor_id, pocket_id, action_by_id, explanation, amount, currency_code, remark, responsible_actor_id, is_credit, settles_entry_id, settlement_conversion_rate, settlement_amount_in_credit_currency, settlement_note, created_by, updated_by, created_at, updated_at,
+  id, group_id, entry_date, entry_direction, entry_type_id, entry_sub_type_id, vendor_type_id, vendor_id, pocket_id, action_by_id, explanation, amount, currency_code, remark, responsible_actor_id, is_credit, settles_entry_id, settlement_conversion_rate, settlement_amount_in_credit_currency, settlement_note, credit_settled_at, credit_settled_by, credit_settlement_note, created_by, updated_by, created_at, updated_at,
   business_ledger_types(id, code, name),
   business_ledger_sub_types(id, code, name),
   business_ledger_vendor_types(id, code, name),
@@ -490,6 +489,7 @@ function applyBigBookEntryFilters<T extends BigBookFilterableQuery<T>>(
   const filterPocketIds = toFilterArray(filters?.pocketId);
   const filterActionByIds = toFilterArray(filters?.actionById);
   const filterCreditFlags = toFilterArray(filters?.creditFlag);
+  const filterCreditStatuses = toFilterArray(filters?.creditStatus);
   let next = query;
   if (filterTypeIds?.length) next = next.in("entry_type_id", filterTypeIds);
   if (filterCurrencyCodes?.length) next = next.in("currency_code", filterCurrencyCodes);
@@ -511,6 +511,23 @@ function applyBigBookEntryFilters<T extends BigBookFilterableQuery<T>>(
     if (filterCreditFlags.includes("settlement")) clauses.push("settles_entry_id.not.is.null");
     if (filterCreditFlags.includes("none")) {
       clauses.push("and(is_credit.eq.false,settles_entry_id.is.null)");
+    }
+    if (clauses.length) next = next.or(clauses.join(","));
+  }
+  if (filterCreditStatuses?.length === 1) {
+    const status = filterCreditStatuses[0];
+    if (status === "open") {
+      next = next.eq("is_credit", true).is("credit_settled_at", null);
+    } else if (status === "settled") {
+      next = next.not("credit_settled_at", "is", null);
+    }
+  } else if (filterCreditStatuses && filterCreditStatuses.length > 1) {
+    const clauses: string[] = [];
+    if (filterCreditStatuses.includes("open")) {
+      clauses.push("and(is_credit.eq.true,credit_settled_at.is.null)");
+    }
+    if (filterCreditStatuses.includes("settled")) {
+      clauses.push("credit_settled_at.not.is.null");
     }
     if (clauses.length) next = next.or(clauses.join(","));
   }
@@ -566,6 +583,9 @@ type RawBigBookEntryRow = {
   settlement_conversion_rate: number | string | null;
   settlement_amount_in_credit_currency: number | string | null;
   settlement_note: string | null;
+  credit_settled_at: string | null;
+  credit_settled_by: string | null;
+  credit_settlement_note: string | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -633,6 +653,9 @@ function mapBigBookEntryRow(row: RawBigBookEntryRow, actorMap: Map<string, strin
         ? null
         : Number(row.settlement_amount_in_credit_currency),
     settlement_note: row.settlement_note ?? null,
+    credit_settled_at: row.credit_settled_at ?? null,
+    credit_settled_by: row.credit_settled_by ?? null,
+    credit_settlement_note: row.credit_settlement_note ?? null,
     created_by: row.created_by,
     updated_by: row.updated_by,
     created_at: row.created_at,
@@ -649,12 +672,14 @@ function mapBigBookEntryRow(row: RawBigBookEntryRow, actorMap: Map<string, strin
     actor_display_name: actor?.display_name ?? "-",
     creator_display_name: row.created_by ? (actorMap.get(row.created_by) ?? row.created_by) : "-",
     updater_display_name: row.updated_by ? (actorMap.get(row.updated_by) ?? row.updated_by) : "-",
+    credit_settled_by_display_name: row.credit_settled_by
+      ? (actorMap.get(row.credit_settled_by) ?? row.credit_settled_by)
+      : "-",
     attachments: attachments.map((attachment) => ({
       ...attachment,
       file_size: Number(attachment.file_size)
     })),
     total_settled: 0,
-    outstanding: 0,
     credit_status: null,
     settlements: [],
     settles_entry: null
@@ -679,6 +704,7 @@ type RawBigBookSettlementParentRow = {
   explanation: string;
   amount: number | string;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
+  credit_settled_at: string | null;
   vendor_id: string | null;
   business_ledger_vendors: { id: string; name: string } | { id: string; name: string }[] | null;
 };
@@ -734,53 +760,30 @@ async function attachBigBookCreditSummaries(
     }
   }
 
-  // Parents of settlement rows on this page also need their own outstanding so
-  // the back-link badge can show remaining balance.
-  const parentSettledSumById = new Map<string, number>();
   const parentsById = new Map<string, BigBookSettlementTargetRef>();
   if (parentIds.length) {
-    const [{ data: parentRows, error: parentError }, { data: parentSettlementRows, error: parentSettlementError }] =
-      await Promise.all([
-        supabase
-          .from("business_ledger_entries")
-          .select(
-            "id, entry_date, explanation, amount, currency_code, vendor_id, business_ledger_vendors(id, name)"
-          )
-          .in("id", parentIds),
-        supabase
-          .from("business_ledger_entries")
-          .select("settles_entry_id, settlement_amount_in_credit_currency")
-          .in("settles_entry_id", parentIds)
-      ]);
+    const { data: parentRows, error: parentError } = await supabase
+      .from("business_ledger_entries")
+      .select(
+        "id, entry_date, explanation, amount, currency_code, credit_settled_at, vendor_id, business_ledger_vendors(id, name)"
+      )
+      .in("id", parentIds);
     if (parentError) throw parentError;
-    if (parentSettlementError) throw parentSettlementError;
-
-    for (const row of (parentSettlementRows ?? []) as Array<{
-      settles_entry_id: string | null;
-      settlement_amount_in_credit_currency: number | string | null;
-    }>) {
-      if (!row.settles_entry_id) continue;
-      parentSettledSumById.set(
-        row.settles_entry_id,
-        (parentSettledSumById.get(row.settles_entry_id) ?? 0) +
-          Number(row.settlement_amount_in_credit_currency ?? 0)
-      );
-    }
 
     for (const row of (parentRows ?? []) as RawBigBookSettlementParentRow[]) {
       const vendor = Array.isArray(row.business_ledger_vendors)
         ? row.business_ledger_vendors[0]
         : row.business_ledger_vendors;
-      const amount = Number(row.amount);
-      const totalSettled = parentSettledSumById.get(row.id) ?? 0;
+      const creditSettledAt = row.credit_settled_at ?? null;
       parentsById.set(row.id, {
         id: row.id,
         entry_date: row.entry_date,
         explanation: row.explanation,
-        amount,
+        amount: Number(row.amount),
         currency_code: row.currency_code,
         vendor_name: vendor?.name ?? null,
-        outstanding: computeOutstanding(amount, totalSettled)
+        credit_status: computeBigBookCreditStatus(creditSettledAt),
+        credit_settled_at: creditSettledAt
       });
     }
   }
@@ -789,13 +792,11 @@ async function attachBigBookCreditSummaries(
     if (entry.is_credit) {
       const settlements = settlementsByCreditId.get(entry.id) ?? [];
       const totalSettled = settledSumByCreditId.get(entry.id) ?? 0;
-      const outstanding = computeOutstanding(entry.amount, totalSettled);
       return {
         ...entry,
         settlements,
         total_settled: totalSettled,
-        outstanding,
-        credit_status: computeBigBookCreditStatus(entry.amount, totalSettled),
+        credit_status: computeBigBookCreditStatus(entry.credit_settled_at),
         settles_entry: null
       };
     }
@@ -805,7 +806,6 @@ async function attachBigBookCreditSummaries(
         ...entry,
         settlements: [],
         total_settled: 0,
-        outstanding: 0,
         credit_status: null,
         settles_entry: parentsById.get(entry.settles_entry_id) ?? null
       };
@@ -833,16 +833,12 @@ export async function getBigBookEntries(filters?: BigBookEntryFilters & { limit?
   for (const row of data ?? []) {
     if (row.created_by) actorIds.push(row.created_by);
     if (row.updated_by) actorIds.push(row.updated_by);
+    if (row.credit_settled_by) actorIds.push(row.credit_settled_by);
   }
   const actorMap = await resolveDisplayNameMap(supabase, actorIds);
 
   const mapped = (data ?? []).map((row) => mapBigBookEntryRow(row as RawBigBookEntryRow, actorMap));
-  const withCredit = await attachBigBookCreditSummaries(supabase, mapped);
-  const filterStatuses = toFilterArray(filters?.creditStatus);
-  if (!filterStatuses?.length) return withCredit;
-  return withCredit.filter(
-    (entry) => entry.credit_status != null && filterStatuses.includes(entry.credit_status)
-  );
+  return attachBigBookCreditSummaries(supabase, mapped);
 }
 
 export type BigBookEntriesPagedResult = {
@@ -858,19 +854,6 @@ export async function getBigBookEntriesPaged(
   const pageSize = Math.max(1, Math.floor(filters.pageSize));
   const fromIndex = page * pageSize;
   const toIndex = fromIndex + pageSize - 1;
-  const filterStatuses = toFilterArray(filters.creditStatus);
-
-  // Status is derived in app code, so status filtering must hydrate first then page.
-  if (filterStatuses?.length) {
-    const all = await getBigBookEntries({
-      ...filters,
-      limit: 5000
-    });
-    return {
-      rows: all.slice(fromIndex, fromIndex + pageSize),
-      totalCount: all.length
-    };
-  }
 
   let query = supabase
     .from("business_ledger_entries")
@@ -890,6 +873,7 @@ export async function getBigBookEntriesPaged(
   for (const row of data ?? []) {
     if (row.created_by) actorIds.push(row.created_by);
     if (row.updated_by) actorIds.push(row.updated_by);
+    if (row.credit_settled_by) actorIds.push(row.credit_settled_by);
   }
   const actorMap = await resolveDisplayNameMap(supabase, actorIds);
 
@@ -984,7 +968,6 @@ export async function getBigBookLedgerRowsPaged(
   const pageSize = Math.max(1, Math.floor(filters.pageSize));
   const sortBy = filters.sortBy ?? "entry_date";
   const sortDir = filters.sortDir ?? "desc";
-  const filterStatuses = toFilterArray(filters.creditStatus);
 
   const scanPageSize = 1000;
   let offset = 0;
@@ -1010,51 +993,8 @@ export async function getBigBookLedgerRowsPaged(
     offset += scanPageSize;
   }
 
-  // Credit status is derived; compute settlement sums for scanned credits and
-  // drop non-matching keys before paging so totalCount stays accurate.
-  let effectiveScanRows = scanRows;
-  if (filterStatuses?.length) {
-    const creditIds = scanRows.filter((row) => row.is_credit).map((row) => row.id);
-    const settledByCreditId = new Map<string, number>();
-    if (creditIds.length) {
-      const { data: settlementRows, error: settlementError } = await supabase
-        .from("business_ledger_entries")
-        .select("settles_entry_id, settlement_amount_in_credit_currency")
-        .in("settles_entry_id", creditIds);
-      if (settlementError) throw settlementError;
-      for (const row of (settlementRows ?? []) as Array<{
-        settles_entry_id: string | null;
-        settlement_amount_in_credit_currency: number | string | null;
-      }>) {
-        if (!row.settles_entry_id) continue;
-        settledByCreditId.set(
-          row.settles_entry_id,
-          (settledByCreditId.get(row.settles_entry_id) ?? 0) +
-            Number(row.settlement_amount_in_credit_currency ?? 0)
-        );
-      }
-    }
-
-    const matchingIds = new Set<string>();
-    const matchingGroupIds = new Set<string>();
-    for (const row of scanRows) {
-      if (!row.is_credit) continue;
-      const status = computeBigBookCreditStatus(
-        Number(row.amount),
-        settledByCreditId.get(row.id) ?? 0
-      );
-      if (!filterStatuses.includes(status)) continue;
-      matchingIds.add(row.id);
-      if (row.group_id) matchingGroupIds.add(row.group_id);
-    }
-
-    effectiveScanRows = scanRows.filter((row) =>
-      row.group_id ? matchingGroupIds.has(row.group_id) : matchingIds.has(row.id)
-    );
-  }
-
   const lookups = await loadLedgerSortNameLookups(sortBy);
-  const displayKeys = buildLedgerDisplayKeys(effectiveScanRows, { sortBy, sortDir, lookups });
+  const displayKeys = buildLedgerDisplayKeys(scanRows, { sortBy, sortDir, lookups });
   const totalCount = displayKeys.length;
   const pageKeys = displayKeys.slice(page * pageSize, page * pageSize + pageSize);
 
@@ -1065,7 +1005,7 @@ export async function getBigBookLedgerRowsPaged(
   // round trip and the grand total spans all pages rather than the visible one.
   const standaloneIdSet = new Set(standaloneIds);
   const pageGroupIdSet = new Set(pageGroupIds);
-  const pageScanRows = effectiveScanRows.filter((row) =>
+  const pageScanRows = scanRows.filter((row) =>
     row.group_id ? pageGroupIdSet.has(row.group_id) : standaloneIdSet.has(row.id)
   );
 
@@ -1076,15 +1016,15 @@ export async function getBigBookLedgerRowsPaged(
   const pocketFilterActive = Boolean(toFilterArray(filters.pocketId)?.length);
   const countsTowardTotals = (row: LedgerScanRow) => pocketFilterActive || !row.pocket_id;
   const pageTotalRows = pageScanRows.filter(countsTowardTotals);
-  const grandTotalRows = effectiveScanRows.filter(countsTowardTotals);
+  const grandTotalRows = scanRows.filter(countsTowardTotals);
 
   const totals: BigBookLedgerTotals = {
     pageTotals: summarizeCurrencies(pageTotalRows),
     pageEntryCount: pageScanRows.length,
     grandTotals: summarizeCurrencies(grandTotalRows),
-    grandEntryCount: effectiveScanRows.length,
+    grandEntryCount: scanRows.length,
     pagePocketExcludedCount: pageScanRows.length - pageTotalRows.length,
-    grandPocketExcludedCount: effectiveScanRows.length - grandTotalRows.length
+    grandPocketExcludedCount: scanRows.length - grandTotalRows.length
   };
 
   if (!pageKeys.length) {
@@ -1149,6 +1089,7 @@ export async function getBigBookLedgerRowsPaged(
   for (const row of allRawEntries) {
     if (row.created_by) actorIds.push(row.created_by);
     if (row.updated_by) actorIds.push(row.updated_by);
+    if (row.credit_settled_by) actorIds.push(row.credit_settled_by);
   }
   for (const group of groupsResult.data ?? []) {
     if (group.created_by) actorIds.push(group.created_by);
@@ -1537,7 +1478,6 @@ export type BigBookOpenCreditOption = {
   vendor_name: string | null;
   amount: number;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
-  outstanding: number;
   credit_status: BigBookCreditStatus;
 };
 
@@ -1547,25 +1487,20 @@ export async function getBigBookOpenCreditsForPicker(options?: {
 }): Promise<BigBookOpenCreditOption[]> {
   const entries = await getBigBookEntries({
     creditFlag: ["credit"],
+    creditStatus: ["open"],
     query: options?.query,
     limit: options?.limit ?? 50
   });
 
-  return entries
-    .filter(
-      (entry) =>
-        entry.credit_status === "open" || entry.credit_status === "partial"
-    )
-    .map((entry) => ({
-      id: entry.id,
-      entry_date: entry.entry_date,
-      explanation: entry.explanation,
-      vendor_name: entry.vendor_name,
-      amount: entry.amount,
-      currency_code: entry.currency_code,
-      outstanding: entry.outstanding,
-      credit_status: entry.credit_status as BigBookCreditStatus
-    }));
+  return entries.map((entry) => ({
+    id: entry.id,
+    entry_date: entry.entry_date,
+    explanation: entry.explanation,
+    vendor_name: entry.vendor_name,
+    amount: entry.amount,
+    currency_code: entry.currency_code,
+    credit_status: entry.credit_status as BigBookCreditStatus
+  }));
 }
 
 export async function getBigBookVendorActorOutstanding(filters?: {
@@ -1608,10 +1543,10 @@ export async function getBigBookVendorActorOutstanding(filters?: {
       `
       )
       .eq("is_credit", true)
+      .is("credit_settled_at", null)
       .order("created_at", { ascending: false })
       .range(offset, offset + pageSize - 1);
 
-    // Date filter applies only to which credits are included — never to settlements.
     query = applyBigBookEntryFilters(query, {
       actorId: filters?.actorId,
       vendorId: filters?.vendorId,
@@ -1627,31 +1562,6 @@ export async function getBigBookVendorActorOutstanding(filters?: {
     creditRows.push(...batch);
     if (batch.length < pageSize) break;
     offset += pageSize;
-  }
-
-  const settledByCreditId = new Map<string, number>();
-  if (creditRows.length) {
-    const creditIds = creditRows.map((row) => row.id);
-    // Fetch settlement sums in chunks to avoid oversized `.in()` lists.
-    for (let i = 0; i < creditIds.length; i += pageSize) {
-      const chunk = creditIds.slice(i, i + pageSize);
-      const { data: settlementRows, error: settlementError } = await supabase
-        .from("business_ledger_entries")
-        .select("settles_entry_id, settlement_amount_in_credit_currency")
-        .in("settles_entry_id", chunk);
-      if (settlementError) throw settlementError;
-      for (const row of (settlementRows ?? []) as Array<{
-        settles_entry_id: string | null;
-        settlement_amount_in_credit_currency: number | string | null;
-      }>) {
-        if (!row.settles_entry_id) continue;
-        settledByCreditId.set(
-          row.settles_entry_id,
-          (settledByCreditId.get(row.settles_entry_id) ?? 0) +
-            Number(row.settlement_amount_in_credit_currency ?? 0)
-        );
-      }
-    }
   }
 
   return aggregateVendorActorOutstanding(
@@ -1677,8 +1587,7 @@ export async function getBigBookVendorActorOutstanding(filters?: {
         actor_code: (actor?.actor_code ?? "A") as "A" | "B",
         actor_display_name: actor?.display_name ?? "Unknown Actor"
       };
-    }),
-    settledByCreditId
+    })
   );
 }
 

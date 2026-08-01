@@ -108,9 +108,9 @@ export default async function BigBookMasterDashboardPage({ searchParams }: BigBo
         <section className="card">
           <h2 className="text-lg font-semibold">Outstanding Credit by Vendor and Actor</h2>
           <p className="mt-1 text-sm text-muted">
-            Who owes whom: vendor (owes) to actor (owed), per currency. Fully settled credits are omitted.
-            Filters above also apply here; date range selects which credits are included, while all of their
-            settlements still count against outstanding.
+            Who owes whom: vendor (owes) to actor (owed), per currency. Outstanding is the total of credits
+            not yet marked settled. Filters above also apply here; date range selects which open credits are
+            included.
           </p>
           <BigBookVendorActorOutstandingTable rows={vendorActorOutstanding} />
         </section>

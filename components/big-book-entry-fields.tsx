@@ -30,6 +30,8 @@ export type EntryFormState = {
   settles_entry_id: string;
   settlement_conversion_rate: string;
   settlement_note: string;
+  close_credit: boolean;
+  credit_settlement_note: string;
 };
 
 const amountFormatter = new Intl.NumberFormat("en-US", {
@@ -87,7 +89,9 @@ export function createEmptyEntryForm(options: {
     is_credit: false,
     settles_entry_id: "",
     settlement_conversion_rate: "",
-    settlement_note: ""
+    settlement_note: "",
+    close_credit: false,
+    credit_settlement_note: ""
   };
 }
 
@@ -176,14 +180,17 @@ export function BigBookEntryFields({
             {settlesEntry.vendor_name ? ` · ${settlesEntry.vendor_name}` : ""}
           </p>
           <p className="mt-1">
-            Outstanding:{" "}
+            Credit amount:{" "}
             <span className="font-medium">
-              {formatAmount(settlesEntry.outstanding, {
+              {formatAmount(settlesEntry.amount, {
                 minimumFractionDigits: 0,
                 maximumFractionDigits: 4
               })}{" "}
               {settlesEntry.currency_code}
             </span>
+            {" · "}
+            Status:{" "}
+            <span className="font-medium capitalize">{settlesEntry.credit_status}</span>
           </p>
         </div>
       ) : null}
@@ -426,7 +433,9 @@ export function BigBookEntryFields({
                 is_credit: event.target.checked,
                 settles_entry_id: "",
                 settlement_conversion_rate: "",
-                settlement_note: ""
+                settlement_note: "",
+                close_credit: false,
+                credit_settlement_note: ""
               })
             }
           />
@@ -479,6 +488,36 @@ export function BigBookEntryFields({
               placeholder="Optional note about this settlement payment"
             />
           </label>
+          <label className="flex items-start gap-2 text-sm lg:col-span-2">
+            <input
+              className="mt-1"
+              type="checkbox"
+              checked={value.close_credit}
+              onChange={(event) =>
+                patch({
+                  close_credit: event.target.checked,
+                  credit_settlement_note: event.target.checked ? value.credit_settlement_note : ""
+                })
+              }
+            />
+            <span>
+              <span className="font-medium">Mark this credit as settled</span>
+              <span className="mt-0.5 block text-xs text-muted">
+                Closing is an admin decision — payment amount does not need to match the credit.
+              </span>
+            </span>
+          </label>
+          {value.close_credit ? (
+            <label className="text-sm lg:col-span-2">
+              Closure Note
+              <input
+                className="field mt-1"
+                value={value.credit_settlement_note}
+                onChange={(event) => patch({ credit_settlement_note: event.target.value })}
+                placeholder="Why is this credit being closed? (e.g. short/over payment approved)"
+              />
+            </label>
+          ) : null}
         </>
       ) : null}
     </div>

@@ -111,7 +111,7 @@ const optionalUuidOrEmpty = (message: string) =>
     .or(z.literal(""))
     .transform((value) => (value && value.length ? value : null));
 
-export const bigBookCreditStatusSchema = z.enum(["open", "partial", "settled"]);
+export const bigBookCreditStatusSchema = z.enum(["open", "settled"]);
 export const bigBookCreditFlagSchema = z.enum(["credit", "settlement", "none"]);
 
 const bigBookEntryBaseSchema = z.object({
@@ -136,6 +136,13 @@ const bigBookEntryBaseSchema = z.object({
     .max(1000)
     .optional()
     .or(z.literal(""))
+    .transform((value) => (value && value.length ? value : null)),
+  close_credit: z.boolean().optional().default(false),
+  credit_settlement_note: z
+    .string()
+    .max(1000)
+    .optional()
+    .or(z.literal(""))
     .transform((value) => (value && value.length ? value : null))
 });
 
@@ -144,6 +151,7 @@ function refineBigBookEntryCreditFields<
     is_credit?: boolean;
     settles_entry_id?: string | null;
     settlement_conversion_rate?: number | null;
+    close_credit?: boolean;
   }
 >(value: T, ctx: z.RefinementCtx) {
   if (value.is_credit && value.settles_entry_id) {
@@ -162,6 +170,13 @@ function refineBigBookEntryCreditFields<
       path: ["settlement_conversion_rate"]
     });
   }
+  if (value.close_credit && !value.settles_entry_id) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Closing a credit requires a settlement target.",
+      path: ["close_credit"]
+    });
+  }
 }
 
 export const bigBookEntryInputSchema = bigBookEntryBaseSchema.superRefine(refineBigBookEntryCreditFields);
@@ -172,11 +187,24 @@ export const bigBookEntryUpdateSchema = bigBookEntryBaseSchema
   })
   .superRefine(refineBigBookEntryCreditFields);
 
+export const bigBookCreditSettleSchema = z.object({
+  id: z.string().uuid(),
+  settled: z.boolean(),
+  note: z
+    .string()
+    .max(1000)
+    .optional()
+    .or(z.literal(""))
+    .transform((value) => (value && value.length ? value : null))
+});
+
 const bigBookGroupEntryInputSchema = bigBookEntryBaseSchema.omit({
   is_credit: true,
   settles_entry_id: true,
   settlement_conversion_rate: true,
-  settlement_note: true
+  settlement_note: true,
+  close_credit: true,
+  credit_settlement_note: true
 });
 
 export const bigBookGroupCreateSchema = z.object({

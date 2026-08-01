@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildBigBookImportTemplateCsv, parseBigBookCsv } from "@/lib/big-book/csv";
+import {
+  BIG_BOOK_CSV_EXPORT_HEADERS,
+  buildBigBookImportTemplateCsv,
+  parseBigBookCsv
+} from "@/lib/big-book/csv";
 
 describe("parseBigBookCsv", () => {
   it("parses valid rows", () => {
@@ -288,5 +292,11 @@ describe("parseBigBookCsv Excel compatibility", () => {
   it("includes is_credit in the import template header", () => {
     const template = buildBigBookImportTemplateCsv();
     expect(template).toContain("is_credit");
+  });
+
+  it("export headers use credit_settled_at instead of outstanding", () => {
+    expect(BIG_BOOK_CSV_EXPORT_HEADERS).toContain("credit_status");
+    expect(BIG_BOOK_CSV_EXPORT_HEADERS).toContain("credit_settled_at");
+    expect(BIG_BOOK_CSV_EXPORT_HEADERS).not.toContain("outstanding");
   });
 });

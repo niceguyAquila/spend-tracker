@@ -235,7 +235,7 @@ export type BigBookEntryGroup = {
   updated_at: string;
 };
 
-export type BigBookCreditStatus = "open" | "partial" | "settled";
+export type BigBookCreditStatus = "open" | "settled";
 
 export type BigBookSettlementRef = {
   id: string;
@@ -255,7 +255,8 @@ export type BigBookSettlementTargetRef = {
   amount: number;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
   vendor_name: string | null;
-  outstanding: number;
+  credit_status: BigBookCreditStatus;
+  credit_settled_at: string | null;
 };
 
 export type BigBookEntry = {
@@ -279,6 +280,9 @@ export type BigBookEntry = {
   settlement_conversion_rate: number | null;
   settlement_amount_in_credit_currency: number | null;
   settlement_note: string | null;
+  credit_settled_at: string | null;
+  credit_settled_by: string | null;
+  credit_settlement_note: string | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -295,9 +299,9 @@ export type BigBookEntry = {
   actor_display_name: string;
   creator_display_name: string;
   updater_display_name: string;
+  credit_settled_by_display_name: string;
   attachments: BigBookAttachment[];
   total_settled: number;
-  outstanding: number;
   credit_status: BigBookCreditStatus | null;
   settlements: BigBookSettlementRef[];
   settles_entry: BigBookSettlementTargetRef | null;
@@ -383,8 +387,6 @@ export type BigBookVendorActorOutstandingRow = {
   actor_code: "A" | "B";
   actor_display_name: string;
   currency: BigBookCashflowCurrency;
-  total_credited: number;
-  total_settled: number;
   outstanding: number;
   open_credit_count: number;
 };

@@ -142,19 +142,16 @@ const CREDIT_FLAG_OPTIONS = [
 
 const CREDIT_STATUS_OPTIONS = [
   { value: "open", label: "Open" },
-  { value: "partial", label: "Partial" },
   { value: "settled", label: "Settled" }
 ];
 
 const CREDIT_STATUS_LABELS: Record<BigBookCreditStatus, string> = {
   open: "Open",
-  partial: "Partial",
   settled: "Settled"
 };
 
 function creditStatusBadgeClass(status: BigBookCreditStatus) {
   if (status === "settled") return "bg-[rgb(var(--success)/0.15)] text-[rgb(var(--success))]";
-  if (status === "partial") return "bg-[rgb(var(--info)/0.15)] text-[rgb(var(--info))]";
   return "bg-[rgb(var(--warning)/0.15)] text-[rgb(var(--warning))]";
 }
 
@@ -173,7 +170,9 @@ function toCreditPayload(form: EntryFormState, settlesEntry: BigBookSettlementTa
       is_credit: form.is_credit,
       settles_entry_id: null,
       settlement_conversion_rate: null,
-      settlement_note: ""
+      settlement_note: "",
+      close_credit: false,
+      credit_settlement_note: null
     };
   }
   const typedRate = Number(form.settlement_conversion_rate);
@@ -183,7 +182,9 @@ function toCreditPayload(form: EntryFormState, settlesEntry: BigBookSettlementTa
     is_credit: false,
     settles_entry_id: settlesEntryId,
     settlement_conversion_rate: rate,
-    settlement_note: form.settlement_note
+    settlement_note: form.settlement_note,
+    close_credit: form.close_credit,
+    credit_settlement_note: form.close_credit ? form.credit_settlement_note.trim() || null : null
   };
 }
 
@@ -195,7 +196,8 @@ function settlementTargetFromEntry(entry: BigBookEntry): BigBookSettlementTarget
     amount: entry.amount,
     currency_code: entry.currency_code,
     vendor_name: entry.vendor_name,
-    outstanding: entry.outstanding
+    credit_status: entry.credit_status ?? "open",
+    credit_settled_at: entry.credit_settled_at
   };
 }
 
@@ -237,7 +239,9 @@ function entryFormFromEntry(entry: BigBookEntry): GroupEntryFormState {
     settles_entry_id: entry.settles_entry_id ?? "",
     settlement_conversion_rate:
       entry.settlement_conversion_rate != null ? formatRateInput(String(entry.settlement_conversion_rate)) : "",
-    settlement_note: entry.settlement_note ?? ""
+    settlement_note: entry.settlement_note ?? "",
+    close_credit: false,
+    credit_settlement_note: ""
   };
 }
 
@@ -339,7 +343,9 @@ export function BigBookPanel({
     is_credit: false,
     settles_entry_id: "",
     settlement_conversion_rate: "",
-    settlement_note: ""
+    settlement_note: "",
+    close_credit: false,
+    credit_settlement_note: ""
   });
   const [editSettlesEntry, setEditSettlesEntry] = useState<BigBookSettlementTargetRef | null>(null);
   const [pendingDeleteEntry, setPendingDeleteEntry] = useState<BigBookEntry | null>(null);
@@ -388,6 +394,12 @@ export function BigBookPanel({
   const [settlementHistoryEntryId, setSettlementHistoryEntryId] = useState<string | null>(null);
   const [pendingDeleteSettlementId, setPendingDeleteSettlementId] = useState<string | null>(null);
   const [settlementDeleting, setSettlementDeleting] = useState(false);
+  const [creditClosureDialog, setCreditClosureDialog] = useState<{
+    entry: BigBookEntry;
+    settled: boolean;
+  } | null>(null);
+  const [creditClosureNote, setCreditClosureNote] = useState("");
+  const [creditClosureSubmitting, setCreditClosureSubmitting] = useState(false);
 
   const activeTypes = useMemo(() => initialTypes.filter((item) => item.is_active), [initialTypes]);
   const currencies = SUPPORTED_CURRENCIES;
@@ -455,7 +467,9 @@ export function BigBookPanel({
     is_credit: false,
     settles_entry_id: "",
     settlement_conversion_rate: "",
-    settlement_note: ""
+    settlement_note: "",
+    close_credit: false,
+    credit_settlement_note: ""
   });
 
   const defaultTypeId = activeTypes[0]?.id ?? initialTypes[0]?.id ?? "";
@@ -1055,7 +1069,9 @@ export function BigBookPanel({
               is_credit: false,
               settles_entry_id: "",
               settlement_conversion_rate: "",
-              settlement_note: ""
+              settlement_note: "",
+              close_credit: false,
+              credit_settlement_note: ""
             })
       }));
       triggerRefresh();
@@ -1509,15 +1525,66 @@ export function BigBookPanel({
       pocket_id: "",
       action_by_id: row.action_by_id ?? "",
       explanation: `Settlement for: ${row.explanation}`,
-      amount: formatAmountInput(String(row.outstanding)),
+      amount: formatAmountInput(String(row.amount)),
       currency_code: row.currency_code,
       remark: "",
       responsible_actor_id: row.responsible_actor_id,
       is_credit: false,
       settles_entry_id: row.id,
       settlement_conversion_rate: "1",
-      settlement_note: ""
+      settlement_note: "",
+      close_credit: false,
+      credit_settlement_note: ""
     });
+  }
+
+  function openCreditClosureDialog(row: BigBookEntry, settled: boolean) {
+    setOpenActionMenu(null);
+    setCreditClosureDialog({ entry: row, settled });
+    setCreditClosureNote(settled ? row.credit_settlement_note ?? "" : "");
+  }
+
+  async function submitCreditClosure() {
+    if (!creditClosureDialog) return;
+    setCreditClosureSubmitting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await secureFetch("/api/big-book/entries/settle", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: creditClosureDialog.entry.id,
+          settled: creditClosureDialog.settled,
+          note: creditClosureNote.trim() || null
+        })
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(
+          extractApiError(
+            data.error,
+            creditClosureDialog.settled
+              ? "Failed to mark the credit as settled."
+              : "Failed to reopen the credit."
+          )
+        );
+        return;
+      }
+      setMessage(
+        creditClosureDialog.settled
+          ? "Credit marked as settled."
+          : "Credit reopened."
+      );
+      setCreditClosureDialog(null);
+      setCreditClosureNote("");
+      triggerRefresh();
+    } catch {
+      setError("Failed to update credit settlement status due to a network error.");
+    } finally {
+      setCreditClosureSubmitting(false);
+    }
   }
 
   function closeRecordSettlement() {
@@ -1574,20 +1641,6 @@ export function BigBookPanel({
       setError("Conversion rate must be greater than 0.");
       return;
     }
-    const amountInCreditCurrency = Math.round(amountValue * conversionRate * 10000) / 10000;
-    if (amountInCreditCurrency > settlementTarget.outstanding + 0.0001) {
-      setError(
-        `Settlement equivalent (${formatAmount(amountInCreditCurrency, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 4
-        })} ${settlementTarget.currency_code}) exceeds the outstanding balance (${formatAmount(
-          settlementTarget.outstanding,
-          { minimumFractionDigits: 2, maximumFractionDigits: 4 }
-        )} ${settlementTarget.currency_code}).`
-      );
-      return;
-    }
-
     setSettlementSubmitting(true);
     setError(null);
     setMessage(null);
@@ -1779,11 +1832,11 @@ export function BigBookPanel({
               >
                 {CREDIT_STATUS_LABELS[entry.credit_status ?? "open"]}
               </span>
-              <p className="text-xs text-muted">
-                Outstanding:{" "}
-                {formatAmount(entry.outstanding, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}{" "}
-                {entry.currency_code}
-              </p>
+              {entry.credit_settled_at ? (
+                <p className="text-xs text-muted">
+                  Closed {formatDateDisplay(entry.credit_settled_at.slice(0, 10))}
+                </p>
+              ) : null}
             </div>
           ) : entry.settles_entry_id ? (
             <span className="inline-flex rounded bg-[rgb(var(--info)/0.15)] px-2 py-0.5 text-xs font-medium text-[rgb(var(--info))]">
@@ -1987,7 +2040,7 @@ export function BigBookPanel({
       <section className="card">
         <h2 className="text-lg font-semibold">Outstanding Credit by Vendor and Actor (All Time)</h2>
         <p className="mt-1 text-sm text-muted">
-          Shows which vendor owes which actor, per currency. Fully settled credits are omitted.
+          Total of open credits (not yet marked settled) by vendor and actor, per currency.
         </p>
         <BigBookVendorActorOutstandingTable rows={initialVendorActorOutstanding} />
       </section>
@@ -2474,13 +2527,31 @@ export function BigBookPanel({
                 >
                   Manage attachments
                 </button>
-                {targetRow.is_credit && targetRow.outstanding > 0 ? (
+                {targetRow.is_credit ? (
                   <button
                     className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
                     role="menuitem"
                     onClick={() => openRecordSettlement(targetRow)}
                   >
                     Record settlement
+                  </button>
+                ) : null}
+                {targetRow.is_credit && targetRow.credit_status !== "settled" ? (
+                  <button
+                    className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
+                    role="menuitem"
+                    onClick={() => openCreditClosureDialog(targetRow, true)}
+                  >
+                    Mark as settled
+                  </button>
+                ) : null}
+                {targetRow.is_credit && targetRow.credit_status === "settled" ? (
+                  <button
+                    className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
+                    role="menuitem"
+                    onClick={() => openCreditClosureDialog(targetRow, false)}
+                  >
+                    Reopen credit
                   </button>
                 ) : null}
                 {targetRow.is_credit && targetRow.settlements.length > 0 ? (
@@ -3190,7 +3261,9 @@ export function BigBookPanel({
         title="Record settlement?"
         description={
           settlementTarget
-            ? `This will create a settlement entry against "${settlementTarget.explanation}" and reduce its outstanding balance.`
+            ? settlementForm?.close_credit
+              ? `This will create a settlement entry against "${settlementTarget.explanation}" and mark that credit as settled.`
+              : `This will create a settlement entry against "${settlementTarget.explanation}". The credit stays open until marked settled.`
             : "This will create a settlement entry."
         }
         confirmLabel="Record Settlement"
@@ -3198,6 +3271,69 @@ export function BigBookPanel({
         closeOnBackdrop={false}
         onConfirm={recordSettlement}
       />
+
+      <Modal
+        open={Boolean(creditClosureDialog)}
+        onOpenChange={(open) => {
+          if (!open && !creditClosureSubmitting) {
+            setCreditClosureDialog(null);
+            setCreditClosureNote("");
+          }
+        }}
+        title={
+          creditClosureDialog?.settled ? "Mark credit as settled?" : "Reopen credit?"
+        }
+        dismissible={!creditClosureSubmitting}
+        closeOnBackdrop={!creditClosureSubmitting}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={creditClosureSubmitting}
+              onClick={() => {
+                setCreditClosureDialog(null);
+                setCreditClosureNote("");
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={creditClosureSubmitting}
+              onClick={() => void submitCreditClosure()}
+            >
+              {creditClosureSubmitting
+                ? "Saving…"
+                : creditClosureDialog?.settled
+                  ? "Mark Settled"
+                  : "Reopen"}
+            </button>
+          </>
+        }
+      >
+        {creditClosureDialog ? (
+          <div className="space-y-3 text-sm">
+            <p className="text-muted">
+              {creditClosureDialog.settled
+                ? `Close "${creditClosureDialog.entry.explanation}" as settled. Payment amounts do not need to match the credit.`
+                : `Reopen "${creditClosureDialog.entry.explanation}" so it appears in Outstanding again.`}
+            </p>
+            {creditClosureDialog.settled ? (
+              <label className="block text-sm">
+                Closure Note
+                <input
+                  className="field mt-1"
+                  value={creditClosureNote}
+                  onChange={(event) => setCreditClosureNote(event.target.value)}
+                  placeholder="Why is this credit being closed? (optional)"
+                />
+              </label>
+            ) : null}
+          </div>
+        ) : null}
+      </Modal>
 
       <Modal
         open={Boolean(settlementHistoryEntryId)}
@@ -3224,6 +3360,8 @@ export function BigBookPanel({
               <p className="mt-1 text-xs text-muted">
                 {formatDateDisplay(settlementHistoryEntry.entry_date)}
                 {settlementHistoryEntry.vendor_name ? ` · ${settlementHistoryEntry.vendor_name}` : ""}
+                {" · "}
+                Status: {CREDIT_STATUS_LABELS[settlementHistoryEntry.credit_status ?? "open"]}
               </p>
               <p className="mt-2 text-xs text-muted">
                 Credit:{" "}
@@ -3231,18 +3369,26 @@ export function BigBookPanel({
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 4
                 })}{" "}
-                {settlementHistoryEntry.currency_code} · Settled:{" "}
+                {settlementHistoryEntry.currency_code} · Total recorded payments:{" "}
                 {formatAmount(settlementHistoryEntry.total_settled, {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 4
                 })}{" "}
-                {settlementHistoryEntry.currency_code} · Outstanding:{" "}
-                {formatAmount(settlementHistoryEntry.outstanding, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 4
-                })}{" "}
+                {settlementHistoryEntry.currency_code} · Variance (informational):{" "}
+                {formatAmount(
+                  settlementHistoryEntry.total_settled - settlementHistoryEntry.amount,
+                  {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 4
+                  }
+                )}{" "}
                 {settlementHistoryEntry.currency_code}
               </p>
+              {settlementHistoryEntry.credit_settlement_note ? (
+                <p className="mt-1 text-xs text-muted">
+                  Closure note: {settlementHistoryEntry.credit_settlement_note}
+                </p>
+              ) : null}
             </div>
             <ul className="space-y-2">
               {settlementHistoryEntry.settlements.map((settlement) => {
@@ -3325,7 +3471,7 @@ export function BigBookPanel({
           if (!open && !settlementDeleting) setPendingDeleteSettlementId(null);
         }}
         title="Delete settlement?"
-        description="This will permanently remove the settlement entry and restore the credit's outstanding balance."
+        description="This will permanently remove the settlement entry. The parent credit's open/settled status is unchanged."
         confirmLabel="Delete"
         confirming={settlementDeleting}
         variant="danger"

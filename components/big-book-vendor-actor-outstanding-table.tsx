@@ -6,7 +6,7 @@ import { formatAmount, getAmountColorClass } from "@/lib/display-format";
 import { TableEmptyState } from "@/components/ui/table-empty-state";
 import { rowStripeClass } from "@/lib/ui/table";
 
-const COLUMN_COUNT = 8;
+const COLUMN_COUNT = 6;
 const CURRENCY_ORDER = ["IDR", "MYR", "USDT", "TRX"] as const;
 
 type SortKey = "vendor_name" | "actor_display_name" | "currency" | "outstanding";
@@ -53,17 +53,13 @@ export function BigBookVendorActorOutstandingTable({ rows }: Props) {
   const currencySubtotals = useMemo(() => {
     const map = new Map<
       BigBookVendorActorOutstandingRow["currency"],
-      { credited: number; settled: number; outstanding: number; openCount: number }
+      { outstanding: number; openCount: number }
     >();
     for (const row of rows) {
       const existing = map.get(row.currency) ?? {
-        credited: 0,
-        settled: 0,
         outstanding: 0,
         openCount: 0
       };
-      existing.credited += row.total_credited;
-      existing.settled += row.total_settled;
       existing.outstanding += row.outstanding;
       existing.openCount += row.open_credit_count;
       map.set(row.currency, existing);
@@ -91,7 +87,7 @@ export function BigBookVendorActorOutstandingTable({ rows }: Props) {
 
   return (
     <div className="mt-4 overflow-x-auto">
-      <table className="data-table min-w-[1080px]">
+      <table className="data-table min-w-[900px]">
         <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
           <tr>
             <th className="px-3 py-2">Vendor Type</th>
@@ -114,8 +110,6 @@ export function BigBookVendorActorOutstandingTable({ rows }: Props) {
                 {sortLabel("Currency", "currency")}
               </button>
             </th>
-            <th className="px-3 py-2">Total Credited</th>
-            <th className="px-3 py-2">Settled</th>
             <th className="px-3 py-2">
               <button type="button" className="font-semibold" onClick={() => toggleSort("outstanding")}>
                 {sortLabel("Outstanding", "outstanding")}
@@ -134,18 +128,6 @@ export function BigBookVendorActorOutstandingTable({ rows }: Props) {
               <td className="px-3 py-2">{row.vendor_name}</td>
               <td className="px-3 py-2">{row.actor_display_name}</td>
               <td className="px-3 py-2">{row.currency}</td>
-              <td className="px-3 py-2">
-                {formatAmount(row.total_credited, {
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 4
-                })}
-              </td>
-              <td className="px-3 py-2">
-                {formatAmount(row.total_settled, {
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 4
-                })}
-              </td>
               <td className={`px-3 py-2 font-medium ${getAmountColorClass(row.outstanding)}`}>
                 {formatAmount(row.outstanding, {
                   minimumFractionDigits: 0,
@@ -156,7 +138,7 @@ export function BigBookVendorActorOutstandingTable({ rows }: Props) {
             </tr>
           ))}
           {!rows.length ? (
-            <TableEmptyState colSpan={COLUMN_COUNT} message="No outstanding credit right now." />
+            <TableEmptyState colSpan={COLUMN_COUNT} message="No open credits right now." />
           ) : null}
         </tbody>
         {currencySubtotals.length ? (
@@ -167,18 +149,6 @@ export function BigBookVendorActorOutstandingTable({ rows }: Props) {
                   Subtotal
                 </td>
                 <td className="px-3 py-2 font-medium">{subtotal.currency}</td>
-                <td className="px-3 py-2 font-medium">
-                  {formatAmount(subtotal.credited, {
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 4
-                  })}
-                </td>
-                <td className="px-3 py-2 font-medium">
-                  {formatAmount(subtotal.settled, {
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 4
-                  })}
-                </td>
                 <td className={`px-3 py-2 font-medium ${getAmountColorClass(subtotal.outstanding)}`}>
                   {formatAmount(subtotal.outstanding, {
                     minimumFractionDigits: 0,

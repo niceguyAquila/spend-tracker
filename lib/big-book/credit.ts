@@ -3,19 +3,10 @@ import type {
   BigBookVendorActorOutstandingRow
 } from "@/lib/types";
 
-export const BIG_BOOK_SETTLEMENT_EPSILON = 0.0001;
-
-export function computeOutstanding(amount: number, totalSettled: number): number {
-  return Math.max(0, amount - totalSettled);
-}
-
 export function computeBigBookCreditStatus(
-  amount: number,
-  totalSettled: number
+  creditSettledAt: string | null
 ): BigBookCreditStatus {
-  if (totalSettled <= BIG_BOOK_SETTLEMENT_EPSILON) return "open";
-  if (totalSettled + BIG_BOOK_SETTLEMENT_EPSILON >= amount) return "settled";
-  return "partial";
+  return creditSettledAt ? "settled" : "open";
 }
 
 export function roundSettlementAmount(value: number): number {
@@ -44,28 +35,22 @@ export type VendorActorOutstandingCreditInput = {
 
 /**
  * Aggregate open credit balances by vendor + actor + currency.
- * `settledByCreditId` must include ALL settlements for the given credits,
- * regardless of any date filter that selected those credits.
+ * Callers must pass only open credits (credit_settled_at is null).
  */
 export function aggregateVendorActorOutstanding(
-  credits: VendorActorOutstandingCreditInput[],
-  settledByCreditId: Map<string, number>
+  credits: VendorActorOutstandingCreditInput[]
 ): BigBookVendorActorOutstandingRow[] {
   const byKey = new Map<string, BigBookVendorActorOutstandingRow>();
 
   for (const credit of credits) {
     const amount = Math.abs(Number(credit.amount));
-    const totalSettled = settledByCreditId.get(credit.id) ?? 0;
-    const outstanding = computeOutstanding(amount, totalSettled);
-    if (outstanding <= BIG_BOOK_SETTLEMENT_EPSILON) continue;
+    if (!(amount > 0)) continue;
 
     const vendorKey = credit.vendor_id ?? "none";
     const key = `${vendorKey}:${credit.responsible_actor_id}:${credit.currency_code}`;
     const existing = byKey.get(key);
     if (existing) {
-      existing.total_credited += amount;
-      existing.total_settled += totalSettled;
-      existing.outstanding += outstanding;
+      existing.outstanding += amount;
       existing.open_credit_count += 1;
       continue;
     }
@@ -80,9 +65,7 @@ export function aggregateVendorActorOutstanding(
       actor_code: credit.actor_code,
       actor_display_name: credit.actor_display_name,
       currency: credit.currency_code,
-      total_credited: amount,
-      total_settled: totalSettled,
-      outstanding,
+      outstanding: amount,
       open_credit_count: 1
     });
   }

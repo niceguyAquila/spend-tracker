@@ -45,7 +45,7 @@ export const BIG_BOOK_CSV_HEADERS = [
 export const BIG_BOOK_CSV_EXPORT_HEADERS = [
   ...BIG_BOOK_CSV_HEADERS,
   "credit_status",
-  "outstanding",
+  "credit_settled_at",
   "settles_explanation"
 ] as const;
 

@@ -159,7 +159,7 @@ export async function GET(request: Request) {
         group?.remark ?? "",
         entry.is_credit ? "true" : "false",
         entry.credit_status ?? "",
-        entry.is_credit ? formatAmountForCsv(entry.outstanding) : "",
+        entry.credit_settled_at ?? "",
         entry.settles_entry?.explanation ?? ""
       ].map(escapeCsvCell);
       lines.push(cells.join(","));
