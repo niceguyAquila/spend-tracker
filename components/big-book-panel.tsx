@@ -2473,41 +2473,39 @@ export function BigBookPanel({
                 />
               ) : null}
             </tbody>
-            {ledgerRows.length > 0 && !entriesLoading ? (
-              <tfoot className="border-t-2 border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]">
-                <tr>
-                  <td colSpan={LEDGER_COLUMN_COUNT} className="!p-0">
-                    <div className="sticky left-0 inline-flex max-w-full flex-col px-3 py-3">
-                      <div className="flex items-start gap-x-8">
-                        <div className="w-56 shrink-0">
-                          <p className="font-medium text-[rgb(var(--text))]">Sub-total</p>
-                          <p className="text-xs text-muted">
-                            this page · {totals.pageEntryCount} transaction
-                            {totals.pageEntryCount === 1 ? "" : "s"}
-                            {pocketExcludedLabel(totals.pagePocketExcludedCount)}
-                          </p>
-                        </div>
-                        <BigBookCurrencyTotals totals={totals.pageTotals} showHeader showNet />
-                      </div>
-                      <div className="mt-3 flex items-start gap-x-8 border-t border-[rgb(var(--border))] pt-3">
-                        <div className="w-56 shrink-0">
-                          <p className="font-semibold text-[rgb(var(--text))]">Grand total</p>
-                          <p className="text-xs text-muted">
-                            all pages · {totals.grandEntryCount} transaction
-                            {totals.grandEntryCount === 1 ? "" : "s"}
-                            {filtersActive ? " matching the current filters" : ""}
-                            {pocketExcludedLabel(totals.grandPocketExcludedCount)}
-                          </p>
-                        </div>
-                        <BigBookCurrencyTotals totals={totals.grandTotals} showHeader showNet />
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              </tfoot>
-            ) : null}
           </table>
         </div>
+        {ledgerRows.length > 0 && !entriesLoading ? (
+          // Kept outside the scrolling table so the summary stays centred in the
+          // card instead of drifting with the table's horizontal scroll.
+          <div className="overflow-x-auto border-t-2 border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]">
+            <div className="mx-auto flex w-fit flex-col px-3 py-3">
+              <div className="flex items-start gap-x-8">
+                <div className="w-56 shrink-0">
+                  <p className="font-medium text-[rgb(var(--text))]">Sub-total</p>
+                  <p className="text-xs text-muted">
+                    this page · {totals.pageEntryCount} transaction
+                    {totals.pageEntryCount === 1 ? "" : "s"}
+                    {pocketExcludedLabel(totals.pagePocketExcludedCount)}
+                  </p>
+                </div>
+                <BigBookCurrencyTotals totals={totals.pageTotals} showHeader showNet />
+              </div>
+              <div className="mt-3 flex items-start gap-x-8 border-t border-[rgb(var(--border))] pt-3">
+                <div className="w-56 shrink-0">
+                  <p className="font-semibold text-[rgb(var(--text))]">Grand total</p>
+                  <p className="text-xs text-muted">
+                    all pages · {totals.grandEntryCount} transaction
+                    {totals.grandEntryCount === 1 ? "" : "s"}
+                    {filtersActive ? " matching the current filters" : ""}
+                    {pocketExcludedLabel(totals.grandPocketExcludedCount)}
+                  </p>
+                </div>
+                <BigBookCurrencyTotals totals={totals.grandTotals} showHeader showNet />
+              </div>
+            </div>
+          </div>
+        ) : null}
         <TablePaginationBar
           totalCount={totalCount}
           page={ledgerPagination.page}
