@@ -114,6 +114,14 @@ const optionalUuidOrEmpty = (message: string) =>
 export const bigBookCreditStatusSchema = z.enum(["open", "settled"]);
 export const bigBookCreditFlagSchema = z.enum(["credit", "settlement", "none"]);
 
+// The client sends `null` for notes that do not apply, so accept null/undefined/""
+// interchangeably and normalize them all to null.
+const optionalNoteSchema = z
+  .string()
+  .max(1000)
+  .nullish()
+  .transform((value) => (value && value.length ? value : null));
+
 const bigBookEntryBaseSchema = z.object({
   entry_date: z.string().min(1, "Date is required"),
   entry_direction: bigBookEntryDirectionSchema,
@@ -131,19 +139,9 @@ const bigBookEntryBaseSchema = z.object({
   is_credit: z.boolean().optional().default(false),
   settles_entry_id: optionalUuidOrEmpty("Settlement target must be a valid id"),
   settlement_conversion_rate: z.coerce.number().positive().nullable().optional(),
-  settlement_note: z
-    .string()
-    .max(1000)
-    .optional()
-    .or(z.literal(""))
-    .transform((value) => (value && value.length ? value : null)),
+  settlement_note: optionalNoteSchema,
   close_credit: z.boolean().optional().default(false),
-  credit_settlement_note: z
-    .string()
-    .max(1000)
-    .optional()
-    .or(z.literal(""))
-    .transform((value) => (value && value.length ? value : null))
+  credit_settlement_note: optionalNoteSchema
 });
 
 function refineBigBookEntryCreditFields<
@@ -190,12 +188,7 @@ export const bigBookEntryUpdateSchema = bigBookEntryBaseSchema
 export const bigBookCreditSettleSchema = z.object({
   id: z.string().uuid(),
   settled: z.boolean(),
-  note: z
-    .string()
-    .max(1000)
-    .optional()
-    .or(z.literal(""))
-    .transform((value) => (value && value.length ? value : null))
+  note: optionalNoteSchema
 });
 
 const bigBookGroupEntryInputSchema = bigBookEntryBaseSchema.omit({
