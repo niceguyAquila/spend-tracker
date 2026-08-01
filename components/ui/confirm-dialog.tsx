@@ -12,6 +12,7 @@ type Props = {
   cancelLabel?: string;
   variant?: "danger" | "default";
   confirming?: boolean;
+  confirmDisabled?: boolean;
   onConfirm: () => void | Promise<void>;
   onCancel?: () => void;
   /** Destructive: backdrop does not dismiss; Escape still closes via Modal */
@@ -27,6 +28,7 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   variant = "default",
   confirming = false,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
   closeOnBackdrop = true
@@ -66,7 +68,7 @@ export function ConfirmDialog({
             ref={confirmRef}
             type="button"
             className={confirmClass}
-            disabled={confirming}
+            disabled={confirming || confirmDisabled}
             onClick={() => void handleConfirm()}
           >
             {confirming ? "Please wait…" : confirmLabel}

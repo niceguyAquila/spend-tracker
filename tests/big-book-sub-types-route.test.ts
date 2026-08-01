@@ -197,6 +197,66 @@ describe("big book sub-types route", () => {
     expect(response.status).toBe(403);
   });
 
+  it("renames a sub-type code and name via PATCH", async () => {
+    const { PATCH } = await import("@/app/api/big-book/sub-types/route");
+    const request = new Request("https://app.localhost/api/big-book/sub-types", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: "55555555-5555-4555-8555-555555555555",
+        code: "OFFICE_RENT",
+        name: "Office Rent"
+      })
+    });
+    const response = await PATCH(request);
+    expect(response.status).toBe(200);
+    expect(updateMock.mock.calls[0][0]).toEqual({ code: "OFFICE_RENT", name: "Office Rent" });
+  });
+
+  it("rejects a malformed code on PATCH", async () => {
+    const { PATCH } = await import("@/app/api/big-book/sub-types/route");
+    const request = new Request("https://app.localhost/api/big-book/sub-types", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: "55555555-5555-4555-8555-555555555555",
+        code: "office rent",
+        name: "Office Rent"
+      })
+    });
+    const response = await PATCH(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error.fieldErrors.code[0]).toContain("uppercase letters, numbers, and underscores");
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it("explains a duplicate code returned by the database on PATCH", async () => {
+    updateEqMock.mockResolvedValueOnce({
+      error: {
+        code: "23505",
+        message: 'duplicate key value violates unique constraint "uq_business_ledger_sub_types_type_code"'
+      }
+    });
+
+    const { PATCH } = await import("@/app/api/big-book/sub-types/route");
+    const request = new Request("https://app.localhost/api/big-book/sub-types", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: "55555555-5555-4555-8555-555555555555",
+        code: "RENT",
+        name: "Rent"
+      })
+    });
+    const response = await PATCH(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toBe("Another Sub-Type already uses this code.");
+  });
+
   it("updates a sub-type via PATCH", async () => {
     const { PATCH } = await import("@/app/api/big-book/sub-types/route");
     const request = new Request("https://app.localhost/api/big-book/sub-types", {

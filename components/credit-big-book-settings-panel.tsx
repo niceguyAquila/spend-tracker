@@ -10,7 +10,9 @@ import type {
 } from "@/lib/types";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { ENTITY_CODE_HINT, ENTITY_CODE_MAX_LENGTH, normalizeEntityCode } from "@/lib/entity-code";
+import { useEntityEditor, type EditableEntity, type EntityEditor } from "@/lib/entity-editor";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { EntityEditDialog } from "@/components/ui/entity-edit-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { TableEmptyState } from "@/components/ui/table-empty-state";
@@ -81,6 +83,9 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
   const [pendingDeleteSubType, setPendingDeleteSubType] = useState<CreditBookLedgerSubType | null>(null);
   const [subTypeDeleting, setSubTypeDeleting] = useState(false);
 
+  const typeEditor = useEntityEditor<CreditBookLedgerType>();
+  const subTypeEditor = useEntityEditor<CreditBookLedgerSubType>();
+
   const subTypesForSelectedType = useMemo(
     () => initialSubTypes.filter((row) => row.entry_type_id === subTypeParentTypeId),
     [initialSubTypes, subTypeParentTypeId]
@@ -142,15 +147,53 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
   const criticalPending =
     typeSubmitting ||
     toggleTypeSubmitting ||
+    typeEditor.submitting ||
     actorSubmitting ||
     subTypeSubmitting ||
     toggleSubTypeSubmitting ||
-    subTypeDeleting;
+    subTypeDeleting ||
+    subTypeEditor.submitting;
 
   function triggerRefresh() {
     startTransition(() => {
       router.refresh();
     });
+  }
+
+  async function saveEntityEdit<T extends EditableEntity>(
+    editor: EntityEditor<T>,
+    endpoint: string,
+    entityLabel: string
+  ) {
+    const target = editor.target;
+    if (!target) return;
+    editor.setSubmitting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await secureFetch(endpoint, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: target.id,
+          code: normalizeEntityCode(editor.draft.code),
+          name: editor.draft.name.trim()
+        })
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(extractApiError(data.error, `Failed to update ${entityLabel.toLowerCase()}.`));
+        return;
+      }
+      setMessage(`${entityLabel} updated.`);
+      editor.reset();
+      triggerRefresh();
+    } catch {
+      setError(`Failed to update ${entityLabel.toLowerCase()} due to a network error.`);
+    } finally {
+      editor.setSubmitting(false);
+    }
   }
 
   async function addType() {
@@ -422,13 +465,22 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
                       </span>
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <button
-                        className="btn-secondary btn-sm"
-                        onClick={() => setPendingToggleType(type)}
-                        disabled={toggleTypeSubmitting}
-                      >
-                        {type.is_active ? "Deactivate" : "Activate"}
-                      </button>
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <button
+                          className="btn-secondary btn-sm"
+                          onClick={() => typeEditor.start(type)}
+                          disabled={toggleTypeSubmitting || typeEditor.submitting}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn-secondary btn-sm"
+                          onClick={() => setPendingToggleType(type)}
+                          disabled={toggleTypeSubmitting || typeEditor.submitting}
+                        >
+                          {type.is_active ? "Deactivate" : "Activate"}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -456,9 +508,12 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
         />
       </section>
 
-      <section className="card relative" aria-busy={subTypeSubmitting || toggleSubTypeSubmitting || subTypeDeleting}>
+      <section
+        className="card relative"
+        aria-busy={subTypeSubmitting || toggleSubTypeSubmitting || subTypeDeleting || subTypeEditor.submitting}
+      >
         <BlockingOverlay
-          active={subTypeSubmitting || toggleSubTypeSubmitting || subTypeDeleting}
+          active={subTypeSubmitting || toggleSubTypeSubmitting || subTypeDeleting || subTypeEditor.submitting}
           label="Processing sub-types..."
         />
         <h2 className="text-lg font-semibold">Sub-Type Management</h2>
@@ -569,15 +624,22 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         <button
                           className="btn-secondary btn-sm"
+                          onClick={() => subTypeEditor.start(subType)}
+                          disabled={toggleSubTypeSubmitting || subTypeDeleting || subTypeEditor.submitting}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn-secondary btn-sm"
                           onClick={() => setPendingToggleSubType(subType)}
-                          disabled={toggleSubTypeSubmitting || subTypeDeleting}
+                          disabled={toggleSubTypeSubmitting || subTypeDeleting || subTypeEditor.submitting}
                         >
                           {subType.is_active ? "Deactivate" : "Activate"}
                         </button>
                         <button
                           className="btn-secondary btn-sm !border-[rgb(var(--danger)/0.35)] !text-[rgb(var(--danger))] hover:!bg-[rgb(var(--danger)/0.12)]"
                           onClick={() => setPendingDeleteSubType(subType)}
-                          disabled={toggleSubTypeSubmitting || subTypeDeleting}
+                          disabled={toggleSubTypeSubmitting || subTypeDeleting || subTypeEditor.submitting}
                         >
                           Delete
                         </button>
@@ -734,6 +796,20 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
         confirming={actorSubmitting}
         closeOnBackdrop={false}
         onConfirm={saveActorMapping}
+      />
+
+      <EntityEditDialog
+        editor={typeEditor}
+        entityLabel="Type"
+        description="Existing records keep pointing at this type; only its code and name change."
+        onSave={() => saveEntityEdit(typeEditor, "/api/credit-big-book/types", "Type")}
+      />
+
+      <EntityEditDialog
+        editor={subTypeEditor}
+        entityLabel="Sub-Type"
+        description="Existing records keep pointing at this sub-type; only its code and name change."
+        onSave={() => saveEntityEdit(subTypeEditor, "/api/credit-big-book/sub-types", "Sub-Type")}
       />
     </div>
   );

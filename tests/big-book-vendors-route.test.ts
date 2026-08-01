@@ -137,6 +137,22 @@ describe("big book vendors route", () => {
     expect(insertMock).not.toHaveBeenCalled();
   });
 
+  it("renames a vendor code and name via PATCH", async () => {
+    const { PATCH } = await import("@/app/api/big-book/vendors/route");
+    const request = new Request("https://app.localhost/api/big-book/vendors", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: "55555555-5555-4555-8555-555555555555",
+        code: "RBEE_RETAIL",
+        name: "Rbee Retail"
+      })
+    });
+    const response = await PATCH(request);
+    expect(response.status).toBe(200);
+    expect(updateMock.mock.calls[0][0]).toEqual({ code: "RBEE_RETAIL", name: "Rbee Retail" });
+  });
+
   it("updates a vendor via PATCH", async () => {
     const { PATCH } = await import("@/app/api/big-book/vendors/route");
     const request = new Request("https://app.localhost/api/big-book/vendors", {

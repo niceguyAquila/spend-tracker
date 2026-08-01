@@ -149,6 +149,25 @@ describe("credit big book sub-types route", () => {
     expect(response.status).toBe(403);
   });
 
+  it("renames a sub-type code and name via PATCH", async () => {
+    const { PATCH } = await import("@/app/api/credit-big-book/sub-types/route");
+    const request = new Request("https://app.localhost/api/credit-big-book/sub-types", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: "55555555-5555-4555-8555-555555555555",
+        code: "CUSTOMER_INVOICE",
+        name: "Customer Invoice"
+      })
+    });
+    const response = await PATCH(request);
+    expect(response.status).toBe(200);
+    expect(updateMock.mock.calls[0][0]).toEqual({
+      code: "CUSTOMER_INVOICE",
+      name: "Customer Invoice"
+    });
+  });
+
   it("updates a sub-type via PATCH", async () => {
     const { PATCH } = await import("@/app/api/credit-big-book/sub-types/route");
     const request = new Request("https://app.localhost/api/credit-big-book/sub-types", {

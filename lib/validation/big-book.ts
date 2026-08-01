@@ -13,6 +13,7 @@ export const bigBookTypeCreateSchema = z.object({
 
 export const bigBookTypeUpdateSchema = z.object({
   id: z.string().uuid(),
+  code: entityCodeSchema("Type code").optional(),
   name: entityNameSchema("Type name").optional(),
   is_active: z.boolean().optional(),
   sort_order: entitySortOrderSchema()
@@ -27,6 +28,7 @@ export const bigBookSubTypeCreateSchema = z.object({
 
 export const bigBookSubTypeUpdateSchema = z.object({
   id: z.string().uuid(),
+  code: entityCodeSchema("Sub-Type code").optional(),
   name: entityNameSchema("Sub-Type name").optional(),
   is_active: z.boolean().optional(),
   sort_order: entitySortOrderSchema()
@@ -40,6 +42,7 @@ export const bigBookVendorTypeCreateSchema = z.object({
 
 export const bigBookVendorTypeUpdateSchema = z.object({
   id: z.string().uuid(),
+  code: entityCodeSchema("Vendor Type code").optional(),
   name: entityNameSchema("Vendor Type name").optional(),
   is_active: z.boolean().optional(),
   sort_order: entitySortOrderSchema()
@@ -54,6 +57,7 @@ export const bigBookVendorCreateSchema = z.object({
 
 export const bigBookVendorUpdateSchema = z.object({
   id: z.string().uuid(),
+  code: entityCodeSchema("Vendor code").optional(),
   name: entityNameSchema("Vendor name").optional(),
   is_active: z.boolean().optional(),
   sort_order: entitySortOrderSchema()
@@ -78,6 +82,7 @@ export const bigBookPocketCreateSchema = z.object({
 
 export const bigBookPocketUpdateSchema = z.object({
   id: z.string().uuid(),
+  code: entityCodeSchema("Pocket code").optional(),
   name: entityNameSchema("Pocket name").optional(),
   is_active: z.boolean().optional(),
   sort_order: entitySortOrderSchema()

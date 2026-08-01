@@ -15,6 +15,7 @@ export const creditBookTypeCreateSchema = z.object({
 
 export const creditBookTypeUpdateSchema = z.object({
   id: z.string().uuid(),
+  code: entityCodeSchema("Type code").optional(),
   name: entityNameSchema("Type name").optional(),
   is_active: z.boolean().optional(),
   sort_order: entitySortOrderSchema()
@@ -29,6 +30,7 @@ export const creditBookSubTypeCreateSchema = z.object({
 
 export const creditBookSubTypeUpdateSchema = z.object({
   id: z.string().uuid(),
+  code: entityCodeSchema("Sub-Type code").optional(),
   name: entityNameSchema("Sub-Type name").optional(),
   is_active: z.boolean().optional(),
   sort_order: entitySortOrderSchema()

@@ -13,7 +13,9 @@ import type {
 } from "@/lib/types";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { ENTITY_CODE_HINT, ENTITY_CODE_MAX_LENGTH, normalizeEntityCode } from "@/lib/entity-code";
+import { useEntityEditor, type EditableEntity, type EntityEditor } from "@/lib/entity-editor";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { EntityEditDialog } from "@/components/ui/entity-edit-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { TableEmptyState } from "@/components/ui/table-empty-state";
@@ -109,8 +111,6 @@ export function BigBookSettingsPanel({
   const [vendorSubmitting, setVendorSubmitting] = useState(false);
   const [pendingToggleVendor, setPendingToggleVendor] = useState<BigBookVendor | null>(null);
   const [toggleVendorSubmitting, setToggleVendorSubmitting] = useState(false);
-  const [pendingDeleteVendor, setPendingDeleteVendor] = useState<BigBookVendor | null>(null);
-  const [vendorDeleting, setVendorDeleting] = useState(false);
 
   const [pocketParentActorId, setPocketParentActorId] = useState<string>(() => initialActors[0]?.id ?? "");
   const [newPocketCode, setNewPocketCode] = useState("");
@@ -121,6 +121,12 @@ export function BigBookSettingsPanel({
   const [togglePocketSubmitting, setTogglePocketSubmitting] = useState(false);
   const [pendingDeletePocket, setPendingDeletePocket] = useState<BigBookActorPocket | null>(null);
   const [pocketDeleting, setPocketDeleting] = useState(false);
+
+  const typeEditor = useEntityEditor<BigBookLedgerType>();
+  const subTypeEditor = useEntityEditor<BigBookLedgerSubType>();
+  const vendorTypeEditor = useEntityEditor<BigBookVendorType>();
+  const vendorEditor = useEntityEditor<BigBookVendor>();
+  const pocketEditor = useEntityEditor<BigBookActorPocket>();
 
   const subTypesForSelectedType = useMemo(
     () => initialSubTypes.filter((row) => row.entry_type_id === subTypeParentTypeId),
@@ -271,23 +277,63 @@ export function BigBookSettingsPanel({
   const criticalPending =
     typeSubmitting ||
     toggleTypeSubmitting ||
+    typeEditor.submitting ||
     actorSubmitting ||
     subTypeSubmitting ||
     toggleSubTypeSubmitting ||
     subTypeDeleting ||
+    subTypeEditor.submitting ||
     vendorTypeSubmitting ||
     toggleVendorTypeSubmitting ||
+    vendorTypeEditor.submitting ||
     vendorSubmitting ||
     toggleVendorSubmitting ||
-    vendorDeleting ||
+    vendorEditor.submitting ||
     pocketSubmitting ||
     togglePocketSubmitting ||
-    pocketDeleting;
+    pocketDeleting ||
+    pocketEditor.submitting;
 
   function triggerRefresh() {
     startTransition(() => {
       router.refresh();
     });
+  }
+
+  async function saveEntityEdit<T extends EditableEntity>(
+    editor: EntityEditor<T>,
+    endpoint: string,
+    entityLabel: string
+  ) {
+    const target = editor.target;
+    if (!target) return;
+    editor.setSubmitting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await secureFetch(endpoint, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: target.id,
+          code: normalizeEntityCode(editor.draft.code),
+          name: editor.draft.name.trim()
+        })
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(extractApiError(data.error, `Failed to update ${entityLabel.toLowerCase()}.`));
+        return;
+      }
+      setMessage(`${entityLabel} updated.`);
+      editor.reset();
+      triggerRefresh();
+    } catch {
+      setError(`Failed to update ${entityLabel.toLowerCase()} due to a network error.`);
+    } finally {
+      editor.setSubmitting(false);
+    }
   }
 
   async function addType() {
@@ -570,31 +616,6 @@ export function BigBookSettingsPanel({
     }
   }
 
-  async function deleteVendor() {
-    if (!pendingDeleteVendor) return;
-    setVendorDeleting(true);
-    setError(null);
-    setMessage(null);
-    try {
-      const response = await secureFetch(`/api/big-book/vendors?id=${pendingDeleteVendor.id}`, {
-        method: "DELETE"
-      });
-      if (handleUnauthorizedResponse(response)) return;
-      const data = await response.json();
-      if (!response.ok) {
-        setError(extractApiError(data.error, "Failed to delete vendor."));
-        return;
-      }
-      setMessage("Vendor Name deleted.");
-      setPendingDeleteVendor(null);
-      triggerRefresh();
-    } catch {
-      setError("Failed to delete vendor due to a network error.");
-    } finally {
-      setVendorDeleting(false);
-    }
-  }
-
   async function addPocket() {
     if (!pocketParentActorId) {
       setError("Select an actor first.");
@@ -803,13 +824,22 @@ export function BigBookSettingsPanel({
                       </span>
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <button
-                        className="btn-secondary btn-sm"
-                        onClick={() => setPendingToggleType(type)}
-                        disabled={toggleTypeSubmitting}
-                      >
-                        {type.is_active ? "Deactivate" : "Activate"}
-                      </button>
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <button
+                          className="btn-secondary btn-sm"
+                          onClick={() => typeEditor.start(type)}
+                          disabled={toggleTypeSubmitting || typeEditor.submitting}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn-secondary btn-sm"
+                          onClick={() => setPendingToggleType(type)}
+                          disabled={toggleTypeSubmitting || typeEditor.submitting}
+                        >
+                          {type.is_active ? "Deactivate" : "Activate"}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -837,9 +867,12 @@ export function BigBookSettingsPanel({
         />
       </section>
 
-      <section className="card relative" aria-busy={subTypeSubmitting || toggleSubTypeSubmitting || subTypeDeleting}>
+      <section
+        className="card relative"
+        aria-busy={subTypeSubmitting || toggleSubTypeSubmitting || subTypeDeleting || subTypeEditor.submitting}
+      >
         <BlockingOverlay
-          active={subTypeSubmitting || toggleSubTypeSubmitting || subTypeDeleting}
+          active={subTypeSubmitting || toggleSubTypeSubmitting || subTypeDeleting || subTypeEditor.submitting}
           label="Processing sub-types..."
         />
         <h2 className="text-lg font-semibold">Sub-Type Management</h2>
@@ -950,15 +983,22 @@ export function BigBookSettingsPanel({
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         <button
                           className="btn-secondary btn-sm"
+                          onClick={() => subTypeEditor.start(subType)}
+                          disabled={toggleSubTypeSubmitting || subTypeDeleting || subTypeEditor.submitting}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn-secondary btn-sm"
                           onClick={() => setPendingToggleSubType(subType)}
-                          disabled={toggleSubTypeSubmitting || subTypeDeleting}
+                          disabled={toggleSubTypeSubmitting || subTypeDeleting || subTypeEditor.submitting}
                         >
                           {subType.is_active ? "Deactivate" : "Activate"}
                         </button>
                         <button
                           className="btn-secondary btn-sm !border-[rgb(var(--danger)/0.35)] !text-[rgb(var(--danger))] hover:!bg-[rgb(var(--danger)/0.12)]"
                           onClick={() => setPendingDeleteSubType(subType)}
-                          disabled={toggleSubTypeSubmitting || subTypeDeleting}
+                          disabled={toggleSubTypeSubmitting || subTypeDeleting || subTypeEditor.submitting}
                         >
                           Delete
                         </button>
@@ -991,9 +1031,12 @@ export function BigBookSettingsPanel({
         />
       </section>
 
-      <section className="card relative" aria-busy={vendorTypeSubmitting || toggleVendorTypeSubmitting}>
+      <section
+        className="card relative"
+        aria-busy={vendorTypeSubmitting || toggleVendorTypeSubmitting || vendorTypeEditor.submitting}
+      >
         <BlockingOverlay
-          active={vendorTypeSubmitting || toggleVendorTypeSubmitting}
+          active={vendorTypeSubmitting || toggleVendorTypeSubmitting || vendorTypeEditor.submitting}
           label="Processing vendor types..."
         />
         <h2 className="text-lg font-semibold">Vendor Type Management</h2>
@@ -1081,13 +1124,22 @@ export function BigBookSettingsPanel({
                       </span>
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <button
-                        className="btn-secondary btn-sm"
-                        onClick={() => setPendingToggleVendorType(vendorType)}
-                        disabled={toggleVendorTypeSubmitting}
-                      >
-                        {vendorType.is_active ? "Deactivate" : "Activate"}
-                      </button>
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <button
+                          className="btn-secondary btn-sm"
+                          onClick={() => vendorTypeEditor.start(vendorType)}
+                          disabled={toggleVendorTypeSubmitting || vendorTypeEditor.submitting}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn-secondary btn-sm"
+                          onClick={() => setPendingToggleVendorType(vendorType)}
+                          disabled={toggleVendorTypeSubmitting || vendorTypeEditor.submitting}
+                        >
+                          {vendorType.is_active ? "Deactivate" : "Activate"}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -1115,9 +1167,12 @@ export function BigBookSettingsPanel({
         />
       </section>
 
-      <section className="card relative" aria-busy={vendorSubmitting || toggleVendorSubmitting || vendorDeleting}>
+      <section
+        className="card relative"
+        aria-busy={vendorSubmitting || toggleVendorSubmitting || vendorEditor.submitting}
+      >
         <BlockingOverlay
-          active={vendorSubmitting || toggleVendorSubmitting || vendorDeleting}
+          active={vendorSubmitting || toggleVendorSubmitting || vendorEditor.submitting}
           label="Processing vendors..."
         />
         <h2 className="text-lg font-semibold">Vendor Name Management</h2>
@@ -1228,17 +1283,17 @@ export function BigBookSettingsPanel({
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         <button
                           className="btn-secondary btn-sm"
-                          onClick={() => setPendingToggleVendor(vendor)}
-                          disabled={toggleVendorSubmitting || vendorDeleting}
+                          onClick={() => vendorEditor.start(vendor)}
+                          disabled={toggleVendorSubmitting || vendorEditor.submitting}
                         >
-                          {vendor.is_active ? "Deactivate" : "Activate"}
+                          Edit
                         </button>
                         <button
-                          className="btn-secondary btn-sm !border-[rgb(var(--danger)/0.35)] !text-[rgb(var(--danger))] hover:!bg-[rgb(var(--danger)/0.12)]"
-                          onClick={() => setPendingDeleteVendor(vendor)}
-                          disabled={toggleVendorSubmitting || vendorDeleting}
+                          className="btn-secondary btn-sm"
+                          onClick={() => setPendingToggleVendor(vendor)}
+                          disabled={toggleVendorSubmitting || vendorEditor.submitting}
                         >
-                          Delete
+                          {vendor.is_active ? "Deactivate" : "Activate"}
                         </button>
                       </div>
                     </td>
@@ -1269,9 +1324,12 @@ export function BigBookSettingsPanel({
         />
       </section>
 
-      <section className="card relative" aria-busy={pocketSubmitting || togglePocketSubmitting || pocketDeleting}>
+      <section
+        className="card relative"
+        aria-busy={pocketSubmitting || togglePocketSubmitting || pocketDeleting || pocketEditor.submitting}
+      >
         <BlockingOverlay
-          active={pocketSubmitting || togglePocketSubmitting || pocketDeleting}
+          active={pocketSubmitting || togglePocketSubmitting || pocketDeleting || pocketEditor.submitting}
           label="Processing pockets..."
         />
         <h2 className="text-lg font-semibold">Actor Pockets</h2>
@@ -1385,15 +1443,22 @@ export function BigBookSettingsPanel({
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         <button
                           className="btn-secondary btn-sm"
+                          onClick={() => pocketEditor.start(pocket)}
+                          disabled={togglePocketSubmitting || pocketDeleting || pocketEditor.submitting}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn-secondary btn-sm"
                           onClick={() => setPendingTogglePocket(pocket)}
-                          disabled={togglePocketSubmitting || pocketDeleting}
+                          disabled={togglePocketSubmitting || pocketDeleting || pocketEditor.submitting}
                         >
                           {pocket.is_active ? "Deactivate" : "Activate"}
                         </button>
                         <button
                           className="btn-secondary btn-sm !border-[rgb(var(--danger)/0.35)] !text-[rgb(var(--danger))] hover:!bg-[rgb(var(--danger)/0.12)]"
                           onClick={() => setPendingDeletePocket(pocket)}
-                          disabled={togglePocketSubmitting || pocketDeleting}
+                          disabled={togglePocketSubmitting || pocketDeleting || pocketEditor.submitting}
                         >
                           Delete
                         </button>
@@ -1588,20 +1653,6 @@ export function BigBookSettingsPanel({
       />
 
       <ConfirmDialog
-        open={Boolean(pendingDeleteVendor)}
-        onOpenChange={(open) => {
-          if (!open && !vendorDeleting) setPendingDeleteVendor(null);
-        }}
-        title="Delete vendor name?"
-        description="This will permanently remove the vendor name. Existing entries that reference it will have their vendor name cleared."
-        confirmLabel="Delete"
-        confirming={vendorDeleting}
-        variant="danger"
-        closeOnBackdrop={false}
-        onConfirm={deleteVendor}
-      />
-
-      <ConfirmDialog
         open={pendingAddPocketConfirm}
         onOpenChange={setPendingAddPocketConfirm}
         title="Add new pocket?"
@@ -1650,6 +1701,41 @@ export function BigBookSettingsPanel({
         confirming={actorSubmitting}
         closeOnBackdrop={false}
         onConfirm={saveActorMapping}
+      />
+
+      <EntityEditDialog
+        editor={typeEditor}
+        entityLabel="Type"
+        description="Existing records keep pointing at this type; only its code and name change."
+        onSave={() => saveEntityEdit(typeEditor, "/api/big-book/types", "Type")}
+      />
+
+      <EntityEditDialog
+        editor={subTypeEditor}
+        entityLabel="Sub-Type"
+        description="Existing records keep pointing at this sub-type; only its code and name change."
+        onSave={() => saveEntityEdit(subTypeEditor, "/api/big-book/sub-types", "Sub-Type")}
+      />
+
+      <EntityEditDialog
+        editor={vendorTypeEditor}
+        entityLabel="Vendor Type"
+        description="Existing records keep pointing at this vendor type; only its code and name change."
+        onSave={() => saveEntityEdit(vendorTypeEditor, "/api/big-book/vendor-types", "Vendor Type")}
+      />
+
+      <EntityEditDialog
+        editor={vendorEditor}
+        entityLabel="Vendor Name"
+        description="Existing records keep pointing at this vendor; only its code and name change."
+        onSave={() => saveEntityEdit(vendorEditor, "/api/big-book/vendors", "Vendor Name")}
+      />
+
+      <EntityEditDialog
+        editor={pocketEditor}
+        entityLabel="Pocket"
+        description="Existing records keep pointing at this pocket; only its code and name change."
+        onSave={() => saveEntityEdit(pocketEditor, "/api/big-book/pockets", "Pocket")}
       />
     </div>
   );
