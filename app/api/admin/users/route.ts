@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdminApi } from "@/lib/auth-api";
 import { invalidateAccessCache } from "@/lib/auth-access";
 import { invalidateDisplayNameDirectory } from "@/lib/db/display-names";
+import { replaceUserBrandRoles } from "@/lib/db/user-brand-roles";
 import { assertCsrfAndOrigin } from "@/lib/security/origin";
 
 const updateSchema = z.object({
@@ -110,19 +111,9 @@ export async function PATCH(request: Request) {
   }
 
   if (parsed.data.brand_roles) {
-    await adminClient.from("user_brand_roles").delete().eq("allowed_user_id", userRow.id);
-    if (parsed.data.brand_roles.length > 0) {
-      const { error: roleError } = await adminClient.from("user_brand_roles").insert(
-        parsed.data.brand_roles.map((item) => ({
-          allowed_user_id: userRow.id,
-          brand_id: item.brand_id,
-          role: item.role,
-          is_active: item.is_active
-        }))
-      );
-      if (roleError) {
-        return NextResponse.json({ error: roleError.message }, { status: 400 });
-      }
+    const replaced = await replaceUserBrandRoles(adminClient, userRow.id, parsed.data.brand_roles);
+    if (!replaced.ok) {
+      return NextResponse.json({ error: replaced.message }, { status: 400 });
     }
   }
 

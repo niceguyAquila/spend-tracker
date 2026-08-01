@@ -2,7 +2,7 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import { loadAccessResult } from "@/lib/auth-access";
+import { loadAccessResult, preferActiveBrands } from "@/lib/auth-access";
 import { AppRole, UserBrandRole } from "@/lib/types";
 import { perfStart } from "@/lib/perf";
 
@@ -57,7 +57,13 @@ export const requireAllowedUser = cache(async function requireAllowedUser() {
     }
 
     const { allowedUserId, globalRole } = access.record;
-    const brandRoles: UserBrandRole[] = access.record.memberships;
+    // Must match resolveApiAccess(): if a page offers a brand the API layer
+    // filters out, the switcher and the mutation it triggers disagree on which
+    // brand is active and writes land on the wrong one.
+    const brandRoles: UserBrandRole[] = preferActiveBrands(access.record.memberships);
+    if (!brandRoles.length) {
+      redirect("/login?error=no-brand-access");
+    }
 
     const cookieStore = await cookies();
     const requestedBrandId = cookieStore.get(ACTIVE_BRAND_COOKIE)?.value ?? null;

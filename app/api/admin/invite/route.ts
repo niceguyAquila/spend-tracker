@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdminApi } from "@/lib/auth-api";
 import { invalidateAccessCache } from "@/lib/auth-access";
 import { invalidateDisplayNameDirectory } from "@/lib/db/display-names";
+import { replaceUserBrandRoles } from "@/lib/db/user-brand-roles";
 import { assertCsrfAndOrigin } from "@/lib/security/origin";
 
 const inviteSchema = z.object({
@@ -67,17 +68,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: allowedUserError.message }, { status: 400 });
   }
 
-  await adminClient.from("user_brand_roles").delete().eq("allowed_user_id", allowedUserRow.id);
-  const { error: insertRolesError } = await adminClient.from("user_brand_roles").insert(
-    parsed.data.brand_roles.map((item) => ({
-      allowed_user_id: allowedUserRow.id,
-      brand_id: item.brand_id,
-      role: item.role,
-      is_active: true
-    }))
-  );
-  if (insertRolesError) {
-    return NextResponse.json({ error: insertRolesError.message }, { status: 400 });
+  // Re-inviting an existing user rewrites their memberships, so this has to be
+  // as non-destructive as the update route.
+  const replaced = await replaceUserBrandRoles(adminClient, allowedUserRow.id, parsed.data.brand_roles);
+  if (!replaced.ok) {
+    return NextResponse.json({ error: replaced.message }, { status: 400 });
   }
 
   const listedUsers = await adminClient.auth.admin.listUsers();
