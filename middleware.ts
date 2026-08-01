@@ -67,16 +67,15 @@ function buildLoginRedirect(request: NextRequest, error?: string): NextResponse 
 }
 
 export async function middleware(request: NextRequest) {
-  const { response, user } = await updateSession(request);
   const path = request.nextUrl.pathname;
 
-  if (!isProtected(path)) {
-    return response;
+  // updateSession() makes a network round trip to Supabase Auth, so it must not
+  // run for paths that are never gated.
+  if (!isProtected(path) || isPublicAuthPath(path)) {
+    return NextResponse.next();
   }
 
-  if (isPublicAuthPath(path)) {
-    return response;
-  }
+  const { response, user } = await updateSession(request);
 
   if (!user) {
     return buildLoginRedirect(request);
@@ -107,5 +106,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"]
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|woff|woff2|ttf|otf)$).*)"
+  ]
 };
