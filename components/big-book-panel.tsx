@@ -124,11 +124,11 @@ const LEDGER_COLUMN_WIDTH_DEFAULTS: Record<string, number> = {
   sub_type_name: 120,
   vendor_type_name: 120,
   vendor_name: 140,
+  actor_display_name: 110,
   action_by_name: 120,
   explanation: 220,
   amount: 150,
   credit: 160,
-  actor_display_name: 110,
   pocket_name: 120,
   remark: 180,
   attachments: 140,
@@ -1865,6 +1865,7 @@ export function BigBookPanel({
         <td className="overflow-hidden break-words px-3 py-2">
           {entry.vendor_name ? entry.vendor_name : <span className="text-xs text-muted">-</span>}
         </td>
+        <td className="overflow-hidden break-words px-3 py-2">{entry.actor_display_name}</td>
         <td className="overflow-hidden break-words px-3 py-2">
           {entry.action_by_name ? entry.action_by_name : <span className="text-xs text-muted">-</span>}
         </td>
@@ -1909,7 +1910,6 @@ export function BigBookPanel({
             <span className="text-xs text-muted">-</span>
           )}
         </td>
-        <td className="overflow-hidden break-words px-3 py-2">{entry.actor_display_name}</td>
         <td className="overflow-hidden break-words px-3 py-2">
           {entry.pocket_name ? entry.pocket_name : <span className="text-xs text-muted">-</span>}
         </td>
@@ -2336,6 +2336,7 @@ export function BigBookPanel({
                     ["sub_type_name", "Sub-Type"],
                     ["vendor_type_name", "Vendor Type"],
                     ["vendor_name", "Vendor Name"],
+                    ["actor_display_name", "Actor"],
                     ["action_by_name", "Action By"],
                     ["explanation", "Explanation"]
                   ] as Array<[BigBookLedgerSortKey, string]>
@@ -2377,26 +2378,19 @@ export function BigBookPanel({
                     {...getResizeHandleProps("credit")}
                   />
                 </th>
-                {(
-                  [
-                    ["actor_display_name", "Actor"],
-                    ["pocket_name", "Pocket"]
-                  ] as Array<[BigBookLedgerSortKey, string]>
-                ).map(([key, label]) => (
-                  <th key={key} className="relative px-3 py-2" aria-sort={ariaSortFor(key)}>
-                    <button type="button" className="font-semibold" onClick={() => toggleSort(key)}>
-                      {label}
-                      {sortMarker(key)}
-                    </button>
-                    <span
-                      role="separator"
-                      aria-orientation="vertical"
-                      aria-label={`Resize ${label} column`}
-                      className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize touch-none select-none hover:bg-[rgb(var(--primary)/0.35)]"
-                      {...getResizeHandleProps(key)}
-                    />
-                  </th>
-                ))}
+                <th className="relative px-3 py-2" aria-sort={ariaSortFor("pocket_name")}>
+                  <button type="button" className="font-semibold" onClick={() => toggleSort("pocket_name")}>
+                    Pocket
+                    {sortMarker("pocket_name")}
+                  </button>
+                  <span
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize Pocket column"
+                    className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize touch-none select-none hover:bg-[rgb(var(--primary)/0.35)]"
+                    {...getResizeHandleProps("pocket_name")}
+                  />
+                </th>
                 {(
                   [
                     ["remark", "Remark"],
@@ -2432,11 +2426,11 @@ export function BigBookPanel({
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
+                      <td className="px-3 py-2"><div className="h-4 w-28 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-56 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-5 w-16 rounded-full bg-[rgb(var(--surface-muted))]" /></td>
-                      <td className="px-3 py-2"><div className="h-4 w-28 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-20 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-16 rounded bg-[rgb(var(--surface-muted))]" /></td>
