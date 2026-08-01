@@ -16,12 +16,17 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
 import { Modal } from "@/components/ui/modal";
+import { FormSection } from "@/components/ui/form-section";
 import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
 import { useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
 import { CreditBigBookSettlementModal } from "@/components/credit-big-book-settlement-modal";
 import { CreditBigBookSettlementHistoryModal } from "@/components/credit-big-book-settlement-history-modal";
+import {
+  describeMissingFields,
+  missingEntryFields
+} from "@/lib/big-book/entry-form-validation";
 import { rowStripeClass } from "@/lib/ui/table";
 import { TableEmptyState } from "@/components/ui/table-empty-state";
 
@@ -975,6 +980,14 @@ export function CreditBigBookPanel({
     [entrySubmitting]
   );
 
+  const createMissingHint = describeMissingFields(missingEntryFields(entryForm));
+  const createValid = createMissingHint == null;
+  const editMissingHint = describeMissingFields(missingEntryFields(editForm));
+  const editValid = editMissingHint == null;
+  const createMoreDetailsFilled =
+    Boolean(entryForm.remark.trim()) || createAttachmentFiles.length > 0;
+  const editMoreDetailsFilled = Boolean(editForm.remark.trim());
+
   return (
     <div className="space-y-6">
       <section className="card relative" aria-busy={criticalPending}>
@@ -1575,16 +1588,28 @@ export function CreditBigBookPanel({
         open={createModalOpen}
         onOpenChange={handleCreateModalOpenChange}
         title="Create Ledger Entry"
+        size="xl"
         dismissible={!entrySubmitting}
         closeOnBackdrop={!entrySubmitting}
+        onSubmitShortcut={
+          entrySubmitting || !createValid
+            ? undefined
+            : () => {
+                setCreateEntryMode("create");
+                setPendingEntryConfirm(true);
+              }
+        }
         footer={
           <>
+            {createMissingHint ? (
+              <p className="mr-auto w-full text-xs text-muted sm:w-auto">{createMissingHint}</p>
+            ) : null}
             <button className="btn-secondary" disabled={entrySubmitting} onClick={() => setCreateModalOpen(false)}>
               Cancel
             </button>
             <button
               className="btn"
-              disabled={entrySubmitting || !entryForm.explanation.trim() || !entryForm.amount}
+              disabled={entrySubmitting || !createValid}
               onClick={() => {
                 setCreateEntryMode("create");
                 setPendingEntryConfirm(true);
@@ -1594,7 +1619,7 @@ export function CreditBigBookPanel({
             </button>
             <button
               className="btn-secondary"
-              disabled={entrySubmitting || !entryForm.explanation.trim() || !entryForm.amount}
+              disabled={entrySubmitting || !createValid}
               onClick={() => {
                 setCreateEntryMode("create_another");
                 setPendingEntryConfirm(true);
@@ -1605,54 +1630,17 @@ export function CreditBigBookPanel({
           </>
         }
       >
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          <label className="text-sm">
-            Date *
-            <input
-              className="field mt-1"
-              type="date"
-              value={entryForm.entry_date}
-              onChange={(event) => setEntryForm((prev) => ({ ...prev, entry_date: event.target.value }))}
-            />
-          </label>
-          <label className="text-sm">
-            Type *
-            <select
-              className="field mt-1"
-              value={entryForm.entry_type_id}
-              onChange={(event) =>
-                setEntryForm((prev) => ({
-                  ...prev,
-                  entry_type_id: event.target.value,
-                  entry_sub_type_id: ""
-                }))
-              }
-            >
-              {activeTypes.map((type) => (
-                <option key={type.id} value={type.id}>
-                  {type.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            Sub-Type
-            <select
-              className="field mt-1"
-              value={entryForm.entry_sub_type_id}
-              onChange={(event) =>
-                setEntryForm((prev) => ({ ...prev, entry_sub_type_id: event.target.value }))
-              }
-              disabled={!subTypesForCreateForm.length}
-            >
-              <option value="">(none)</option>
-              {subTypesForCreateForm.map((subType) => (
-                <option key={subType.id} value={subType.id}>
-                  {subType.name}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="space-y-5">
+          <FormSection title="Money & timing">
+            <label className="text-sm">
+              Date *
+              <input
+                className="field mt-1"
+                type="date"
+                value={entryForm.entry_date}
+                onChange={(event) => setEntryForm((prev) => ({ ...prev, entry_date: event.target.value }))}
+              />
+            </label>
             <label className="text-sm">
               Cash Flow *
               <select
@@ -1669,93 +1657,160 @@ export function CreditBigBookPanel({
                 <option value="credit">Credit</option>
               </select>
             </label>
-          <label className="text-sm">
-            Responsible Actor *
-            <select
-              className="field mt-1"
-              value={entryForm.responsible_actor_id}
-              onChange={(event) => setEntryForm((prev) => ({ ...prev, responsible_actor_id: event.target.value }))}
-            >
-              {initialActors.map((actor) => (
-                <option key={actor.id} value={actor.id}>
-                  {actor.display_name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            Currency *
-            <select
-              className="field mt-1"
-              value={entryForm.currency_code}
-              onChange={(event) =>
-                setEntryForm((prev) => ({ ...prev, currency_code: event.target.value as EntryFormState["currency_code"] }))
-              }
-            >
-              {currencies.map((currency) => (
-                <option key={currency} value={currency}>
-                  {currency}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm lg:col-span-2">
-            Explanation *
-            <input
-              className="field mt-1"
-              value={entryForm.explanation}
-              onChange={(event) => setEntryForm((prev) => ({ ...prev, explanation: event.target.value }))}
-              placeholder="What was this credit/debt for?"
-            />
-          </label>
-          <label className="text-sm">
-            Amount *
-            <input
-              className="field mt-1"
-              inputMode="decimal"
-              placeholder="0"
-              value={entryForm.amount}
-              onChange={(event) =>
-                setEntryForm((prev) => ({ ...prev, amount: formatAmountInput(event.target.value) }))
-              }
-            />
-          </label>
-          <label className="text-sm">
-            Attachments
-            <input
-              className="field mt-1"
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={(event) => setCreateAttachmentFiles(Array.from(event.target.files ?? []))}
-            />
-            {createAttachmentFiles.length > 0 ? (
-              <ul className="mt-2 space-y-1 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-2 text-xs text-[rgb(var(--text))]">
-                {createAttachmentFiles.map((file, index) => (
-                  <li key={`${file.name}-${file.size}-${index}`} className="flex items-center justify-between gap-2">
-                    <span className="truncate">
-                      {file.name} ({(file.size / 1024).toFixed(1)} KB)
-                    </span>
-                    <button
-                      type="button"
-                      className="text-[rgb(var(--danger))] underline"
-                      onClick={() => removeCreateAttachmentAt(index)}
-                    >
-                      Remove
-                    </button>
-                  </li>
+            <label className="text-sm">
+              Amount *
+              <div className="mt-1 flex overflow-hidden rounded-md border border-[rgb(var(--border))] focus-within:shadow-[0_0_0_3px_rgba(var(--focus),0.25)]">
+                <input
+                  className="min-w-0 flex-1 border-0 bg-[rgb(var(--surface))] px-3 py-2 text-right text-base font-medium text-[rgb(var(--text))] focus:outline-none"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={entryForm.amount}
+                  onChange={(event) =>
+                    setEntryForm((prev) => ({ ...prev, amount: formatAmountInput(event.target.value) }))
+                  }
+                />
+                <select
+                  className="shrink-0 border-0 border-l border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] px-2 py-2 text-sm font-medium text-[rgb(var(--text))] focus:outline-none"
+                  value={entryForm.currency_code}
+                  onChange={(event) =>
+                    setEntryForm((prev) => ({
+                      ...prev,
+                      currency_code: event.target.value as EntryFormState["currency_code"]
+                    }))
+                  }
+                  aria-label="Currency"
+                >
+                  {currencies.map((currency) => (
+                    <option key={currency} value={currency}>
+                      {currency}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </label>
+            <label className="text-sm sm:col-span-2 xl:col-span-3">
+              Explanation *
+              <input
+                className="field mt-1"
+                value={entryForm.explanation}
+                onChange={(event) => setEntryForm((prev) => ({ ...prev, explanation: event.target.value }))}
+                placeholder="What was this credit/debt for?"
+                data-autofocus
+              />
+            </label>
+          </FormSection>
+
+          <FormSection title="Classification">
+            <label className="text-sm">
+              Type *
+              <select
+                className="field mt-1"
+                value={entryForm.entry_type_id}
+                onChange={(event) =>
+                  setEntryForm((prev) => ({
+                    ...prev,
+                    entry_type_id: event.target.value,
+                    entry_sub_type_id: ""
+                  }))
+                }
+              >
+                {activeTypes.map((type) => (
+                  <option key={type.id} value={type.id}>
+                    {type.name}
+                  </option>
                 ))}
-              </ul>
-            ) : null}
-          </label>
-          <label className="text-sm lg:col-span-2">
-            Remark
-            <input
-              className="field mt-1"
-              value={entryForm.remark}
-              onChange={(event) => setEntryForm((prev) => ({ ...prev, remark: event.target.value }))}
-            />
-          </label>
+              </select>
+            </label>
+            <label className="text-sm">
+              Sub-Type
+              <select
+                className="field mt-1"
+                value={entryForm.entry_sub_type_id}
+                onChange={(event) =>
+                  setEntryForm((prev) => ({ ...prev, entry_sub_type_id: event.target.value }))
+                }
+                disabled={!subTypesForCreateForm.length}
+              >
+                <option value="">(none)</option>
+                {subTypesForCreateForm.map((subType) => (
+                  <option key={subType.id} value={subType.id}>
+                    {subType.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              Responsible Actor *
+              <select
+                className="field mt-1"
+                value={entryForm.responsible_actor_id}
+                onChange={(event) =>
+                  setEntryForm((prev) => ({ ...prev, responsible_actor_id: event.target.value }))
+                }
+              >
+                {initialActors.map((actor) => (
+                  <option key={actor.id} value={actor.id}>
+                    {actor.display_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </FormSection>
+
+          <FormSection
+            title="More details"
+            collapsible
+            defaultOpen={createMoreDetailsFilled}
+            summary={
+              createMoreDetailsFilled
+                ? [
+                    entryForm.remark.trim() ? "remark" : null,
+                    createAttachmentFiles.length
+                      ? `${createAttachmentFiles.length} file${createAttachmentFiles.length === 1 ? "" : "s"}`
+                      : null
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")
+                : undefined
+            }
+          >
+            <label className="text-sm sm:col-span-2 xl:col-span-3">
+              Remark
+              <input
+                className="field mt-1"
+                value={entryForm.remark}
+                onChange={(event) => setEntryForm((prev) => ({ ...prev, remark: event.target.value }))}
+              />
+            </label>
+            <label className="text-sm sm:col-span-2 xl:col-span-3">
+              Attachments
+              <input
+                className="field mt-1"
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(event) => setCreateAttachmentFiles(Array.from(event.target.files ?? []))}
+              />
+              {createAttachmentFiles.length > 0 ? (
+                <ul className="mt-2 space-y-1 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-2 text-xs text-[rgb(var(--text))]">
+                  {createAttachmentFiles.map((file, index) => (
+                    <li key={`${file.name}-${file.size}-${index}`} className="flex items-center justify-between gap-2">
+                      <span className="truncate">
+                        {file.name} ({(file.size / 1024).toFixed(1)} KB)
+                      </span>
+                      <button
+                        type="button"
+                        className="text-[rgb(var(--danger))] underline"
+                        onClick={() => removeCreateAttachmentAt(index)}
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </label>
+          </FormSection>
         </div>
       </Modal>
 
@@ -1795,16 +1850,23 @@ export function CreditBigBookPanel({
           if (!entrySubmitting) setEditModalOpen(open);
         }}
         title="Edit Ledger Entry"
+        size="xl"
         dismissible={!entrySubmitting}
         closeOnBackdrop={!entrySubmitting}
+        onSubmitShortcut={
+          entrySubmitting || !editValid ? undefined : () => setPendingEditConfirm(true)
+        }
         footer={
           <>
+            {editMissingHint ? (
+              <p className="mr-auto w-full text-xs text-muted sm:w-auto">{editMissingHint}</p>
+            ) : null}
             <button className="btn-secondary" disabled={entrySubmitting} onClick={() => setEditModalOpen(false)}>
               Cancel
             </button>
             <button
               className="btn"
-              disabled={entrySubmitting || !editForm.explanation.trim() || !editForm.amount}
+              disabled={entrySubmitting || !editValid}
               onClick={() => setPendingEditConfirm(true)}
             >
               {entrySubmitting ? "Saving..." : "Continue"}
@@ -1812,54 +1874,17 @@ export function CreditBigBookPanel({
           </>
         }
       >
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          <label className="text-sm">
-            Date *
-            <input
-              className="field mt-1"
-              type="date"
-              value={editForm.entry_date}
-              onChange={(event) => setEditForm((prev) => ({ ...prev, entry_date: event.target.value }))}
-            />
-          </label>
-          <label className="text-sm">
-            Type *
-            <select
-              className="field mt-1"
-              value={editForm.entry_type_id}
-              onChange={(event) =>
-                setEditForm((prev) => ({
-                  ...prev,
-                  entry_type_id: event.target.value,
-                  entry_sub_type_id: ""
-                }))
-              }
-            >
-              {activeTypes.map((type) => (
-                <option key={type.id} value={type.id}>
-                  {type.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            Sub-Type
-            <select
-              className="field mt-1"
-              value={editForm.entry_sub_type_id}
-              onChange={(event) =>
-                setEditForm((prev) => ({ ...prev, entry_sub_type_id: event.target.value }))
-              }
-              disabled={!subTypesForEditForm.length}
-            >
-              <option value="">(none)</option>
-              {subTypesForEditForm.map((subType) => (
-                <option key={subType.id} value={subType.id}>
-                  {subType.name}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="space-y-5">
+          <FormSection title="Money & timing">
+            <label className="text-sm">
+              Date *
+              <input
+                className="field mt-1"
+                type="date"
+                value={editForm.entry_date}
+                onChange={(event) => setEditForm((prev) => ({ ...prev, entry_date: event.target.value }))}
+              />
+            </label>
             <label className="text-sm">
               Cash Flow *
               <select
@@ -1876,61 +1901,119 @@ export function CreditBigBookPanel({
                 <option value="credit">Credit</option>
               </select>
             </label>
-          <label className="text-sm">
-            Responsible Actor *
-            <select
-              className="field mt-1"
-              value={editForm.responsible_actor_id}
-              onChange={(event) => setEditForm((prev) => ({ ...prev, responsible_actor_id: event.target.value }))}
-            >
-              {initialActors.map((actor) => (
-                <option key={actor.id} value={actor.id}>
-                  {actor.display_name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            Currency *
-            <select
-              className="field mt-1"
-              value={editForm.currency_code}
-              onChange={(event) =>
-                setEditForm((prev) => ({ ...prev, currency_code: event.target.value as EntryFormState["currency_code"] }))
-              }
-            >
-              {currencies.map((currency) => (
-                <option key={currency} value={currency}>
-                  {currency}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm lg:col-span-2">
-            Explanation *
-            <input
-              className="field mt-1"
-              value={editForm.explanation}
-              onChange={(event) => setEditForm((prev) => ({ ...prev, explanation: event.target.value }))}
-            />
-          </label>
-          <label className="text-sm">
-            Amount *
-            <input
-              className="field mt-1"
-              inputMode="decimal"
-              value={editForm.amount}
-              onChange={(event) => setEditForm((prev) => ({ ...prev, amount: formatAmountInput(event.target.value) }))}
-            />
-          </label>
-          <label className="text-sm lg:col-span-2">
-            Remark
-            <input
-              className="field mt-1"
-              value={editForm.remark}
-              onChange={(event) => setEditForm((prev) => ({ ...prev, remark: event.target.value }))}
-            />
-          </label>
+            <label className="text-sm">
+              Amount *
+              <div className="mt-1 flex overflow-hidden rounded-md border border-[rgb(var(--border))] focus-within:shadow-[0_0_0_3px_rgba(var(--focus),0.25)]">
+                <input
+                  className="min-w-0 flex-1 border-0 bg-[rgb(var(--surface))] px-3 py-2 text-right text-base font-medium text-[rgb(var(--text))] focus:outline-none"
+                  inputMode="decimal"
+                  value={editForm.amount}
+                  onChange={(event) =>
+                    setEditForm((prev) => ({ ...prev, amount: formatAmountInput(event.target.value) }))
+                  }
+                />
+                <select
+                  className="shrink-0 border-0 border-l border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] px-2 py-2 text-sm font-medium text-[rgb(var(--text))] focus:outline-none"
+                  value={editForm.currency_code}
+                  onChange={(event) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      currency_code: event.target.value as EntryFormState["currency_code"]
+                    }))
+                  }
+                  aria-label="Currency"
+                >
+                  {currencies.map((currency) => (
+                    <option key={currency} value={currency}>
+                      {currency}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </label>
+            <label className="text-sm sm:col-span-2 xl:col-span-3">
+              Explanation *
+              <input
+                className="field mt-1"
+                value={editForm.explanation}
+                onChange={(event) => setEditForm((prev) => ({ ...prev, explanation: event.target.value }))}
+                data-autofocus
+              />
+            </label>
+          </FormSection>
+
+          <FormSection title="Classification">
+            <label className="text-sm">
+              Type *
+              <select
+                className="field mt-1"
+                value={editForm.entry_type_id}
+                onChange={(event) =>
+                  setEditForm((prev) => ({
+                    ...prev,
+                    entry_type_id: event.target.value,
+                    entry_sub_type_id: ""
+                  }))
+                }
+              >
+                {activeTypes.map((type) => (
+                  <option key={type.id} value={type.id}>
+                    {type.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              Sub-Type
+              <select
+                className="field mt-1"
+                value={editForm.entry_sub_type_id}
+                onChange={(event) =>
+                  setEditForm((prev) => ({ ...prev, entry_sub_type_id: event.target.value }))
+                }
+                disabled={!subTypesForEditForm.length}
+              >
+                <option value="">(none)</option>
+                {subTypesForEditForm.map((subType) => (
+                  <option key={subType.id} value={subType.id}>
+                    {subType.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              Responsible Actor *
+              <select
+                className="field mt-1"
+                value={editForm.responsible_actor_id}
+                onChange={(event) =>
+                  setEditForm((prev) => ({ ...prev, responsible_actor_id: event.target.value }))
+                }
+              >
+                {initialActors.map((actor) => (
+                  <option key={actor.id} value={actor.id}>
+                    {actor.display_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </FormSection>
+
+          <FormSection
+            title="More details"
+            collapsible
+            defaultOpen={editMoreDetailsFilled}
+            summary={editMoreDetailsFilled ? "remark" : undefined}
+          >
+            <label className="text-sm sm:col-span-2 xl:col-span-3">
+              Remark
+              <input
+                className="field mt-1"
+                value={editForm.remark}
+                onChange={(event) => setEditForm((prev) => ({ ...prev, remark: event.target.value }))}
+              />
+            </label>
+          </FormSection>
         </div>
       </Modal>
 

@@ -3,6 +3,8 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
+type ModalSize = "sm" | "md" | "lg" | "xl";
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -13,9 +15,20 @@ type Props = {
   closeOnBackdrop?: boolean;
   /** When false, Escape does not close (e.g. while submitting). */
   dismissible?: boolean;
+  /** Panel max-width. Defaults to `md` (448px) so existing callers are unchanged. */
+  size?: ModalSize;
   children: ReactNode;
   footer?: ReactNode;
   initialFocusRef?: React.RefObject<HTMLElement | null>;
+  /** When set, Ctrl/Cmd+Enter inside the panel invokes this callback. */
+  onSubmitShortcut?: () => void;
+};
+
+const SIZE_CLASS: Record<ModalSize, string> = {
+  sm: "max-w-sm",
+  md: "max-w-md",
+  lg: "max-w-2xl",
+  xl: "max-w-5xl"
 };
 
 // Reference-counted body scroll lock shared across all Modal instances.
@@ -55,20 +68,24 @@ export function Modal({
   descriptionId,
   closeOnBackdrop = true,
   dismissible = true,
+  size = "md",
   children,
   footer,
-  initialFocusRef
+  initialFocusRef,
+  onSubmitShortcut
 }: Props) {
   const autoTitleId = useId();
   const titleId = titleIdProp ?? autoTitleId;
   const panelRef = useRef<HTMLDivElement>(null);
   const dismissibleRef = useRef(dismissible);
   const onOpenChangeRef = useRef(onOpenChange);
+  const onSubmitShortcutRef = useRef(onSubmitShortcut);
 
   useEffect(() => {
     dismissibleRef.current = dismissible;
     onOpenChangeRef.current = onOpenChange;
-  }, [dismissible, onOpenChange]);
+    onSubmitShortcutRef.current = onSubmitShortcut;
+  }, [dismissible, onOpenChange, onSubmitShortcut]);
 
   useEffect(() => {
     if (!open) return;
@@ -78,12 +95,26 @@ export function Modal({
       if (e.key === "Escape" && dismissibleRef.current) {
         e.preventDefault();
         onOpenChangeRef.current(false);
+        return;
+      }
+      if (
+        e.key === "Enter" &&
+        (e.ctrlKey || e.metaKey) &&
+        onSubmitShortcutRef.current
+      ) {
+        e.preventDefault();
+        onSubmitShortcutRef.current();
       }
     };
     document.addEventListener("keydown", onKeyDown);
 
     const id = requestAnimationFrame(() => {
-      const target = initialFocusRef?.current ?? panelRef.current?.querySelector<HTMLElement>("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])");
+      const panel = panelRef.current;
+      const nominated = panel?.querySelector<HTMLElement>("[data-autofocus]");
+      const fallback = panel?.querySelector<HTMLElement>(
+        "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])"
+      );
+      const target = initialFocusRef?.current ?? nominated ?? fallback;
       target?.focus();
     });
 
@@ -114,14 +145,22 @@ export function Modal({
         aria-modal="true"
         aria-labelledby={titleId}
         {...(descriptionId ? { "aria-describedby": descriptionId } : {})}
-        className="relative z-10 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4 shadow-lg lg:p-5"
+        className={`relative z-10 flex max-h-[90vh] w-full flex-col overflow-hidden rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--surface))] shadow-lg ${SIZE_CLASS[size]}`}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id={titleId} className="mb-3 text-lg font-semibold">
-          {title}
-        </h2>
-        <div className="text-sm text-[rgb(var(--text))]">{children}</div>
-        {footer ? <div className="mt-4 flex flex-wrap justify-end gap-2 pt-4">{footer}</div> : null}
+        <div className="shrink-0 border-b border-[rgb(var(--border))] px-4 pb-3 pt-4 lg:px-5 lg:pt-5">
+          <h2 id={titleId} className="text-lg font-semibold">
+            {title}
+          </h2>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-4 text-sm text-[rgb(var(--text))] lg:px-5">
+          {children}
+        </div>
+        {footer ? (
+          <div className="shrink-0 border-t border-[rgb(var(--border))] px-4 py-3 lg:px-5">
+            <div className="flex flex-wrap justify-end gap-2">{footer}</div>
+          </div>
+        ) : null}
       </div>
     </div>,
     document.body

@@ -42,6 +42,11 @@ import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
 import { buildBigBookImportTemplateCsv } from "@/lib/big-book/csv";
 import type { BigBookLedgerSortDir, BigBookLedgerSortKey } from "@/lib/big-book/ledger-display-keys";
+import {
+  describeGroupedMissingFields,
+  describeMissingFields,
+  missingEntryFields
+} from "@/lib/big-book/entry-form-validation";
 import { rowStripeClass } from "@/lib/ui/table";
 import { useColumnWidths } from "@/lib/ui/use-column-widths";
 import { TableEmptyState } from "@/components/ui/table-empty-state";
@@ -248,6 +253,22 @@ function entryFormFromEntry(entry: BigBookEntry): GroupEntryFormState {
 function isEntryFormComplete(form: EntryFormState) {
   const amountValue = Number(parseAmountInput(form.amount));
   return Boolean(form.explanation.trim()) && Number.isFinite(amountValue) && amountValue > 0;
+}
+
+function summarizeGroupEntryForm(form: EntryFormState, types: BigBookLedgerType[]) {
+  const typeName = types.find((row) => row.id === form.entry_type_id)?.name ?? "Type";
+  const explanation = form.explanation.trim() || "No explanation yet";
+  const amountPart = form.amount.trim()
+    ? `${form.amount} ${form.currency_code}`
+    : `— ${form.currency_code}`;
+  return `${form.entry_date || "—"} · ${typeName} · ${explanation} · ${amountPart}`;
+}
+
+function toggleExpandedIndex(prev: Set<number>, index: number) {
+  const next = new Set(prev);
+  if (next.has(index)) next.delete(index);
+  else next.add(index);
+  return next;
 }
 
 export function BigBookPanel({
@@ -485,6 +506,13 @@ export function BigBookPanel({
     createEmptyEntryForm({ today, defaultTypeId, defaultActorId }),
     createEmptyEntryForm({ today, defaultTypeId, defaultActorId })
   ]);
+  // Which transaction cards are expanded in create/edit grouped mode.
+  const [expandedCreateTxnIndexes, setExpandedCreateTxnIndexes] = useState<Set<number>>(
+    () => new Set([0])
+  );
+  const [expandedEditTxnIndexes, setExpandedEditTxnIndexes] = useState<Set<number>>(
+    () => new Set([0])
+  );
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editGroupLabel, setEditGroupLabel] = useState("");
   const [editGroupRemark, setEditGroupRemark] = useState("");
@@ -1263,7 +1291,10 @@ export function BigBookPanel({
     setEditingGroupId(group.id);
     setEditGroupLabel(group.label);
     setEditGroupRemark(group.remark ?? "");
-    setEditGroupForms(entries.map(entryFormFromEntry));
+    const forms = entries.map(entryFormFromEntry);
+    setEditGroupForms(forms);
+    const firstIncomplete = forms.findIndex((form) => missingEntryFields(form).length > 0);
+    setExpandedEditTxnIndexes(new Set([firstIncomplete >= 0 ? firstIncomplete : 0]));
     setEditModalOpen(true);
   }
 
@@ -1753,17 +1784,18 @@ export function BigBookPanel({
   );
 
   const createPending = entrySubmitting || groupSubmitting;
-  const createSingleValid = Boolean(entryForm.explanation.trim()) && Boolean(entryForm.amount);
-  const createGroupValid =
-    groupLabel.trim().length >= 2 &&
-    groupEntryForms.length >= 2 &&
-    groupEntryForms.every((form) => Boolean(form.explanation.trim()) && Boolean(form.amount));
-  const createValid = createMode === "group" ? createGroupValid : createSingleValid;
-  const editGroupValid =
-    editGroupLabel.trim().length >= 2 &&
-    editGroupForms.length >= 2 &&
-    editGroupForms.every((form) => Boolean(form.explanation.trim()) && Boolean(form.amount));
-  const editValid = editingGroupId ? editGroupValid : Boolean(editForm.explanation.trim()) && Boolean(editForm.amount);
+  const createMissingHint =
+    createMode === "group"
+      ? describeGroupedMissingFields(groupEntryForms, { groupLabel })
+      : describeMissingFields(missingEntryFields(entryForm));
+  const createValid = createMissingHint == null;
+  const editMissingHint = editingGroupId
+    ? describeGroupedMissingFields(editGroupForms, { groupLabel: editGroupLabel })
+    : describeMissingFields(missingEntryFields(editForm));
+  const editValid = editMissingHint == null;
+  const settlementMissingHint = settlementForm
+    ? describeMissingFields(missingEntryFields(settlementForm))
+    : null;
 
   function renderEntryRow(entry: BigBookEntry, isGroupMember: boolean) {
     const stripe = isGroupMember
@@ -2676,10 +2708,22 @@ export function BigBookPanel({
         open={createModalOpen}
         onOpenChange={handleCreateModalOpenChange}
         title={createMode === "group" ? "Create Grouped Transaction" : "Create Ledger Entry"}
+        size="xl"
         dismissible={!createPending}
         closeOnBackdrop={!createPending}
+        onSubmitShortcut={
+          createPending || !createValid
+            ? undefined
+            : () => {
+                setCreateEntryMode("create");
+                setPendingEntryConfirm(true);
+              }
+        }
         footer={
           <>
+            {createMissingHint ? (
+              <p className="mr-auto w-full text-xs text-muted sm:w-auto">{createMissingHint}</p>
+            ) : null}
             <button className="btn-secondary" disabled={createPending} onClick={() => setCreateModalOpen(false)}>
               Cancel
             </button>
@@ -2725,7 +2769,10 @@ export function BigBookPanel({
                 type="button"
                 className={createMode === "group" ? "btn btn-sm" : "btn-secondary btn-sm"}
                 aria-pressed={createMode === "group"}
-                onClick={() => setCreateMode("group")}
+                onClick={() => {
+                  setCreateMode("group");
+                  setExpandedCreateTxnIndexes(new Set([0]));
+                }}
                 disabled={createPending}
               >
                 Grouped transaction
@@ -2752,7 +2799,7 @@ export function BigBookPanel({
             />
           ) : (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className="text-sm">
                   Group Label *
                   <input
@@ -2772,48 +2819,94 @@ export function BigBookPanel({
                 </label>
               </div>
 
-              {groupEntryForms.map((form, index) => (
-                <div
-                  key={`group-entry-form-${index}`}
-                  className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-3"
-                >
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-muted">Transaction {index + 1}</p>
-                    <button
-                      type="button"
-                      className="btn-secondary btn-sm"
-                      disabled={groupEntryForms.length <= 2 || createPending}
-                      onClick={() =>
-                        setGroupEntryForms((prev) => prev.filter((_, itemIndex) => itemIndex !== index))
-                      }
-                    >
-                      Remove
-                    </button>
+              {groupEntryForms.map((form, index) => {
+                const isExpanded = expandedCreateTxnIndexes.has(index);
+                return (
+                  <div
+                    key={`group-entry-form-${index}`}
+                    className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]"
+                  >
+                    <div className="flex items-center gap-2 p-3">
+                      <button
+                        type="button"
+                        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                        aria-expanded={isExpanded}
+                        onClick={() =>
+                          setExpandedCreateTxnIndexes((prev) => toggleExpandedIndex(prev, index))
+                        }
+                      >
+                        <span
+                          className={`shrink-0 text-muted transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                          aria-hidden
+                        >
+                          ▾
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium text-[rgb(var(--text))]">
+                            Transaction {index + 1}
+                          </span>
+                          {!isExpanded ? (
+                            <span className="mt-0.5 block truncate text-xs text-muted">
+                              {summarizeGroupEntryForm(form, initialTypes)}
+                            </span>
+                          ) : null}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-secondary btn-sm shrink-0"
+                        disabled={groupEntryForms.length <= 2 || createPending}
+                        onClick={() => {
+                          setGroupEntryForms((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+                          setExpandedCreateTxnIndexes((prev) => {
+                            const next = new Set<number>();
+                            for (const item of prev) {
+                              if (item === index) continue;
+                              next.add(item > index ? item - 1 : item);
+                            }
+                            return next;
+                          });
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    {isExpanded ? (
+                      <div className="border-t border-[rgb(var(--border))] p-3">
+                        <BigBookEntryFields
+                          value={form}
+                          onChange={(next) =>
+                            setGroupEntryForms((prev) =>
+                              prev.map((item, itemIndex) => (itemIndex === index ? next : item))
+                            )
+                          }
+                          types={initialTypes}
+                          subTypes={initialSubTypes}
+                          vendorTypes={initialVendorTypes}
+                          vendors={initialVendors}
+                          actionByOptions={initialActionBy}
+                          pockets={initialPockets}
+                          actors={initialActors}
+                          currencies={currencies}
+                          layout="nested"
+                        />
+                      </div>
+                    ) : null}
                   </div>
-                  <BigBookEntryFields
-                    value={form}
-                    onChange={(next) =>
-                      setGroupEntryForms((prev) =>
-                        prev.map((item, itemIndex) => (itemIndex === index ? next : item))
-                      )
-                    }
-                    types={initialTypes}
-                    subTypes={initialSubTypes}
-                    vendorTypes={initialVendorTypes}
-                    vendors={initialVendors}
-                    actionByOptions={initialActionBy}
-                    pockets={initialPockets}
-                    actors={initialActors}
-                    currencies={currencies}
-                  />
-                </div>
-              ))}
+                );
+              })}
 
               <button
                 type="button"
                 className="btn-secondary"
                 disabled={createPending}
-                onClick={() => setGroupEntryForms((prev) => [...prev, newEntryForm()])}
+                onClick={() => {
+                  setGroupEntryForms((prev) => {
+                    const next = [...prev, newEntryForm()];
+                    setExpandedCreateTxnIndexes(new Set([next.length - 1]));
+                    return next;
+                  });
+                }}
               >
                 Add transaction
               </button>
@@ -2919,10 +3012,17 @@ export function BigBookPanel({
           if (!createPending) setEditModalOpen(open);
         }}
         title={editingGroupId ? "Edit Grouped Transaction" : "Edit Ledger Entry"}
+        size="xl"
         dismissible={!createPending}
         closeOnBackdrop={!createPending}
+        onSubmitShortcut={
+          createPending || !editValid ? undefined : () => setPendingEditConfirm(true)
+        }
         footer={
           <>
+            {editMissingHint ? (
+              <p className="mr-auto w-full text-xs text-muted sm:w-auto">{editMissingHint}</p>
+            ) : null}
             <button className="btn-secondary" disabled={createPending} onClick={() => setEditModalOpen(false)}>
               Cancel
             </button>
@@ -2938,7 +3038,7 @@ export function BigBookPanel({
       >
         {editingGroupId ? (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="text-sm">
                 Group Label *
                 <input
@@ -2957,48 +3057,96 @@ export function BigBookPanel({
               </label>
             </div>
 
-            {editGroupForms.map((form, index) => (
-              <div
-                key={form.id ?? `new-group-entry-${index}`}
-                className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-3"
-              >
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-muted">Transaction {index + 1}</p>
-                  <button
-                    type="button"
-                    className="btn-secondary btn-sm"
-                    disabled={editGroupForms.length <= 2 || createPending}
-                    onClick={() =>
-                      setEditGroupForms((prev) => prev.filter((_, itemIndex) => itemIndex !== index))
-                    }
-                  >
-                    Remove
-                  </button>
+            {editGroupForms.map((form, index) => {
+              const isExpanded = expandedEditTxnIndexes.has(index);
+              return (
+                <div
+                  key={form.id ?? `new-group-entry-${index}`}
+                  className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]"
+                >
+                  <div className="flex items-center gap-2 p-3">
+                    <button
+                      type="button"
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                      aria-expanded={isExpanded}
+                      onClick={() =>
+                        setExpandedEditTxnIndexes((prev) => toggleExpandedIndex(prev, index))
+                      }
+                    >
+                      <span
+                        className={`shrink-0 text-muted transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                        aria-hidden
+                      >
+                        ▾
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-[rgb(var(--text))]">
+                          Transaction {index + 1}
+                        </span>
+                        {!isExpanded ? (
+                          <span className="mt-0.5 block truncate text-xs text-muted">
+                            {summarizeGroupEntryForm(form, initialTypes)}
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary btn-sm shrink-0"
+                      disabled={editGroupForms.length <= 2 || createPending}
+                      onClick={() => {
+                        setEditGroupForms((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+                        setExpandedEditTxnIndexes((prev) => {
+                          const next = new Set<number>();
+                          for (const item of prev) {
+                            if (item === index) continue;
+                            next.add(item > index ? item - 1 : item);
+                          }
+                          return next;
+                        });
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  {isExpanded ? (
+                    <div className="border-t border-[rgb(var(--border))] p-3">
+                      <BigBookEntryFields
+                        value={form}
+                        onChange={(next) =>
+                          setEditGroupForms((prev) =>
+                            prev.map((item, itemIndex) =>
+                              itemIndex === index ? { ...next, id: item.id } : item
+                            )
+                          )
+                        }
+                        types={initialTypes}
+                        subTypes={initialSubTypes}
+                        vendorTypes={initialVendorTypes}
+                        vendors={initialVendors}
+                        actionByOptions={initialActionBy}
+                        pockets={initialPockets}
+                        actors={initialActors}
+                        currencies={currencies}
+                        layout="nested"
+                      />
+                    </div>
+                  ) : null}
                 </div>
-                <BigBookEntryFields
-                  value={form}
-                  onChange={(next) =>
-                    setEditGroupForms((prev) =>
-                      prev.map((item, itemIndex) => (itemIndex === index ? { ...next, id: item.id } : item))
-                    )
-                  }
-                  types={initialTypes}
-                  subTypes={initialSubTypes}
-                  vendorTypes={initialVendorTypes}
-                  vendors={initialVendors}
-                  actionByOptions={initialActionBy}
-                  pockets={initialPockets}
-                  actors={initialActors}
-                  currencies={currencies}
-                />
-              </div>
-            ))}
+              );
+            })}
 
             <button
               type="button"
               className="btn-secondary"
               disabled={createPending}
-              onClick={() => setEditGroupForms((prev) => [...prev, newEntryForm()])}
+              onClick={() => {
+                setEditGroupForms((prev) => {
+                  const next = [...prev, newEntryForm()];
+                  setExpandedEditTxnIndexes(new Set([next.length - 1]));
+                  return next;
+                });
+              }}
             >
               Add transaction
             </button>
@@ -3202,21 +3350,25 @@ export function BigBookPanel({
           if (!open && !settlementSubmitting) closeRecordSettlement();
         }}
         title="Record Settlement"
+        size="xl"
         dismissible={!settlementSubmitting}
         closeOnBackdrop={!settlementSubmitting}
+        onSubmitShortcut={
+          settlementSubmitting || settlementMissingHint
+            ? undefined
+            : () => setPendingSettlementConfirm(true)
+        }
         footer={
           <>
+            {settlementMissingHint ? (
+              <p className="mr-auto w-full text-xs text-muted sm:w-auto">{settlementMissingHint}</p>
+            ) : null}
             <button className="btn-secondary" disabled={settlementSubmitting} onClick={closeRecordSettlement}>
               Cancel
             </button>
             <button
               className="btn"
-              disabled={
-                settlementSubmitting ||
-                !settlementForm ||
-                !settlementForm.explanation.trim() ||
-                !settlementForm.amount
-              }
+              disabled={settlementSubmitting || Boolean(settlementMissingHint)}
               onClick={() => setPendingSettlementConfirm(true)}
             >
               {settlementSubmitting ? "Saving..." : "Save"}

@@ -11,6 +11,7 @@ import type {
   BigBookVendorType
 } from "@/lib/types";
 import { formatAmount } from "@/lib/display-format";
+import { FormSection } from "@/components/ui/form-section";
 
 export type EntryFormState = {
   entry_date: string;
@@ -115,6 +116,11 @@ type Props = {
   onFetchConversionRate?: () => void;
   fetchingConversionRate?: boolean;
   hideCreditToggle?: boolean;
+  /**
+   * `full` shows labeled sections with a 1/2/3-column grid.
+   * `nested` drops section headers and uses a 2-column grid (for grouped cards).
+   */
+  layout?: "full" | "nested";
 };
 
 export function BigBookEntryFields({
@@ -136,7 +142,8 @@ export function BigBookEntryFields({
   settlesEntry = null,
   onFetchConversionRate,
   fetchingConversionRate = false,
-  hideCreditToggle = false
+  hideCreditToggle = false,
+  layout = "full"
 }: Props) {
   const activeTypes = types.filter((row) => row.is_active);
   const subTypesForForm = subTypes.filter(
@@ -166,35 +173,29 @@ export function BigBookEntryFields({
     settlesEntry != null &&
     value.currency_code !== settlesEntry.currency_code;
 
+  const moreDetailsFilled =
+    Boolean(value.remark.trim()) || (showAttachments && attachmentFiles.length > 0);
+  const moreDetailsSummary = moreDetailsFilled
+    ? [
+        value.remark.trim() ? "remark" : null,
+        showAttachments && attachmentFiles.length > 0
+          ? `${attachmentFiles.length} file${attachmentFiles.length === 1 ? "" : "s"}`
+          : null
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : undefined;
+
+  const isNested = layout === "nested";
+  const columns = isNested ? "nested" : "full";
+  const spanClass = isNested ? "sm:col-span-2" : "sm:col-span-2 xl:col-span-3";
+
   function patch(partial: Partial<EntryFormState>) {
     onChange({ ...value, ...partial });
   }
 
-  return (
-    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-      {settlesEntry ? (
-        <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-3 text-sm lg:col-span-2">
-          <p className="font-medium">Settling credit</p>
-          <p className="mt-1 text-muted">
-            {settlesEntry.entry_date} · {settlesEntry.explanation}
-            {settlesEntry.vendor_name ? ` · ${settlesEntry.vendor_name}` : ""}
-          </p>
-          <p className="mt-1">
-            Credit amount:{" "}
-            <span className="font-medium">
-              {formatAmount(settlesEntry.amount, {
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 4
-              })}{" "}
-              {settlesEntry.currency_code}
-            </span>
-            {" · "}
-            Status:{" "}
-            <span className="font-medium capitalize">{settlesEntry.credit_status}</span>
-          </p>
-        </div>
-      ) : null}
-
+  const moneyFields = (
+    <>
       <label className="text-sm">
         Date *
         <input
@@ -204,6 +205,69 @@ export function BigBookEntryFields({
           onChange={(event) => patch({ entry_date: event.target.value })}
         />
       </label>
+      <label className="text-sm">
+        Cash Flow *
+        <select
+          className="field mt-1"
+          value={value.entry_direction}
+          onChange={(event) =>
+            patch({
+              entry_direction: event.target.value as "spending" | "profit"
+            })
+          }
+        >
+          <option value="spending">Out</option>
+          <option value="profit">In</option>
+        </select>
+      </label>
+      <label className="text-sm">
+        Amount *
+        <div className="mt-1 flex overflow-hidden rounded-md border border-[rgb(var(--border))] focus-within:shadow-[0_0_0_3px_rgba(var(--focus),0.25)]">
+          <input
+            className="min-w-0 flex-1 border-0 bg-[rgb(var(--surface))] px-3 py-2 text-right text-base font-medium text-[rgb(var(--text))] focus:outline-none"
+            inputMode="decimal"
+            placeholder="0"
+            value={value.amount}
+            onChange={(event) => patch({ amount: formatAmountInput(event.target.value) })}
+          />
+          <select
+            className="shrink-0 border-0 border-l border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] px-2 py-2 text-sm font-medium text-[rgb(var(--text))] focus:outline-none"
+            value={value.currency_code}
+            onChange={(event) =>
+              patch({
+                currency_code: event.target.value as EntryFormState["currency_code"],
+                pocket_id: "",
+                settlement_conversion_rate:
+                  settlesEntry && event.target.value === settlesEntry.currency_code
+                    ? "1"
+                    : value.settlement_conversion_rate
+              })
+            }
+            aria-label="Currency"
+          >
+            {currencies.map((currency) => (
+              <option key={currency} value={currency}>
+                {currency}
+              </option>
+            ))}
+          </select>
+        </div>
+      </label>
+      <label className={`text-sm ${spanClass}`}>
+        Explanation *
+        <input
+          className="field mt-1"
+          value={value.explanation}
+          onChange={(event) => patch({ explanation: event.target.value })}
+          placeholder={explanationPlaceholder}
+          data-autofocus
+        />
+      </label>
+    </>
+  );
+
+  const classificationFields = (
+    <>
       <label className="text-sm">
         Type *
         <select
@@ -275,21 +339,11 @@ export function BigBookEntryFields({
           ))}
         </select>
       </label>
-      <label className="text-sm">
-        Cash Flow *
-        <select
-          className="field mt-1"
-          value={value.entry_direction}
-          onChange={(event) =>
-            patch({
-              entry_direction: event.target.value as "spending" | "profit"
-            })
-          }
-        >
-          <option value="spending">Out</option>
-          <option value="profit">In</option>
-        </select>
-      </label>
+    </>
+  );
+
+  const attributionFields = (
+    <>
       <label className="text-sm">
         Responsible Actor *
         <select
@@ -325,29 +379,6 @@ export function BigBookEntryFields({
         </select>
       </label>
       <label className="text-sm">
-        Currency *
-        <select
-          className="field mt-1"
-          value={value.currency_code}
-          onChange={(event) =>
-            patch({
-              currency_code: event.target.value as EntryFormState["currency_code"],
-              pocket_id: "",
-              settlement_conversion_rate:
-                settlesEntry && event.target.value === settlesEntry.currency_code
-                  ? "1"
-                  : value.settlement_conversion_rate
-            })
-          }
-        >
-          {currencies.map((currency) => (
-            <option key={currency} value={currency}>
-              {currency}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="text-sm">
         Pocket
         <select
           className="field mt-1"
@@ -364,27 +395,21 @@ export function BigBookEntryFields({
         </select>
         {pocketHint ? <span className="mt-1 block text-xs text-muted">{pocketHint}</span> : null}
       </label>
-      <label className="text-sm lg:col-span-2">
-        Explanation *
+    </>
+  );
+
+  const moreDetailsFields = (
+    <>
+      <label className={`text-sm ${spanClass}`}>
+        Remark
         <input
           className="field mt-1"
-          value={value.explanation}
-          onChange={(event) => patch({ explanation: event.target.value })}
-          placeholder={explanationPlaceholder}
-        />
-      </label>
-      <label className="text-sm">
-        Amount *
-        <input
-          className="field mt-1"
-          inputMode="decimal"
-          placeholder="0"
-          value={value.amount}
-          onChange={(event) => patch({ amount: formatAmountInput(event.target.value) })}
+          value={value.remark}
+          onChange={(event) => patch({ remark: event.target.value })}
         />
       </label>
       {showAttachments ? (
-        <label className="text-sm">
+        <label className={`text-sm ${spanClass}`}>
           Attachments
           <input
             className="field mt-1"
@@ -413,17 +438,66 @@ export function BigBookEntryFields({
           ) : null}
         </label>
       ) : null}
-      <label className="text-sm lg:col-span-2">
-        Remark
-        <input
-          className="field mt-1"
-          value={value.remark}
-          onChange={(event) => patch({ remark: event.target.value })}
-        />
-      </label>
+    </>
+  );
+
+  return (
+    <div className="space-y-5">
+      {settlesEntry ? (
+        <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-3 text-sm">
+          <p className="font-medium">Settling credit</p>
+          <p className="mt-1 text-muted">
+            {settlesEntry.entry_date} · {settlesEntry.explanation}
+            {settlesEntry.vendor_name ? ` · ${settlesEntry.vendor_name}` : ""}
+          </p>
+          <p className="mt-1">
+            Credit amount:{" "}
+            <span className="font-medium">
+              {formatAmount(settlesEntry.amount, {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 4
+              })}{" "}
+              {settlesEntry.currency_code}
+            </span>
+            {" · "}
+            Status:{" "}
+            <span className="font-medium capitalize">{settlesEntry.credit_status}</span>
+          </p>
+        </div>
+      ) : null}
+
+      {isNested ? (
+        <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2`}>
+          {moneyFields}
+          {classificationFields}
+          {attributionFields}
+          {moreDetailsFields}
+        </div>
+      ) : (
+        <>
+          <FormSection title="Money & timing" columns={columns}>
+            {moneyFields}
+          </FormSection>
+          <FormSection title="Classification" columns={columns}>
+            {classificationFields}
+          </FormSection>
+          <FormSection title="Attribution" columns={columns}>
+            {attributionFields}
+          </FormSection>
+          <FormSection
+            title="More details"
+            columns={columns}
+            collapsible
+            defaultOpen={moreDetailsFilled}
+            summary={moreDetailsSummary}
+          >
+            {moreDetailsFields}
+          </FormSection>
+        </>
+      )}
 
       {!hideCreditToggle && !isSettlementMode ? (
-        <label className="flex items-start gap-2 text-sm lg:col-span-2">
+        <label className="flex items-start gap-2 text-sm">
           <input
             className="mt-1"
             type="checkbox"
@@ -449,9 +523,9 @@ export function BigBookEntryFields({
       ) : null}
 
       {isSettlementMode ? (
-        <>
+        <div className="space-y-3">
           {settlementCurrencyDiffers ? (
-            <label className="text-sm lg:col-span-2">
+            <label className="block text-sm">
               Conversion Rate * ({value.currency_code} → {settlesEntry?.currency_code})
               <div className="mt-1 flex gap-2">
                 <input
@@ -479,7 +553,7 @@ export function BigBookEntryFields({
               </span>
             </label>
           ) : null}
-          <label className="text-sm lg:col-span-2">
+          <label className="block text-sm">
             Settlement Note
             <input
               className="field mt-1"
@@ -488,7 +562,7 @@ export function BigBookEntryFields({
               placeholder="Optional note about this settlement payment"
             />
           </label>
-          <label className="flex items-start gap-2 text-sm lg:col-span-2">
+          <label className="flex items-start gap-2 text-sm">
             <input
               className="mt-1"
               type="checkbox"
@@ -508,7 +582,7 @@ export function BigBookEntryFields({
             </span>
           </label>
           {value.close_credit ? (
-            <label className="text-sm lg:col-span-2">
+            <label className="block text-sm">
               Closure Note
               <input
                 className="field mt-1"
@@ -518,7 +592,7 @@ export function BigBookEntryFields({
               />
             </label>
           ) : null}
-        </>
+        </div>
       ) : null}
     </div>
   );
