@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+  BigBookActionBy,
   BigBookActor,
   BigBookActorPocket,
   BigBookLedgerSubType,
@@ -19,6 +20,7 @@ export type EntryFormState = {
   vendor_type_id: string;
   vendor_id: string;
   pocket_id: string;
+  action_by_id: string;
   explanation: string;
   amount: string;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
@@ -76,6 +78,7 @@ export function createEmptyEntryForm(options: {
     vendor_type_id: "",
     vendor_id: "",
     pocket_id: "",
+    action_by_id: "",
     explanation: "",
     amount: "",
     currency_code: "IDR",
@@ -95,6 +98,7 @@ type Props = {
   subTypes: BigBookLedgerSubType[];
   vendorTypes: BigBookVendorType[];
   vendors: BigBookVendor[];
+  actionByOptions: BigBookActionBy[];
   pockets: BigBookActorPocket[];
   actors: BigBookActor[];
   currencies?: Array<"IDR" | "MYR" | "USDT" | "TRX">;
@@ -116,6 +120,7 @@ export function BigBookEntryFields({
   subTypes,
   vendorTypes,
   vendors,
+  actionByOptions,
   pockets,
   actors,
   currencies = ["IDR", "MYR", "USDT", "TRX"],
@@ -137,6 +142,7 @@ export function BigBookEntryFields({
   const vendorsForForm = vendors.filter(
     (row) => row.is_active && row.vendor_type_id === value.vendor_type_id
   );
+  const activeActionBy = actionByOptions.filter((row) => row.is_active);
   const pocketsForForm = pockets.filter(
     (row) =>
       row.is_active &&
@@ -292,6 +298,21 @@ export function BigBookEntryFields({
           {actors.map((actor) => (
             <option key={actor.id} value={actor.id}>
               {actor.display_name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="text-sm">
+        Action By
+        <select
+          className="field mt-1"
+          value={value.action_by_id}
+          onChange={(event) => patch({ action_by_id: event.target.value })}
+        >
+          <option value="">(none)</option>
+          {activeActionBy.map((actionBy) => (
+            <option key={actionBy.id} value={actionBy.id}>
+              {actionBy.name}
             </option>
           ))}
         </select>

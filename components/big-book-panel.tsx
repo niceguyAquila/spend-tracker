@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type {
+  BigBookActionBy,
   BigBookActor,
   BigBookActorCurrencyMetrics,
   BigBookActorPocket,
@@ -48,6 +49,7 @@ type Props = {
   initialSubTypes: BigBookLedgerSubType[];
   initialVendorTypes: BigBookVendorType[];
   initialVendors: BigBookVendor[];
+  initialActionBy: BigBookActionBy[];
   initialPockets: BigBookActorPocket[];
   initialActors: BigBookActor[];
   initialLedgerRows: BigBookLedgerRow[];
@@ -94,7 +96,7 @@ function arraysEqual(left: string[], right: string[]) {
 
 const SUPPORTED_CURRENCIES: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR", "USDT", "TRX"];
 const LEDGER_SKELETON_ROW_COUNT = 6;
-const LEDGER_COLUMN_COUNT = 15;
+const LEDGER_COLUMN_COUNT = 16;
 const EMPTY_LEDGER_TOTALS: BigBookLedgerTotals = {
   pageTotals: [],
   pageEntryCount: 0,
@@ -184,6 +186,7 @@ function toEntryPayload(form: EntryFormState) {
     vendor_type_id: form.vendor_type_id || null,
     vendor_id: form.vendor_id || null,
     pocket_id: form.pocket_id || null,
+    action_by_id: form.action_by_id || null,
     explanation: form.explanation.trim(),
     amount: Number(parseAmountInput(form.amount)),
     currency_code: form.currency_code,
@@ -202,6 +205,7 @@ function entryFormFromEntry(entry: BigBookEntry): GroupEntryFormState {
     vendor_type_id: entry.vendor_type_id ?? "",
     vendor_id: entry.vendor_id ?? "",
     pocket_id: entry.pocket_id ?? "",
+    action_by_id: entry.action_by_id ?? "",
     explanation: entry.explanation,
     amount: formatAmountInput(String(entry.amount)),
     currency_code: entry.currency_code,
@@ -225,6 +229,7 @@ export function BigBookPanel({
   initialSubTypes,
   initialVendorTypes,
   initialVendors,
+  initialActionBy,
   initialPockets,
   initialActors,
   initialLedgerRows,
@@ -248,6 +253,7 @@ export function BigBookPanel({
   const [vendorTypeFilter, setVendorTypeFilter] = useState<string[]>([]);
   const [vendorFilter, setVendorFilter] = useState<string[]>([]);
   const [pocketFilter, setPocketFilter] = useState<string[]>([]);
+  const [actionByFilter, setActionByFilter] = useState<string[]>([]);
   const [creditFlagFilter, setCreditFlagFilter] = useState<string[]>([]);
   const [creditStatusFilter, setCreditStatusFilter] = useState<string[]>([]);
   // Draft filter state: drives the inputs. Filters only run after "Apply Filters".
@@ -261,6 +267,7 @@ export function BigBookPanel({
   const [draftVendorTypeFilter, setDraftVendorTypeFilter] = useState<string[]>([]);
   const [draftVendorFilter, setDraftVendorFilter] = useState<string[]>([]);
   const [draftPocketFilter, setDraftPocketFilter] = useState<string[]>([]);
+  const [draftActionByFilter, setDraftActionByFilter] = useState<string[]>([]);
   const [draftCreditFlagFilter, setDraftCreditFlagFilter] = useState<string[]>([]);
   const [draftCreditStatusFilter, setDraftCreditStatusFilter] = useState<string[]>([]);
   const [openActionMenu, setOpenActionMenu] = useState<{
@@ -287,6 +294,7 @@ export function BigBookPanel({
     vendor_type_id: "",
     vendor_id: "",
     pocket_id: "",
+    action_by_id: "",
     explanation: "",
     amount: "",
     currency_code: "IDR",
@@ -388,6 +396,10 @@ export function BigBookPanel({
       return { value: pocket.id, label };
     });
   }, [initialPockets, draftActorFilter, initialActors]);
+  const actionByOptions = useMemo(
+    () => initialActionBy.map((actionBy) => ({ value: actionBy.id, label: actionBy.name })),
+    [initialActionBy]
+  );
   const today = new Date().toISOString().slice(0, 10);
 
   const [entryForm, setEntryForm] = useState<EntryFormState>({
@@ -398,6 +410,7 @@ export function BigBookPanel({
     vendor_type_id: "",
     vendor_id: "",
     pocket_id: "",
+    action_by_id: "",
     explanation: "",
     amount: "",
     currency_code: "IDR",
@@ -459,6 +472,7 @@ export function BigBookPanel({
       for (const vendorTypeId of vendorTypeFilter) params.append("vendorTypeId", vendorTypeId);
       for (const vendorId of vendorFilter) params.append("vendorId", vendorId);
       for (const pocketId of pocketFilter) params.append("pocketId", pocketId);
+      for (const actionById of actionByFilter) params.append("actionById", actionById);
       for (const creditFlag of creditFlagFilter) params.append("creditFlag", creditFlag);
       for (const creditStatus of creditStatusFilter) params.append("creditStatus", creditStatus);
 
@@ -501,6 +515,7 @@ export function BigBookPanel({
     vendorTypeFilter,
     vendorFilter,
     pocketFilter,
+    actionByFilter,
     creditFlagFilter,
     creditStatusFilter
   ]);
@@ -524,6 +539,7 @@ export function BigBookPanel({
     !arraysEqual(draftVendorTypeFilter, vendorTypeFilter) ||
     !arraysEqual(draftVendorFilter, vendorFilter) ||
     !arraysEqual(draftPocketFilter, pocketFilter) ||
+    !arraysEqual(draftActionByFilter, actionByFilter) ||
     !arraysEqual(draftCreditFlagFilter, creditFlagFilter) ||
     !arraysEqual(draftCreditStatusFilter, creditStatusFilter);
 
@@ -538,6 +554,7 @@ export function BigBookPanel({
     Boolean(vendorTypeFilter.length) ||
     Boolean(vendorFilter.length) ||
     Boolean(pocketFilter.length) ||
+    Boolean(actionByFilter.length) ||
     Boolean(creditFlagFilter.length) ||
     Boolean(creditStatusFilter.length);
 
@@ -552,6 +569,7 @@ export function BigBookPanel({
     Boolean(draftVendorTypeFilter.length) ||
     Boolean(draftVendorFilter.length) ||
     Boolean(draftPocketFilter.length) ||
+    Boolean(draftActionByFilter.length) ||
     Boolean(draftCreditFlagFilter.length) ||
     Boolean(draftCreditStatusFilter.length);
 
@@ -566,6 +584,7 @@ export function BigBookPanel({
     setVendorTypeFilter(draftVendorTypeFilter);
     setVendorFilter(draftVendorFilter);
     setPocketFilter(draftPocketFilter);
+    setActionByFilter(draftActionByFilter);
     setCreditFlagFilter(draftCreditFlagFilter);
     setCreditStatusFilter(draftCreditStatusFilter);
   }
@@ -581,6 +600,7 @@ export function BigBookPanel({
     setDraftVendorTypeFilter([]);
     setDraftVendorFilter([]);
     setDraftPocketFilter([]);
+    setDraftActionByFilter([]);
     setDraftCreditFlagFilter([]);
     setDraftCreditStatusFilter([]);
     setQuery("");
@@ -593,6 +613,7 @@ export function BigBookPanel({
     setVendorTypeFilter([]);
     setVendorFilter([]);
     setPocketFilter([]);
+    setActionByFilter([]);
     setCreditFlagFilter([]);
     setCreditStatusFilter([]);
   }
@@ -894,6 +915,7 @@ export function BigBookPanel({
           vendor_type_id: entryForm.vendor_type_id || null,
           vendor_id: entryForm.vendor_id || null,
           pocket_id: entryForm.pocket_id || null,
+          action_by_id: entryForm.action_by_id || null,
           amount: amountValue,
           ...toCreditPayload(entryForm, null)
         })
@@ -958,6 +980,7 @@ export function BigBookPanel({
               vendor_type_id: "",
               vendor_id: "",
               pocket_id: "",
+              action_by_id: "",
               is_credit: false,
               settles_entry_id: "",
               settlement_conversion_rate: "",
@@ -1101,6 +1124,7 @@ export function BigBookPanel({
       for (const vendorTypeId of vendorTypeFilter) params.append("vendorTypeId", vendorTypeId);
       for (const vendorId of vendorFilter) params.append("vendorId", vendorId);
       for (const pocketId of pocketFilter) params.append("pocketId", pocketId);
+      for (const actionById of actionByFilter) params.append("actionById", actionById);
 
       const url = `/api/big-book/export${params.toString() ? `?${params.toString()}` : ""}`;
       const response = await fetch(url);
@@ -1284,6 +1308,7 @@ export function BigBookPanel({
           vendor_type_id: editForm.vendor_type_id || null,
           vendor_id: editForm.vendor_id || null,
           pocket_id: editForm.pocket_id || null,
+          action_by_id: editForm.action_by_id || null,
           amount: amountValue,
           ...toCreditPayload(editForm, editSettlesEntry)
         })
@@ -1409,6 +1434,7 @@ export function BigBookPanel({
       vendor_type_id: row.vendor_type_id ?? "",
       vendor_id: row.vendor_id ?? "",
       pocket_id: "",
+      action_by_id: row.action_by_id ?? "",
       explanation: `Settlement for: ${row.explanation}`,
       amount: formatAmountInput(String(row.outstanding)),
       currency_code: row.currency_code,
@@ -1502,6 +1528,7 @@ export function BigBookPanel({
           vendor_type_id: settlementForm.vendor_type_id || null,
           vendor_id: settlementForm.vendor_id || null,
           pocket_id: settlementForm.pocket_id || null,
+          action_by_id: settlementForm.action_by_id || null,
           amount: amountValue,
           ...creditPayload
         })
@@ -1692,6 +1719,9 @@ export function BigBookPanel({
           )}
         </td>
         <td className="px-3 py-2">{entry.actor_display_name}</td>
+        <td className="px-3 py-2">
+          {entry.action_by_name ? entry.action_by_name : <span className="text-xs text-muted">-</span>}
+        </td>
         <td className="px-3 py-2">
           {entry.pocket_name ? entry.pocket_name : <span className="text-xs text-muted">-</span>}
         </td>
@@ -2014,6 +2044,16 @@ export function BigBookPanel({
               />
             </div>
             <div className="text-sm text-muted">
+              <span className="mb-1 block">Action By</span>
+              <SearchableMultiSelect
+                label="Action By"
+                selectedValues={draftActionByFilter}
+                options={actionByOptions}
+                onChange={setDraftActionByFilter}
+                searchPlaceholder="Search Action By..."
+              />
+            </div>
+            <div className="text-sm text-muted">
               <span className="mb-1 block">Credit</span>
               <SearchableMultiSelect
                 label="Credit"
@@ -2079,7 +2119,7 @@ export function BigBookPanel({
           </div>
         ) : null}
         <div className="overflow-x-auto">
-          <table className="data-table min-w-[1800px]">
+          <table className="data-table min-w-[1920px]">
             <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
               <tr>
                 <th className="px-3 py-2">
@@ -2102,6 +2142,7 @@ export function BigBookPanel({
                 <th className="px-3 py-2">Amount</th>
                 <th className="px-3 py-2">Credit</th>
                 <th className="px-3 py-2">Actor</th>
+                <th className="px-3 py-2">Action By</th>
                 <th className="px-3 py-2">Pocket</th>
                 <th className="px-3 py-2">Remark</th>
                 <th className="px-3 py-2">Attachments</th>
@@ -2127,6 +2168,7 @@ export function BigBookPanel({
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-5 w-16 rounded-full bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-28 rounded bg-[rgb(var(--surface-muted))]" /></td>
+                      <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-20 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-16 rounded bg-[rgb(var(--surface-muted))]" /></td>
@@ -2435,6 +2477,7 @@ export function BigBookPanel({
               subTypes={initialSubTypes}
               vendorTypes={initialVendorTypes}
               vendors={initialVendors}
+              actionByOptions={initialActionBy}
               pockets={initialPockets}
               actors={initialActors}
               currencies={currencies}
@@ -2494,6 +2537,7 @@ export function BigBookPanel({
                     subTypes={initialSubTypes}
                     vendorTypes={initialVendorTypes}
                     vendors={initialVendors}
+                    actionByOptions={initialActionBy}
                     pockets={initialPockets}
                     actors={initialActors}
                     currencies={currencies}
@@ -2678,6 +2722,7 @@ export function BigBookPanel({
                   subTypes={initialSubTypes}
                   vendorTypes={initialVendorTypes}
                   vendors={initialVendors}
+                  actionByOptions={initialActionBy}
                   pockets={initialPockets}
                   actors={initialActors}
                   currencies={currencies}
@@ -2702,6 +2747,7 @@ export function BigBookPanel({
             subTypes={initialSubTypes}
             vendorTypes={initialVendorTypes}
             vendors={initialVendors}
+            actionByOptions={initialActionBy}
             pockets={initialPockets}
             actors={initialActors}
             currencies={currencies}
@@ -2922,6 +2968,7 @@ export function BigBookPanel({
             subTypes={initialSubTypes}
             vendorTypes={initialVendorTypes}
             vendors={initialVendors}
+            actionByOptions={initialActionBy}
             pockets={initialPockets}
             actors={initialActors}
             currencies={currencies}

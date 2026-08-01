@@ -174,6 +174,16 @@ export type BigBookVendorType = {
   updated_at: string;
 };
 
+export type BigBookActionBy = {
+  id: string;
+  code: string;
+  name: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type BigBookVendor = {
   id: string;
   vendor_type_id: string;
@@ -258,6 +268,7 @@ export type BigBookEntry = {
   vendor_type_id: string | null;
   vendor_id: string | null;
   pocket_id: string | null;
+  action_by_id: string | null;
   explanation: string;
   amount: number;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
@@ -279,6 +290,7 @@ export type BigBookEntry = {
   vendor_type_name: string | null;
   vendor_name: string | null;
   pocket_name: string | null;
+  action_by_name: string | null;
   actor_code: "A" | "B";
   actor_display_name: string;
   creator_display_name: string;

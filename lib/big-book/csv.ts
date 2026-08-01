@@ -16,6 +16,7 @@ const OPTIONAL_HEADERS = [
   "vendor_type_name",
   "vendor_name",
   "pocket_name",
+  "action_by_name",
   "group_label",
   "group_remark",
   "is_credit"
@@ -35,6 +36,7 @@ export const BIG_BOOK_CSV_HEADERS = [
   "remark",
   "actor_name",
   "pocket_name",
+  "action_by_name",
   "group_label",
   "group_remark",
   "is_credit"
@@ -61,6 +63,7 @@ export function buildBigBookImportTemplateCsv(): string {
     "Restock",
     "Actor A",
     "Petty Cash",
+    "John",
     "",
     "",
     "false"
@@ -78,6 +81,7 @@ export function buildBigBookImportTemplateCsv(): string {
     "Part of hardware purchase",
     "Actor A",
     "Petty Cash",
+    "John",
     "Hardware purchase",
     "Grouped multi-currency buy",
     "false"
@@ -95,6 +99,7 @@ export function buildBigBookImportTemplateCsv(): string {
     "Part of hardware purchase",
     "Actor A",
     "",
+    "John",
     "Hardware purchase",
     "Grouped multi-currency buy",
     "true"
@@ -119,6 +124,7 @@ export type ParsedBigBookCsvRow = {
   remark: string | null;
   actor_name: string;
   pocket_name: string | null;
+  action_by_name: string | null;
   group_label: string | null;
   group_remark: string | null;
   is_credit: boolean;
@@ -328,6 +334,7 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
     const remark = normalizeOptional(get("remark"));
     const actorName = normalizeRequired(get("actor_name"));
     const pocketName = normalizeOptional(get("pocket_name"));
+    const actionByName = normalizeOptional(get("action_by_name"));
     const groupLabel = normalizeOptional(get("group_label"));
     const groupRemark = normalizeOptional(get("group_remark"));
     const isCreditRaw = normalizeOptional(get("is_credit"));
@@ -400,6 +407,7 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
       remark,
       actor_name: actorName,
       pocket_name: pocketName,
+      action_by_name: actionByName,
       group_label: groupLabel,
       group_remark: groupRemark,
       is_credit: isCredit

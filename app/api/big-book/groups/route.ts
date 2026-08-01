@@ -16,6 +16,7 @@ type EntryPayload = {
   vendor_type_id?: string | null;
   vendor_id?: string | null;
   pocket_id?: string | null;
+  action_by_id?: string | null;
   explanation: string;
   amount: number;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
@@ -33,6 +34,7 @@ function toEntryInsertRow(payload: EntryPayload, groupId: string, actorId: strin
     vendor_type_id: payload.vendor_type_id ?? null,
     vendor_id: payload.vendor_id ?? null,
     pocket_id: payload.pocket_id ?? null,
+    action_by_id: payload.action_by_id ?? null,
     explanation: payload.explanation,
     amount: payload.amount,
     currency_code: payload.currency_code,
@@ -172,6 +174,7 @@ export async function PATCH(request: Request) {
           vendor_type_id: payload.vendor_type_id ?? null,
           vendor_id: payload.vendor_id ?? null,
           pocket_id: payload.pocket_id ?? null,
+          action_by_id: payload.action_by_id ?? null,
           explanation: payload.explanation,
           amount: payload.amount,
           currency_code: payload.currency_code,

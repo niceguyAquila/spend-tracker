@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type {
+  BigBookActionBy,
   BigBookActor,
   BigBookActorPocket,
   BigBookAllowedUserOption,
@@ -28,6 +29,7 @@ type Props = {
   initialSubTypes: BigBookLedgerSubType[];
   initialVendorTypes: BigBookVendorType[];
   initialVendors: BigBookVendor[];
+  initialActionBy: BigBookActionBy[];
   initialPockets: BigBookActorPocket[];
   initialActors: BigBookActor[];
   allowedUsers: BigBookAllowedUserOption[];
@@ -63,6 +65,7 @@ export function BigBookSettingsPanel({
   initialSubTypes,
   initialVendorTypes,
   initialVendors,
+  initialActionBy,
   initialPockets,
   initialActors,
   allowedUsers
@@ -112,6 +115,15 @@ export function BigBookSettingsPanel({
   const [pendingToggleVendor, setPendingToggleVendor] = useState<BigBookVendor | null>(null);
   const [toggleVendorSubmitting, setToggleVendorSubmitting] = useState(false);
 
+  const [newActionByCode, setNewActionByCode] = useState("");
+  const [newActionByName, setNewActionByName] = useState("");
+  const [pendingAddActionByConfirm, setPendingAddActionByConfirm] = useState(false);
+  const [actionBySubmitting, setActionBySubmitting] = useState(false);
+  const [pendingToggleActionBy, setPendingToggleActionBy] = useState<BigBookActionBy | null>(null);
+  const [toggleActionBySubmitting, setToggleActionBySubmitting] = useState(false);
+  const [pendingDeleteActionBy, setPendingDeleteActionBy] = useState<BigBookActionBy | null>(null);
+  const [actionByDeleting, setActionByDeleting] = useState(false);
+
   const [pocketParentActorId, setPocketParentActorId] = useState<string>(() => initialActors[0]?.id ?? "");
   const [newPocketCode, setNewPocketCode] = useState("");
   const [newPocketName, setNewPocketName] = useState("");
@@ -126,6 +138,7 @@ export function BigBookSettingsPanel({
   const subTypeEditor = useEntityEditor<BigBookLedgerSubType>();
   const vendorTypeEditor = useEntityEditor<BigBookVendorType>();
   const vendorEditor = useEntityEditor<BigBookVendor>();
+  const actionByEditor = useEntityEditor<BigBookActionBy>();
   const pocketEditor = useEntityEditor<BigBookActorPocket>();
 
   const subTypesForSelectedType = useMemo(
@@ -151,6 +164,8 @@ export function BigBookSettingsPanel({
   const [vendorTypeStatusFilter, setVendorTypeStatusFilter] = useState<StatusFilter>("all");
   const [vendorQuery, setVendorQuery] = useState("");
   const [vendorStatusFilter, setVendorStatusFilter] = useState<StatusFilter>("all");
+  const [actionByQuery, setActionByQuery] = useState("");
+  const [actionByStatusFilter, setActionByStatusFilter] = useState<StatusFilter>("all");
   const [pocketQuery, setPocketQuery] = useState("");
   const [pocketStatusFilter, setPocketStatusFilter] = useState<StatusFilter>("all");
 
@@ -206,6 +221,19 @@ export function BigBookSettingsPanel({
     });
   }, [vendorsForSelectedType, vendorQuery, vendorStatusFilter]);
 
+  const filteredActionBy = useMemo(() => {
+    const needle = actionByQuery.trim().toLowerCase();
+    return initialActionBy.filter((row) => {
+      if (actionByStatusFilter === "active" && !row.is_active) return false;
+      if (actionByStatusFilter === "inactive" && row.is_active) return false;
+      if (!needle) return true;
+      return (
+        row.name.toLowerCase().includes(needle) ||
+        row.code.toLowerCase().includes(needle)
+      );
+    });
+  }, [initialActionBy, actionByQuery, actionByStatusFilter]);
+
   const filteredPockets = useMemo(() => {
     const needle = pocketQuery.trim().toLowerCase();
     return pocketsForSelectedActor.filter((row) => {
@@ -223,6 +251,7 @@ export function BigBookSettingsPanel({
   const subTypePagination = useTablePagination(filteredSubTypes.length, 10);
   const vendorTypePagination = useTablePagination(filteredVendorTypes.length, 10);
   const vendorPagination = useTablePagination(filteredVendors.length, 10);
+  const actionByPagination = useTablePagination(filteredActionBy.length, 10);
   const pocketPagination = useTablePagination(filteredPockets.length, 10);
 
   // Reset to page 0 whenever the filtered set's identity changes due to filter
@@ -249,6 +278,11 @@ export function BigBookSettingsPanel({
   }, [vendorQuery, vendorStatusFilter, vendorParentTypeId]);
 
   useEffect(() => {
+    actionByPagination.setPage(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actionByQuery, actionByStatusFilter]);
+
+  useEffect(() => {
     pocketPagination.setPage(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pocketQuery, pocketStatusFilter, pocketParentActorId]);
@@ -268,6 +302,10 @@ export function BigBookSettingsPanel({
   const pagedVendors = useMemo(
     () => sliceForPage(filteredVendors, vendorPagination.page, vendorPagination.pageSize),
     [filteredVendors, vendorPagination.page, vendorPagination.pageSize]
+  );
+  const pagedActionBy = useMemo(
+    () => sliceForPage(filteredActionBy, actionByPagination.page, actionByPagination.pageSize),
+    [filteredActionBy, actionByPagination.page, actionByPagination.pageSize]
   );
   const pagedPockets = useMemo(
     () => sliceForPage(filteredPockets, pocketPagination.page, pocketPagination.pageSize),
@@ -289,6 +327,10 @@ export function BigBookSettingsPanel({
     vendorSubmitting ||
     toggleVendorSubmitting ||
     vendorEditor.submitting ||
+    actionBySubmitting ||
+    toggleActionBySubmitting ||
+    actionByDeleting ||
+    actionByEditor.submitting ||
     pocketSubmitting ||
     togglePocketSubmitting ||
     pocketDeleting ||
@@ -613,6 +655,92 @@ export function BigBookSettingsPanel({
       setError("Failed to update vendor due to a network error.");
     } finally {
       setToggleVendorSubmitting(false);
+    }
+  }
+
+  async function addActionBy() {
+    setActionBySubmitting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await secureFetch("/api/big-book/action-by", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: normalizeEntityCode(newActionByCode),
+          name: newActionByName.trim()
+        })
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(extractApiError(data.error, "Failed to add Action By."));
+        return;
+      }
+      setMessage("Action By added.");
+      setPendingAddActionByConfirm(false);
+      setNewActionByCode("");
+      setNewActionByName("");
+      triggerRefresh();
+    } catch {
+      setError("Failed to add Action By due to a network error.");
+    } finally {
+      setActionBySubmitting(false);
+    }
+  }
+
+  async function toggleActionBy() {
+    if (!pendingToggleActionBy) return;
+    setToggleActionBySubmitting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await secureFetch("/api/big-book/action-by", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: pendingToggleActionBy.id,
+          is_active: !pendingToggleActionBy.is_active
+        })
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(extractApiError(data.error, "Failed to update Action By."));
+        return;
+      }
+      setMessage(`Action By ${pendingToggleActionBy.is_active ? "deactivated" : "activated"}.`);
+      setPendingToggleActionBy(null);
+      triggerRefresh();
+    } catch {
+      setError("Failed to update Action By due to a network error.");
+    } finally {
+      setToggleActionBySubmitting(false);
+    }
+  }
+
+  async function deleteActionBy() {
+    if (!pendingDeleteActionBy) return;
+    setActionByDeleting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await secureFetch(`/api/big-book/action-by?id=${pendingDeleteActionBy.id}`, {
+        method: "DELETE"
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(extractApiError(data.error, "Failed to delete Action By."));
+        return;
+      }
+      setMessage("Action By deleted.");
+      setPendingDeleteActionBy(null);
+      triggerRefresh();
+    } catch {
+      setError("Failed to delete Action By due to a network error.");
+    } finally {
+      setActionByDeleting(false);
     }
   }
 
@@ -1326,6 +1454,159 @@ export function BigBookSettingsPanel({
 
       <section
         className="card relative"
+        aria-busy={
+          actionBySubmitting || toggleActionBySubmitting || actionByDeleting || actionByEditor.submitting
+        }
+      >
+        <BlockingOverlay
+          active={
+            actionBySubmitting || toggleActionBySubmitting || actionByDeleting || actionByEditor.submitting
+          }
+          label="Processing Action By..."
+        />
+        <h2 className="text-lg font-semibold">Action By Management</h2>
+        <p className="mt-1 text-sm text-muted">
+          Manage who performs each transaction. Action By is optional on ledger entries.
+        </p>
+        <div className="mt-4 grid grid-cols-1 gap-2 lg:grid-cols-3">
+          <input
+            className="field"
+            placeholder="Code (e.g. JOHN)"
+            maxLength={ENTITY_CODE_MAX_LENGTH}
+            value={newActionByCode}
+            onChange={(event) => setNewActionByCode(normalizeEntityCode(event.target.value))}
+          />
+          <input
+            className="field"
+            placeholder="Action By Name"
+            maxLength={100}
+            value={newActionByName}
+            onChange={(event) => setNewActionByName(event.target.value)}
+          />
+          <button
+            className="btn"
+            disabled={
+              newActionByCode.trim().length < 2 ||
+              newActionByName.trim().length < 2 ||
+              actionBySubmitting
+            }
+            onClick={() => setPendingAddActionByConfirm(true)}
+          >
+            Add Action By
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-muted">{ENTITY_CODE_HINT}</p>
+        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <label className="text-sm text-muted sm:col-span-2">
+            <span className="mb-1 block">Search</span>
+            <input
+              className="field w-full"
+              placeholder="Search by name or code..."
+              value={actionByQuery}
+              onChange={(event) => setActionByQuery(event.target.value)}
+            />
+          </label>
+          <label className="text-sm text-muted">
+            <span className="mb-1 block">Status</span>
+            <select
+              className="field w-full"
+              value={actionByStatusFilter}
+              onChange={(event) => setActionByStatusFilter(event.target.value as StatusFilter)}
+            >
+              <option value="all">All</option>
+              <option value="active">Active only</option>
+              <option value="inactive">Inactive only</option>
+            </select>
+          </label>
+        </div>
+        <div className="mt-4 overflow-x-auto">
+          <table className="data-table data-table-zebra min-w-[640px]">
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>Name</th>
+                <th>Sort</th>
+                <th>Status</th>
+                <th className="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pagedActionBy.length ? (
+                pagedActionBy.map((actionBy) => (
+                  <tr key={actionBy.id} className="align-middle">
+                    <td className="px-3 py-2 font-mono text-xs">{actionBy.code}</td>
+                    <td className="px-3 py-2 font-medium">{actionBy.name}</td>
+                    <td className="px-3 py-2 text-xs text-[rgb(var(--text-muted))]">{actionBy.sort_order}</td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${
+                          actionBy.is_active
+                            ? "bg-[rgb(var(--success)/0.15)] text-[rgb(var(--success))]"
+                            : "bg-[rgb(var(--surface-muted))] text-muted"
+                        }`}
+                      >
+                        {actionBy.is_active ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <button
+                          className="btn-secondary btn-sm"
+                          onClick={() => actionByEditor.start(actionBy)}
+                          disabled={
+                            toggleActionBySubmitting || actionByDeleting || actionByEditor.submitting
+                          }
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn-secondary btn-sm"
+                          onClick={() => setPendingToggleActionBy(actionBy)}
+                          disabled={
+                            toggleActionBySubmitting || actionByDeleting || actionByEditor.submitting
+                          }
+                        >
+                          {actionBy.is_active ? "Deactivate" : "Activate"}
+                        </button>
+                        <button
+                          className="btn-secondary btn-sm !border-[rgb(var(--danger)/0.35)] !text-[rgb(var(--danger))] hover:!bg-[rgb(var(--danger)/0.12)]"
+                          onClick={() => setPendingDeleteActionBy(actionBy)}
+                          disabled={
+                            toggleActionBySubmitting || actionByDeleting || actionByEditor.submitting
+                          }
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <TableEmptyState
+                  colSpan={5}
+                  message={
+                    initialActionBy.length
+                      ? "No Action By rows match the current filters."
+                      : "No Action By rows yet. Use the form above to add one."
+                  }
+                />
+              )}
+            </tbody>
+          </table>
+        </div>
+        <TablePaginationBar
+          totalCount={filteredActionBy.length}
+          page={actionByPagination.page}
+          setPage={actionByPagination.setPage}
+          pageSize={actionByPagination.pageSize}
+          setPageSize={actionByPagination.setPageSize}
+          pageCount={actionByPagination.pageCount}
+          rangeLabel={actionByPagination.rangeLabel}
+        />
+      </section>
+
+      <section
+        className="card relative"
         aria-busy={pocketSubmitting || togglePocketSubmitting || pocketDeleting || pocketEditor.submitting}
       >
         <BlockingOverlay
@@ -1653,6 +1934,44 @@ export function BigBookSettingsPanel({
       />
 
       <ConfirmDialog
+        open={pendingAddActionByConfirm}
+        onOpenChange={setPendingAddActionByConfirm}
+        title="Add new Action By?"
+        description="The new Action By will become available for future Big Book records."
+        confirmLabel="Add Action By"
+        confirming={actionBySubmitting}
+        closeOnBackdrop={false}
+        onConfirm={addActionBy}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingToggleActionBy)}
+        onOpenChange={(open) => {
+          if (!open && !toggleActionBySubmitting) setPendingToggleActionBy(null);
+        }}
+        title={pendingToggleActionBy?.is_active ? "Deactivate Action By?" : "Activate Action By?"}
+        description="Changing active state affects whether this Action By can be selected in new records."
+        confirmLabel={pendingToggleActionBy?.is_active ? "Deactivate" : "Activate"}
+        confirming={toggleActionBySubmitting}
+        closeOnBackdrop={false}
+        onConfirm={toggleActionBy}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingDeleteActionBy)}
+        onOpenChange={(open) => {
+          if (!open && !actionByDeleting) setPendingDeleteActionBy(null);
+        }}
+        title="Delete Action By?"
+        description="This will permanently remove the Action By. Existing entries that reference it will have their Action By cleared."
+        confirmLabel="Delete"
+        confirming={actionByDeleting}
+        variant="danger"
+        closeOnBackdrop={false}
+        onConfirm={deleteActionBy}
+      />
+
+      <ConfirmDialog
         open={pendingAddPocketConfirm}
         onOpenChange={setPendingAddPocketConfirm}
         title="Add new pocket?"
@@ -1729,6 +2048,13 @@ export function BigBookSettingsPanel({
         entityLabel="Vendor Name"
         description="Existing records keep pointing at this vendor; only its code and name change."
         onSave={() => saveEntityEdit(vendorEditor, "/api/big-book/vendors", "Vendor Name")}
+      />
+
+      <EntityEditDialog
+        editor={actionByEditor}
+        entityLabel="Action By"
+        description="Existing records keep pointing at this Action By; only its code and name change."
+        onSave={() => saveEntityEdit(actionByEditor, "/api/big-book/action-by", "Action By")}
       />
 
       <EntityEditDialog

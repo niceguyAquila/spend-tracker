@@ -48,6 +48,20 @@ export const bigBookVendorTypeUpdateSchema = z.object({
   sort_order: entitySortOrderSchema()
 });
 
+export const bigBookActionByCreateSchema = z.object({
+  code: entityCodeSchema("Action By code"),
+  name: entityNameSchema("Action By name"),
+  sort_order: entitySortOrderSchema()
+});
+
+export const bigBookActionByUpdateSchema = z.object({
+  id: z.string().uuid(),
+  code: entityCodeSchema("Action By code").optional(),
+  name: entityNameSchema("Action By name").optional(),
+  is_active: z.boolean().optional(),
+  sort_order: entitySortOrderSchema()
+});
+
 export const bigBookVendorCreateSchema = z.object({
   vendor_type_id: z.string().uuid("Select a vendor type."),
   code: entityCodeSchema("Vendor code"),
@@ -108,6 +122,7 @@ const bigBookEntryBaseSchema = z.object({
   vendor_type_id: optionalUuidOrEmpty("Vendor Type must be a valid id"),
   vendor_id: optionalUuidOrEmpty("Vendor Name must be a valid id"),
   pocket_id: optionalUuidOrEmpty("Pocket must be a valid id"),
+  action_by_id: optionalUuidOrEmpty("Action By must be a valid id"),
   explanation: z.string().trim().min(2).max(500),
   amount: z.coerce.number().positive("Amount must be greater than 0"),
   currency_code: bigBookCurrencySchema,
@@ -227,6 +242,7 @@ export const bigBookEntriesQuerySchema = z.object({
   vendorTypeId: normalizeMultiSelect(z.string().uuid()),
   vendorId: normalizeMultiSelect(z.string().uuid()),
   pocketId: normalizeMultiSelect(z.string().uuid()),
+  actionById: normalizeMultiSelect(z.string().uuid()),
   creditFlag: normalizeMultiSelect(bigBookCreditFlagSchema),
   creditStatus: normalizeMultiSelect(bigBookCreditStatusSchema),
   dateFrom: optionalString,

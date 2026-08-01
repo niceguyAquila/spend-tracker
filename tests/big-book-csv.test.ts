@@ -17,6 +17,7 @@ describe("parseBigBookCsv", () => {
     expect(result.rows[0].vendor_type_name).toBeNull();
     expect(result.rows[0].vendor_name).toBeNull();
     expect(result.rows[0].pocket_name).toBeNull();
+    expect(result.rows[0].action_by_name).toBeNull();
     expect(result.rows[0].group_label).toBeNull();
     expect(result.rows[0].group_remark).toBeNull();
     expect(result.rows[0].is_credit).toBe(false);
@@ -113,6 +114,20 @@ describe("parseBigBookCsv", () => {
     expect(result.rows[0].pocket_name).toBe("Petty Cash");
   });
 
+  it("parses optional action_by_name when present", () => {
+    const csv = [
+      "entry_date,entry_direction,type_name,explanation,amount,currency_code,remark,actor_name,action_by_name",
+      "2026-04-25,spending,Office Supplies,Printer ink,350000,IDR,Restock,Actor A,John",
+      "2026-04-26,profit,Sales Revenue,Daily settlement,1250.5,USDT,,Actor B,"
+    ].join("\n");
+
+    const result = parseBigBookCsv(csv);
+    expect(result.errors).toEqual([]);
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows[0].action_by_name).toBe("John");
+    expect(result.rows[1].action_by_name).toBeNull();
+  });
+
   it("parses dates in YYYY-MMM-DD format", () => {
     const csv = [
       "entry_date,entry_direction,type_name,explanation,amount,currency_code,remark,actor_name",
@@ -167,17 +182,20 @@ describe("buildBigBookImportTemplateCsv", () => {
       remark: "Restock",
       actor_name: "Actor A",
       pocket_name: "Petty Cash",
+      action_by_name: "John",
       group_label: null,
       group_remark: null
     });
     expect(result.rows[1]).toMatchObject({
       group_label: "Hardware purchase",
       group_remark: "Grouped multi-currency buy",
-      currency_code: "IDR"
+      currency_code: "IDR",
+      action_by_name: "John"
     });
     expect(result.rows[2]).toMatchObject({
       group_label: "Hardware purchase",
       group_remark: "Grouped multi-currency buy",
+      action_by_name: "John",
       currency_code: "USDT"
     });
   });

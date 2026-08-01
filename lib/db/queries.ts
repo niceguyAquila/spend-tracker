@@ -25,6 +25,7 @@ import {
   BigBookLedgerType,
   BigBookSettlementRef,
   BigBookSettlementTargetRef,
+  BigBookActionBy,
   BigBookVendor,
   BigBookVendorActorOutstandingRow,
   BigBookVendorType,
@@ -301,6 +302,29 @@ export async function getBigBookVendorTypes(options?: {
   }));
 }
 
+export async function getBigBookActionBy(options?: {
+  includeInactive?: boolean;
+}): Promise<BigBookActionBy[]> {
+  const supabase = await createClient();
+  let query = supabase
+    .from("business_ledger_action_by")
+    .select("id, code, name, is_active, sort_order, created_at, updated_at")
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+
+  if (!options?.includeInactive) {
+    query = query.eq("is_active", true);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    ...row,
+    sort_order: Number(row.sort_order)
+  }));
+}
+
 export async function getBigBookVendors(options?: {
   vendorTypeId?: string;
   includeInactive?: boolean;
@@ -394,6 +418,7 @@ export type BigBookEntryFilters = {
   vendorTypeId?: string[];
   vendorId?: string[];
   pocketId?: string[];
+  actionById?: string[];
   creditFlag?: Array<"credit" | "settlement" | "none">;
   creditStatus?: BigBookCreditStatus[];
   dateFrom?: string;
@@ -402,12 +427,13 @@ export type BigBookEntryFilters = {
 };
 
 const BIG_BOOK_ENTRY_SELECT = `
-  id, group_id, entry_date, entry_direction, entry_type_id, entry_sub_type_id, vendor_type_id, vendor_id, pocket_id, explanation, amount, currency_code, remark, responsible_actor_id, is_credit, settles_entry_id, settlement_conversion_rate, settlement_amount_in_credit_currency, settlement_note, created_by, updated_by, created_at, updated_at,
+  id, group_id, entry_date, entry_direction, entry_type_id, entry_sub_type_id, vendor_type_id, vendor_id, pocket_id, action_by_id, explanation, amount, currency_code, remark, responsible_actor_id, is_credit, settles_entry_id, settlement_conversion_rate, settlement_amount_in_credit_currency, settlement_note, created_by, updated_by, created_at, updated_at,
   business_ledger_types(id, code, name),
   business_ledger_sub_types(id, code, name),
   business_ledger_vendor_types(id, code, name),
   business_ledger_vendors(id, code, name),
   big_book_actor_pockets(id, code, name),
+  business_ledger_action_by(id, code, name),
   big_book_actors(id, actor_code, display_name),
   business_ledger_attachments(id, ledger_entry_id, storage_path, file_name, mime_type, file_size, uploaded_by, created_at)
 `;
@@ -454,6 +480,7 @@ function applyBigBookEntryFilters<T extends BigBookFilterableQuery<T>>(
   const filterVendorTypeIds = toFilterArray(filters?.vendorTypeId);
   const filterVendorIds = toFilterArray(filters?.vendorId);
   const filterPocketIds = toFilterArray(filters?.pocketId);
+  const filterActionByIds = toFilterArray(filters?.actionById);
   const filterCreditFlags = toFilterArray(filters?.creditFlag);
   let next = query;
   if (filterTypeIds?.length) next = next.in("entry_type_id", filterTypeIds);
@@ -463,6 +490,7 @@ function applyBigBookEntryFilters<T extends BigBookFilterableQuery<T>>(
   if (filterVendorTypeIds?.length) next = next.in("vendor_type_id", filterVendorTypeIds);
   if (filterVendorIds?.length) next = next.in("vendor_id", filterVendorIds);
   if (filterPocketIds?.length) next = next.in("pocket_id", filterPocketIds);
+  if (filterActionByIds?.length) next = next.in("action_by_id", filterActionByIds);
   if (filterCreditFlags?.length === 1) {
     // Single-flag shortcuts push to SQL; mixed selections are applied after hydration.
     const flag = filterCreditFlags[0];
@@ -519,6 +547,7 @@ type RawBigBookEntryRow = {
   vendor_type_id: string | null;
   vendor_id: string | null;
   pocket_id: string | null;
+  action_by_id: string | null;
   explanation: string;
   amount: number | string;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
@@ -538,6 +567,7 @@ type RawBigBookEntryRow = {
   business_ledger_vendor_types: { id: string; code: string; name: string } | { id: string; code: string; name: string }[] | null;
   business_ledger_vendors: { id: string; code: string; name: string } | { id: string; code: string; name: string }[] | null;
   big_book_actor_pockets: { id: string; code: string; name: string } | { id: string; code: string; name: string }[] | null;
+  business_ledger_action_by: { id: string; code: string; name: string } | { id: string; code: string; name: string }[] | null;
   big_book_actors: { id: string; actor_code: "A" | "B"; display_name: string } | { id: string; actor_code: "A" | "B"; display_name: string }[] | null;
   business_ledger_attachments: BigBookAttachment | BigBookAttachment[] | null;
 };
@@ -558,6 +588,9 @@ function mapBigBookEntryRow(row: RawBigBookEntryRow, actorMap: Map<string, strin
   const pocket = Array.isArray(row.big_book_actor_pockets)
     ? row.big_book_actor_pockets[0]
     : row.big_book_actor_pockets;
+  const actionBy = Array.isArray(row.business_ledger_action_by)
+    ? row.business_ledger_action_by[0]
+    : row.business_ledger_action_by;
   const actor = Array.isArray(row.big_book_actors)
     ? row.big_book_actors[0]
     : row.big_book_actors;
@@ -577,6 +610,7 @@ function mapBigBookEntryRow(row: RawBigBookEntryRow, actorMap: Map<string, strin
     vendor_type_id: row.vendor_type_id ?? null,
     vendor_id: row.vendor_id ?? null,
     pocket_id: row.pocket_id ?? null,
+    action_by_id: row.action_by_id ?? null,
     explanation: row.explanation,
     amount: Number(row.amount),
     currency_code: row.currency_code,
@@ -602,6 +636,7 @@ function mapBigBookEntryRow(row: RawBigBookEntryRow, actorMap: Map<string, strin
     vendor_type_name: vendorType?.name ?? null,
     vendor_name: vendor?.name ?? null,
     pocket_name: pocket?.name ?? null,
+    action_by_name: actionBy?.name ?? null,
     actor_code: (actor?.actor_code ?? "A") as "A" | "B",
     actor_display_name: actor?.display_name ?? "-",
     creator_display_name: row.created_by ? (actorMap.get(row.created_by) ?? row.created_by) : "-",

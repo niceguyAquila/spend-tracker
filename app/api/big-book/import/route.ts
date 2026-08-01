@@ -52,7 +52,8 @@ export async function POST(request: Request) {
     { data: subTypes, error: subTypesError },
     { data: vendorTypes, error: vendorTypesError },
     { data: vendors, error: vendorsError },
-    { data: pockets, error: pocketsError }
+    { data: pockets, error: pocketsError },
+    { data: actionByRows, error: actionByError }
   ] = await Promise.all([
     supabase.from("business_ledger_types").select("id,name").eq("is_active", true),
     supabase.from("big_book_actors").select("id,display_name"),
@@ -68,10 +69,19 @@ export async function POST(request: Request) {
     supabase
       .from("big_book_actor_pockets")
       .select("id,name,actor_id")
-      .eq("is_active", true)
+      .eq("is_active", true),
+    supabase.from("business_ledger_action_by").select("id,name").eq("is_active", true)
   ]);
 
-  if (typesError || actorsError || subTypesError || vendorTypesError || vendorsError || pocketsError) {
+  if (
+    typesError ||
+    actorsError ||
+    subTypesError ||
+    vendorTypesError ||
+    vendorsError ||
+    pocketsError ||
+    actionByError
+  ) {
     return NextResponse.json(
       {
         error:
@@ -81,6 +91,7 @@ export async function POST(request: Request) {
           vendorTypesError?.message ??
           vendorsError?.message ??
           pocketsError?.message ??
+          actionByError?.message ??
           "Failed to load import references."
       },
       { status: 400 }
@@ -111,6 +122,9 @@ export async function POST(request: Request) {
       `${row.actor_id}::${normalizeLookupKey(row.name)}`,
       row.id
     ])
+  );
+  const actionByNameToId: NameToIdMap = new Map(
+    (actionByRows ?? []).map((row) => [normalizeLookupKey(row.name), row.id])
   );
 
   const validationErrors: string[] = [];
@@ -178,6 +192,16 @@ export async function POST(request: Request) {
       }
     }
 
+    let actionById: string | null = null;
+    if (row.action_by_name) {
+      actionById = actionByNameToId.get(normalizeLookupKey(row.action_by_name)) ?? null;
+      if (!actionById) {
+        validationErrors.push(
+          `Row ${lineNumber}: action_by_name '${row.action_by_name}' is not available.`
+        );
+      }
+    }
+
     if (!entryTypeId) {
       validationErrors.push(`Row ${lineNumber}: type_name '${row.type_name}' is not available.`);
     }
@@ -193,6 +217,7 @@ export async function POST(request: Request) {
       vendor_type_id: vendorTypeId,
       vendor_id: vendorId,
       pocket_id: pocketId,
+      action_by_id: actionById,
       explanation: row.explanation,
       amount: row.amount,
       currency_code: row.currency_code,
@@ -298,6 +323,7 @@ export async function POST(request: Request) {
         vendor_type_id: row.vendor_type_id,
         vendor_id: row.vendor_id,
         pocket_id: row.pocket_id,
+        action_by_id: row.action_by_id,
         explanation: row.explanation,
         amount: row.amount,
         currency_code: row.currency_code,
