@@ -4,11 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import type { ExpenseCategory, ExpenseSubcategory, ExpenseWithNames } from "@/lib/types";
+import type { AppRole, ExpenseCategory, ExpenseSubcategory, ExpenseWithNames } from "@/lib/types";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { TableEmptyState } from "@/components/ui/table-empty-state";
+import { SpendingCsvToolbar } from "@/components/spending-csv-toolbar";
 import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
 
 type Props = {
@@ -17,6 +18,7 @@ type Props = {
   subcategories: ExpenseSubcategory[];
   activeMonth: string;
   monthOptions: string[];
+  role: AppRole;
 };
 
 const currencyFormatter = new Intl.NumberFormat("id-ID");
@@ -98,7 +100,7 @@ function isEditDraftDirty(row: ExpenseWithNames, draft: EditDraft) {
   return false;
 }
 
-export function TransactionTable({ rows, categories, subcategories, activeMonth, monthOptions }: Props) {
+export function TransactionTable({ rows, categories, subcategories, activeMonth, monthOptions, role }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -346,15 +348,30 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
   return (
     <section className="card relative" aria-busy={criticalPending}>
       <BlockingOverlay active={criticalPending} label={saving ? "Saving transaction..." : "Deleting transaction..."} />
-      <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Transaction Ledger</h2>
-        <input
-          className="field max-w-xs"
-          placeholder="Search note, category..."
-          value={query}
-          disabled={criticalPending}
-          onChange={(event) => setQuery(event.target.value)}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <SpendingCsvToolbar
+            role={role}
+            disabled={criticalPending}
+            filters={{
+              month: activeMonth,
+              dateFrom,
+              dateTo,
+              query,
+              direction: directionFilter,
+              categoryId: categoryFilter,
+              subcategoryId: subcategoryFilter
+            }}
+          />
+          <input
+            className="field max-w-xs"
+            placeholder="Search note, category..."
+            value={query}
+            disabled={criticalPending}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
       </div>
       <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-3 xl:grid-cols-6">
         <label className="text-sm text-[rgb(var(--text-muted))]">

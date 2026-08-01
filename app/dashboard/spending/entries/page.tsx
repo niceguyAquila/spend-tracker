@@ -76,6 +76,7 @@ export default async function SpendingEntriesPage({ searchParams }: SpendingEntr
           subcategories={subcategories}
           activeMonth={activeMonth}
           monthOptions={monthOptions}
+          role={role}
         />
       </div>
     );

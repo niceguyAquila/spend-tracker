@@ -107,6 +107,11 @@ export async function getExpenses(params: {
   brandId: string;
   month?: string;
   categoryId?: string;
+  categoryIds?: string[];
+  subcategoryIds?: string[];
+  directions?: Array<"spending" | "profit">;
+  dateFrom?: string;
+  dateTo?: string;
   limit?: number;
 }): Promise<ExpenseWithNames[]> {
   const supabase = await createClient();
@@ -128,6 +133,21 @@ export async function getExpenses(params: {
   }
   if (params?.categoryId) {
     query = query.eq("category_id", params.categoryId);
+  }
+  if (params?.categoryIds?.length) {
+    query = query.in("category_id", params.categoryIds);
+  }
+  if (params?.subcategoryIds?.length) {
+    query = query.in("subcategory_id", params.subcategoryIds);
+  }
+  if (params?.directions?.length) {
+    query = query.in("entry_direction", params.directions);
+  }
+  if (params?.dateFrom) {
+    query = query.gte("expense_date", params.dateFrom);
+  }
+  if (params?.dateTo) {
+    query = query.lte("expense_date", params.dateTo);
   }
   if (params?.limit) {
     query = query.limit(params.limit);
