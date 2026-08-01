@@ -128,3 +128,15 @@ body {
 .data-table tbody tr:hover {
   background-color: rgb(var(--primary) / 0.06);
 }
+
+/* Only takes effect when the table sits in a wrapper that scrolls vertically
+   (a max-height plus overflow-auto). Sticking is applied to the cells rather
+   than to thead, and the header rule is drawn as an inset shadow, because
+   collapsed table borders and thead backgrounds do not paint on sticky rows. */
+.data-table-sticky-head thead th {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background-color: rgb(var(--surface-muted));
+  box-shadow: inset 0 -1px 0 rgb(var(--border));
+}

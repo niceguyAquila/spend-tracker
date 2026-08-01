@@ -1219,8 +1219,16 @@ export function CreditBigBookPanel({
             </button>
           </div>
         </form>
-        <div className="overflow-x-auto">
-          <table className="data-table min-w-[1440px]">
+        <div
+          className="max-h-[70vh] overflow-auto"
+          onScroll={() => {
+            // Both menus are positioned from the trigger's document coordinates,
+            // so they would drift away from their row once the table scrolls.
+            if (openActionMenu) setOpenActionMenu(null);
+            if (openSettlementMenu) setOpenSettlementMenu(null);
+          }}
+        >
+          <table className="data-table data-table-sticky-head min-w-[1440px]">
             <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
               <tr>
                 <th className="px-3 py-2">Date</th>

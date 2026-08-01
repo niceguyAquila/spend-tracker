@@ -2172,8 +2172,18 @@ export function BigBookPanel({
             </div>
           </div>
         ) : null}
-        <div className="overflow-x-auto">
-          <table className="data-table table-fixed" style={{ width: ledgerTableWidth, minWidth: ledgerTableWidth }}>
+        <div
+          className="max-h-[70vh] overflow-auto"
+          onScroll={() => {
+            // Action menus are positioned from the trigger's document coordinates,
+            // so they would drift away from their row once the table scrolls.
+            if (openActionMenu) setOpenActionMenu(null);
+          }}
+        >
+          <table
+            className="data-table data-table-sticky-head table-fixed"
+            style={{ width: ledgerTableWidth, minWidth: ledgerTableWidth }}
+          >
             <colgroup>
               {LEDGER_COLUMN_KEYS.map((key) => (
                 <col key={key} style={{ width: columnWidths[key] }} />
