@@ -17,13 +17,33 @@ export type BigBookMetricsBundle = {
 
 const SUPPORTED_CURRENCIES: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR", "USDT", "TRX"];
 
-function TotalsBox({ label, value }: { label: string; value: number }) {
+function TotalsBox({
+  label,
+  value,
+  breakdown
+}: {
+  label: string;
+  value: number;
+  breakdown?: Array<{ label: string; value: number }>;
+}) {
   return (
     <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2">
       <p className="text-xs uppercase text-[rgb(var(--text-muted))]">{label}</p>
       <p className={`font-medium ${getAmountColorClass(value)}`}>
         {formatAmount(value, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
       </p>
+      {breakdown?.length ? (
+        <ul className="mt-1 space-y-0.5 text-[11px] text-[rgb(var(--text-muted))]">
+          {breakdown.map((item) => (
+            <li key={item.label} className="flex items-center justify-between gap-2">
+              <span>{item.label}</span>
+              <span className={getAmountColorClass(item.value)}>
+                {formatAmount(item.value, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }
@@ -60,7 +80,8 @@ export function BigBookMetricsCardsView({
         <h2 className="text-lg font-semibold">Grand Total by Actor (All Time)</h2>
         <p className="mt-1 text-sm text-muted">
           Total amount grouped by actor and currency across all Big Book records. Pocket transactions are
-          excluded from the actor columns and reported under Pocket Totals instead.
+          excluded from the actor columns and reported under Pocket Totals instead. Linked Web Spending
+          nets are included in Pocket Totals with a breakdown.
         </p>
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <article className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-4">
@@ -103,6 +124,15 @@ export function BigBookMetricsCardsView({
                         key={pocket.pocket_id}
                         label={`${pocket.pocket_name}${!pocket.is_active ? " (Inactive)" : ""}`}
                         value={pocket.net}
+                        breakdown={[
+                          { label: "Big Book", value: pocket.big_book_net },
+                          {
+                            label: pocket.linked_brand_name
+                              ? `Web Spending (${pocket.linked_brand_name})`
+                              : "Web Spending",
+                            value: pocket.web_spending_net
+                          }
+                        ]}
                       />
                     ))}
                   </div>

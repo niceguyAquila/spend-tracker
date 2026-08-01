@@ -9,7 +9,7 @@ import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { TableEmptyState } from "@/components/ui/table-empty-state";
-import { formatAmount, formatDateDisplay } from "@/lib/display-format";
+import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
 
 type Props = {
   rows: ExpenseWithNames[];
@@ -57,8 +57,9 @@ function extractApiError(error: unknown, fallback: string) {
   return fallback;
 }
 
-type SortKey = "expense_date" | "category_name" | "subcategory_name" | "amount";
+type SortKey = "expense_date" | "entry_direction" | "category_name" | "subcategory_name" | "amount";
 type SortDirection = "asc" | "desc";
+type DirectionFilter = "" | "spending" | "profit";
 
 function formatMonthLabel(monthKey: string) {
   return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(
@@ -68,6 +69,7 @@ function formatMonthLabel(monthKey: string) {
 
 type EditDraft = {
   expense_date: string;
+  entry_direction: "spending" | "profit";
   category_id: string;
   subcategory_id: string;
   amount: string;
@@ -75,10 +77,20 @@ type EditDraft = {
   reference: string;
 };
 
+function signedExpenseAmount(row: Pick<ExpenseWithNames, "amount" | "entry_direction">) {
+  const amount = Math.abs(Number(row.amount));
+  return row.entry_direction === "profit" ? amount : -amount;
+}
+
+function directionLabel(direction: "spending" | "profit") {
+  return direction === "profit" ? "In" : "Out";
+}
+
 function isEditDraftDirty(row: ExpenseWithNames, draft: EditDraft) {
   const draftAmount = Number(parseAmountInput(draft.amount));
   if (!Number.isFinite(draftAmount) || draftAmount !== row.amount) return true;
   if (draft.expense_date !== row.expense_date) return true;
+  if (draft.entry_direction !== row.entry_direction) return true;
   if (draft.category_id !== row.category_id) return true;
   if (draft.subcategory_id !== row.subcategory_id) return true;
   if ((draft.note ?? "") !== (row.note ?? "")) return true;
@@ -95,6 +107,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
   const [dateTo, setDateTo] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [subcategoryFilter, setSubcategoryFilter] = useState("");
+  const [directionFilter, setDirectionFilter] = useState<DirectionFilter>("");
   const [sortKey, setSortKey] = useState<SortKey>("expense_date");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -107,15 +120,9 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
   const [saving, setSaving] = useState(false);
   const criticalPending = saving || deleteSubmitting;
 
-  const [draft, setDraft] = useState<{
-    expense_date: string;
-    category_id: string;
-    subcategory_id: string;
-    amount: string;
-    note: string;
-    reference: string;
-  }>({
+  const [draft, setDraft] = useState<EditDraft>({
     expense_date: "",
+    entry_direction: "spending",
     category_id: "",
     subcategory_id: "",
     amount: "",
@@ -142,13 +149,14 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
       if (dateTo && row.expense_date > dateTo) return false;
       if (categoryFilter && row.category_id !== categoryFilter) return false;
       if (subcategoryFilter && row.subcategory_id !== subcategoryFilter) return false;
+      if (directionFilter && row.entry_direction !== directionFilter) return false;
       return true;
     });
 
     return baseRows.sort((a, b) => {
       if (sortKey === "amount") {
-        const left = a.amount;
-        const right = b.amount;
+        const left = signedExpenseAmount(a);
+        const right = signedExpenseAmount(b);
         return sortDirection === "asc" ? left - right : right - left;
       }
       const left = a[sortKey];
@@ -156,7 +164,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
       const compared = left.localeCompare(right);
       return sortDirection === "asc" ? compared : -compared;
     });
-  }, [query, rows, dateFrom, dateTo, categoryFilter, subcategoryFilter, sortKey, sortDirection]);
+  }, [query, rows, dateFrom, dateTo, categoryFilter, subcategoryFilter, directionFilter, sortKey, sortDirection]);
 
   const pagination = useTablePagination(filteredRows.length);
   const pagedRows = useMemo(
@@ -166,7 +174,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
 
   useEffect(() => {
     pagination.setPage(0);
-  }, [query, dateFrom, dateTo, categoryFilter, subcategoryFilter, sortKey, sortDirection]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [query, dateFrom, dateTo, categoryFilter, subcategoryFilter, directionFilter, sortKey, sortDirection]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function updateMonth(monthKey: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -186,6 +194,25 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
       return;
     }
     setSortDirection("asc");
+  }
+
+  function directionSelect(
+    value: "spending" | "profit",
+    onChange: (value: "spending" | "profit") => void,
+    disabled?: boolean
+  ) {
+    return (
+      <select
+        className="field"
+        required
+        disabled={disabled}
+        value={value}
+        onChange={(event) => onChange(event.target.value as "spending" | "profit")}
+      >
+        <option value="spending">Out</option>
+        <option value="profit">In</option>
+      </select>
+    );
   }
 
   function renderSortIndicator(key: SortKey) {
@@ -220,6 +247,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
     setEditingId(row.id);
     setDraft({
       expense_date: row.expense_date,
+      entry_direction: row.entry_direction,
       category_id: row.category_id,
       subcategory_id: row.subcategory_id,
       amount: formatAmountInput(String(row.amount)),
@@ -328,7 +356,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
           onChange={(event) => setQuery(event.target.value)}
         />
       </div>
-      <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-5">
+      <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-3 xl:grid-cols-6">
         <label className="text-sm text-[rgb(var(--text-muted))]">
           <span className="mb-1 block">Month</span>
           <select
@@ -363,6 +391,19 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
             disabled={criticalPending}
             onChange={(event) => setDateTo(event.target.value)}
           />
+        </label>
+        <label className="text-sm text-[rgb(var(--text-muted))]">
+          <span className="mb-1 block">Direction</span>
+          <select
+            className="field"
+            value={directionFilter}
+            disabled={criticalPending}
+            onChange={(event) => setDirectionFilter(event.target.value as DirectionFilter)}
+          >
+            <option value="">All directions</option>
+            <option value="spending">Out</option>
+            <option value="profit">In</option>
+          </select>
         </label>
         <label className="text-sm text-[rgb(var(--text-muted))]">
           <span className="mb-1 block">Category</span>
@@ -401,12 +442,17 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
         </label>
       </div>
       <div className="overflow-x-auto">
-        <table className="data-table data-table-zebra min-w-[1040px]">
+        <table className="data-table data-table-zebra min-w-[1120px]">
           <thead>
             <tr>
               <th className="px-3 py-2">
                 <button className="font-medium" disabled={criticalPending} onClick={() => toggleSort("expense_date")}>
                   Date{renderSortIndicator("expense_date")}
+                </button>
+              </th>
+              <th className="px-3 py-2">
+                <button className="font-medium" disabled={criticalPending} onClick={() => toggleSort("entry_direction")}>
+                  Direction{renderSortIndicator("entry_direction")}
                 </button>
               </th>
               <th className="px-3 py-2">
@@ -434,6 +480,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
             {pagedRows.map((row) => {
               const isEditing = editingId === row.id;
               const allowedSubs = subcategories.filter((item) => item.category_id === draft.category_id);
+              const signedAmount = signedExpenseAmount(row);
               return (
                 <tr key={row.id}>
                   <td className="px-3 py-2">
@@ -450,6 +497,13 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
                     ) : (
                       formatDateDisplay(row.expense_date)
                     )}
+                  </td>
+                  <td className="px-3 py-2">
+                    {isEditing
+                      ? directionSelect(draft.entry_direction, (entry_direction) =>
+                          setDraft((prev) => ({ ...prev, entry_direction }))
+                        )
+                      : directionLabel(row.entry_direction)}
                   </td>
                   <td className="px-3 py-2">
                     {isEditing ? (
@@ -496,7 +550,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
                       row.subcategory_name
                     )}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className={`px-3 py-2 ${isEditing ? "" : getAmountColorClass(signedAmount)}`}>
                     {isEditing ? (
                       <div className="flex items-center rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))]">
                         <span className="px-2 text-xs text-[rgb(var(--text-muted))]">IDR</span>
@@ -511,7 +565,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
                         />
                       </div>
                     ) : (
-                      `IDR ${formatAmount(row.amount, { locale: "id-ID", minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                      `IDR ${formatAmount(signedAmount, { locale: "id-ID", minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
                     )}
                   </td>
                   <td className="px-3 py-2">
@@ -600,7 +654,7 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
               );
             })}
             {!filteredRows.length ? (
-              <TableEmptyState colSpan={8} message="No transactions found for the selected month and filters." />
+              <TableEmptyState colSpan={9} message="No transactions found for the selected month and filters." />
             ) : null}
           </tbody>
         </table>
@@ -635,8 +689,14 @@ export function TransactionTable({ rows, categories, subcategories, activeMonth,
           pendingDelete ? (
             <ul className="list-inside list-disc space-y-1 text-[rgb(var(--text-muted))]">
               <li>Date: {formatDateDisplay(pendingDelete.expense_date)}</li>
+              <li>Direction: {directionLabel(pendingDelete.entry_direction)}</li>
               <li>
-                Amount: IDR {formatAmount(pendingDelete.amount, { locale: "id-ID", minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                Amount: IDR{" "}
+                {formatAmount(signedExpenseAmount(pendingDelete), {
+                  locale: "id-ID",
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 0
+                })}
               </li>
               <li>
                 {pendingDelete.category_name} — {pendingDelete.subcategory_name}

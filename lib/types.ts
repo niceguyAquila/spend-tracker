@@ -35,6 +35,7 @@ export type Expense = {
   brand_id: string;
   expense_date: string;
   month_key: string;
+  entry_direction: "spending" | "profit";
   amount: number;
   category_id: string;
   subcategory_id: string;
@@ -60,6 +61,7 @@ export type DashboardReportRow = {
   subcategory_id: string;
   subcategory_name: string;
   month_key: string;
+  entry_direction: "spending" | "profit";
   amount: number;
 };
 
@@ -208,6 +210,7 @@ export type BigBookActorPocket = {
   code: string;
   name: string;
   currency_code: "IDR";
+  linked_brand_id: string | null;
   is_active: boolean;
   sort_order: number;
   created_at: string;
@@ -334,6 +337,10 @@ export type BigBookPocketMetrics = {
   pocket_name: string;
   is_active: boolean;
   net: number;
+  big_book_net: number;
+  web_spending_net: number;
+  linked_brand_id: string | null;
+  linked_brand_name: string | null;
 };
 
 export type BigBookActorPocketMetrics = {

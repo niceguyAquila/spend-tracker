@@ -7,6 +7,12 @@ import { bigBookPocketCreateSchema, bigBookPocketUpdateSchema } from "@/lib/vali
 
 const ENTITY_LABEL = "Pocket";
 
+function isLinkedBrandConflict(error: { code?: string | null; message?: string | null; details?: string | null } | null) {
+  if (!error || error.code !== "23505") return false;
+  const haystack = `${error.message ?? ""} ${error.details ?? ""}`.toLowerCase();
+  return haystack.includes("linked_brand") || haystack.includes("uq_big_book_actor_pockets_linked_brand");
+}
+
 export async function GET(request: Request) {
   const authCheck = await requireAdminApi();
   if (!authCheck.ok) {
@@ -19,7 +25,9 @@ export async function GET(request: Request) {
   const supabase = await createClient();
   let query = supabase
     .from("big_book_actor_pockets")
-    .select("id, actor_id, code, name, currency_code, is_active, sort_order, created_at, updated_at")
+    .select(
+      "id, actor_id, code, name, currency_code, linked_brand_id, is_active, sort_order, created_at, updated_at"
+    )
     .order("actor_id", { ascending: true })
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
@@ -77,12 +85,19 @@ export async function POST(request: Request) {
       code: parsed.data.code,
       name: parsed.data.name,
       currency_code: parsed.data.currency_code,
+      linked_brand_id: parsed.data.linked_brand_id ?? null,
       sort_order: sortOrder
     })
     .select("id")
     .single();
 
   if (error) {
+    if (isLinkedBrandConflict(error)) {
+      return NextResponse.json(
+        { error: "That brand is already linked to another pocket." },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ error: describeWriteError(error, ENTITY_LABEL) }, { status: 400 });
   }
 
@@ -113,6 +128,12 @@ export async function PATCH(request: Request) {
   const supabase = await createClient();
   const { error } = await supabase.from("big_book_actor_pockets").update(payload).eq("id", id);
   if (error) {
+    if (isLinkedBrandConflict(error)) {
+      return NextResponse.json(
+        { error: "That brand is already linked to another pocket." },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ error: describeWriteError(error, ENTITY_LABEL) }, { status: 400 });
   }
 

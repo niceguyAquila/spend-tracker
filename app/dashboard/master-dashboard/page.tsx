@@ -7,20 +7,16 @@ import { SetupRequiredCard } from "@/components/ui/setup-required-card";
 import { StatTile, StatTileGrid } from "@/components/ui/stat-tile";
 import { formatAmount, getAmountColorClass } from "@/lib/display-format";
 import { getBigBookEntries, getBigBookLedgerTypeByCode, getDashboardReportRows } from "@/lib/db/queries";
+import {
+  buildSpendingNetByMonth,
+  buildSpendingPivot,
+  partitionSpendingRowsByDirection
+} from "@/lib/spending/pivot";
 
 type SearchParamValue = string | string[] | undefined;
 
 type MasterDashboardPageProps = {
   searchParams?: Promise<Record<string, SearchParamValue>>;
-};
-
-type PivotRow = {
-  categoryId: string;
-  categoryName: string;
-  subcategoryId: string;
-  subcategoryName: string;
-  byMonth: Record<string, number>;
-  subtotal: number;
 };
 
 type UnifiedCashflowRow = {
@@ -54,56 +50,6 @@ function normalizeDateParam(param: SearchParamValue): string | null {
 
 function normalizeMonthKey(value: string): string {
   return value.slice(0, 7);
-}
-
-function buildSpendingPivotRows(rows: Awaited<ReturnType<typeof getDashboardReportRows>>) {
-  const monthColumns = Array.from(new Set(rows.map((row) => row.month_key))).sort((a, b) => a.localeCompare(b));
-  const groupedRows = new Map<string, PivotRow>();
-
-  for (const row of rows) {
-    const key = `${row.category_id}:${row.subcategory_id}`;
-    const existing = groupedRows.get(key);
-    if (!existing) {
-      const byMonth = Object.fromEntries(monthColumns.map((monthKey) => [monthKey, 0]));
-      byMonth[row.month_key] = row.amount;
-      groupedRows.set(key, {
-        categoryId: row.category_id,
-        categoryName: row.category_name,
-        subcategoryId: row.subcategory_id,
-        subcategoryName: row.subcategory_name,
-        byMonth,
-        subtotal: row.amount
-      });
-      continue;
-    }
-    existing.byMonth[row.month_key] = (existing.byMonth[row.month_key] ?? 0) + row.amount;
-    existing.subtotal += row.amount;
-  }
-
-  const pivotRows = [...groupedRows.values()].sort((a, b) => {
-    if (a.categoryName !== b.categoryName) return a.categoryName.localeCompare(b.categoryName);
-    return a.subcategoryName.localeCompare(b.subcategoryName);
-  });
-
-  const monthGrandTotals = Object.fromEntries(monthColumns.map((monthKey) => [monthKey, 0])) as Record<string, number>;
-  const categorySubtotals: Record<string, { byMonth: Record<string, number>; subtotal: number }> = {};
-
-  for (const row of pivotRows) {
-    if (!categorySubtotals[row.categoryId]) {
-      categorySubtotals[row.categoryId] = {
-        byMonth: Object.fromEntries(monthColumns.map((monthKey) => [monthKey, 0])),
-        subtotal: 0
-      };
-    }
-
-    for (const monthKey of monthColumns) {
-      categorySubtotals[row.categoryId].byMonth[monthKey] += row.byMonth[monthKey] ?? 0;
-      monthGrandTotals[monthKey] += row.byMonth[monthKey] ?? 0;
-    }
-    categorySubtotals[row.categoryId].subtotal += row.subtotal;
-  }
-
-  return { monthColumns, pivotRows, categorySubtotals, monthGrandTotals };
 }
 
 function buildCashflowSummary(rows: UnifiedCashflowRow[]): CashflowSummary {
@@ -181,12 +127,22 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
       if (monthTo && rowMonth > monthTo) return false;
       return true;
     });
-    const spendingPivot = buildSpendingPivotRows(filteredSpendingRows);
+    const spendingMonthColumns = Array.from(new Set(filteredSpendingRows.map((row) => row.month_key))).sort((a, b) =>
+      a.localeCompare(b)
+    );
+    const { outflowRows, inflowRows } = partitionSpendingRowsByDirection(filteredSpendingRows);
+    const outflowPivot = buildSpendingPivot(outflowRows, spendingMonthColumns);
+    const inflowPivot = buildSpendingPivot(inflowRows, spendingMonthColumns);
+    const spendingNetByMonth = buildSpendingNetByMonth(
+      inflowPivot.monthGrandTotals,
+      outflowPivot.monthGrandTotals,
+      spendingMonthColumns
+    );
     const unifiedRows: UnifiedCashflowRow[] = [
       ...filteredSpendingRows.map((row) => ({
         source: "web_spending" as const,
         currency: "IDR" as const,
-        signedAmount: -Math.abs(row.amount)
+        signedAmount: row.entry_direction === "profit" ? Math.abs(row.amount) : -Math.abs(row.amount)
       })),
       ...bigBookEntries.map((entry) => ({
         source: "big_book" as const,
@@ -247,8 +203,8 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
         <section className="card">
           <h2 className="text-lg font-semibold">Aggregated Cashflow (Web Spending + Big Book)</h2>
           <p className="mt-1 text-sm text-muted">
-            Unified rule: cash out is negative, cash in is positive. Web Spending contributes to outflow; Big Book
-            contributes both inflow and outflow.
+            Unified rule: cash out is negative, cash in is positive. Web Spending and Big Book both contribute inflow
+            and outflow based on entry direction.
           </p>
           <StatTileGrid className="mt-4">
             {perCurrency.map((item) => (
@@ -280,12 +236,23 @@ export default async function MasterDashboardPage({ searchParams }: MasterDashbo
         </section>
 
         <DashboardReportTable
-          title={`Web Spending Metrics (${selectedBrand.name})`}
-          description="Data source: expense entries grouped by category and sub-category across available months."
-          monthColumns={spendingPivot.monthColumns}
-          rows={spendingPivot.pivotRows}
-          categorySubtotals={spendingPivot.categorySubtotals}
-          monthGrandTotals={spendingPivot.monthGrandTotals}
+          title={`Web Spending Outflow (${selectedBrand.name})`}
+          description="Expense outflows grouped by category and sub-category across available months."
+          monthColumns={spendingMonthColumns}
+          rows={outflowPivot.pivotRows}
+          categorySubtotals={outflowPivot.categorySubtotals}
+          monthGrandTotals={outflowPivot.monthGrandTotals}
+        />
+
+        <DashboardReportTable
+          title={`Web Spending Inflow (${selectedBrand.name})`}
+          description="Expense inflows grouped by category and sub-category across available months."
+          monthColumns={spendingMonthColumns}
+          rows={inflowPivot.pivotRows}
+          categorySubtotals={inflowPivot.categorySubtotals}
+          monthGrandTotals={inflowPivot.monthGrandTotals}
+          netRow={spendingNetByMonth}
+          netRowLabel="Net (Inflow − Outflow)"
         />
 
         <section className="card">

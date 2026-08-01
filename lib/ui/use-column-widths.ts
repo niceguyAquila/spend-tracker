@@ -25,6 +25,8 @@ type ResizeHandleProps = {
 export type UseColumnWidthsResult = {
   widths: Record<string, number>;
   totalWidth: number;
+  /** False until a column is resized, so a reset control can disable itself. */
+  isModified: boolean;
   startResize: (columnKey: string, clientX: number) => void;
   resetColumn: (columnKey: string) => void;
   resetWidths: () => void;
@@ -180,9 +182,15 @@ export function useColumnWidths({
     [widths]
   );
 
+  const isModified = useMemo(
+    () => Object.entries(defaultsRef.current).some(([key, value]) => widths[key] !== value),
+    [widths]
+  );
+
   return {
     widths,
     totalWidth,
+    isModified,
     startResize,
     resetColumn,
     resetWidths,

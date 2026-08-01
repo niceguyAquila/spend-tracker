@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { ConfirmDialog } from "./confirm-dialog";
 import { ENTITY_CODE_HINT, ENTITY_CODE_MAX_LENGTH } from "@/lib/entity-code";
 import type { EditableEntity, EntityEditor } from "@/lib/entity-editor";
@@ -8,6 +9,9 @@ type Props<T extends EditableEntity> = {
   editor: EntityEditor<T>;
   entityLabel: string;
   description?: string;
+  extraFields?: ReactNode;
+  /** When provided, overrides the default canSave gate (e.g. extra draft fields). */
+  confirmDisabled?: boolean;
   onSave: () => void | Promise<void>;
 };
 
@@ -15,6 +19,8 @@ export function EntityEditDialog<T extends EditableEntity>({
   editor,
   entityLabel,
   description,
+  extraFields,
+  confirmDisabled,
   onSave
 }: Props<T>) {
   return (
@@ -43,12 +49,13 @@ export function EntityEditDialog<T extends EditableEntity>({
               onChange={(event) => editor.setName(event.target.value)}
             />
           </label>
+          {extraFields}
           <p className="text-xs text-muted">{ENTITY_CODE_HINT}</p>
         </div>
       }
       confirmLabel="Save Changes"
       confirming={editor.submitting}
-      confirmDisabled={!editor.canSave}
+      confirmDisabled={confirmDisabled ?? !editor.canSave}
       closeOnBackdrop={false}
       onConfirm={onSave}
     />

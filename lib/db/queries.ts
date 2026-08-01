@@ -5,6 +5,7 @@ import {
   computeBigBookCreditStatus,
   aggregateVendorActorOutstanding
 } from "@/lib/big-book/credit";
+import { mergePocketMetricsWithWebSpending } from "@/lib/big-book/pocket-metrics";
 import {
   roundBigBookAmount,
   summarizeCurrencies,
@@ -54,6 +55,7 @@ import {
   CreditBookSettlementAttachment,
   CreditBookTypeCashflowByCurrency,
   CreditBookTypeCashflowRow,
+  Brand,
   DashboardReportRow,
   ExpenseCategory,
   ExpenseSubcategory,
@@ -112,7 +114,7 @@ export async function getExpenses(params: {
     .from("expenses")
     .select(
       `
-      id, brand_id, expense_date, month_key, amount, category_id, subcategory_id, note, reference, source, created_by, updated_by, created_at, updated_at,
+      id, brand_id, expense_date, month_key, entry_direction, amount, category_id, subcategory_id, note, reference, source, created_by, updated_by, created_at, updated_at,
       expense_categories(name),
       expense_subcategories(name)
     `
@@ -159,6 +161,7 @@ export async function getExpenses(params: {
       brand_id: row.brand_id,
       expense_date: row.expense_date,
       month_key: row.month_key,
+      entry_direction: (row.entry_direction === "profit" ? "profit" : "spending") as "spending" | "profit",
       amount: Number(row.amount),
       category_id: row.category_id,
       subcategory_id: row.subcategory_id,
@@ -367,7 +370,9 @@ export async function getBigBookActorPockets(options?: {
   const supabase = await createClient();
   let query = supabase
     .from("big_book_actor_pockets")
-    .select("id, actor_id, code, name, currency_code, is_active, sort_order, created_at, updated_at")
+    .select(
+      "id, actor_id, code, name, currency_code, linked_brand_id, is_active, sort_order, created_at, updated_at"
+    )
     .order("actor_id", { ascending: true })
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
@@ -385,8 +390,25 @@ export async function getBigBookActorPockets(options?: {
   return (data ?? []).map((row) => ({
     ...row,
     currency_code: row.currency_code as "IDR",
+    linked_brand_id: (row.linked_brand_id as string | null) ?? null,
     sort_order: Number(row.sort_order)
   }));
+}
+
+export async function getAllBrands(options?: { includeInactive?: boolean }): Promise<Brand[]> {
+  const supabase = await createClient();
+  let query = supabase
+    .from("brands")
+    .select("id, code, name, is_active")
+    .order("name", { ascending: true });
+
+  if (!options?.includeInactive) {
+    query = query.eq("is_active", true);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as Brand[];
 }
 
 export async function getBigBookAllowedUsers(): Promise<BigBookAllowedUserOption[]> {
@@ -1369,48 +1391,57 @@ export async function getBigBookActorCurrencyMetrics(): Promise<BigBookActorCurr
 
 export async function getBigBookActorPocketMetrics(): Promise<BigBookActorPocketMetrics[]> {
   const supabase = await createClient();
-  const { data, error } = await tryRpc<
-    Array<{
-      actor_id: string;
-      actor_code: "A" | "B";
-      actor_display_name: string;
-      pocket_id: string;
-      pocket_name: string;
-      is_active: boolean;
-      net: number;
-    }>
-  >(supabase, "get_big_book_actor_pocket_metrics");
 
-  if (error && !isMissingRpcError(error)) throw error;
+  const [bigBookResult, webSpendingResult] = await Promise.all([
+    tryRpc<
+      Array<{
+        actor_id: string;
+        actor_code: "A" | "B";
+        actor_display_name: string;
+        pocket_id: string;
+        pocket_name: string;
+        is_active: boolean;
+        net: number;
+      }>
+    >(supabase, "get_big_book_actor_pocket_metrics"),
+    tryRpc<
+      Array<{
+        pocket_id: string;
+        brand_id: string;
+        brand_name: string;
+        net: number;
+      }>
+    >(supabase, "get_big_book_pocket_web_spending")
+  ]);
 
-  if (!error && data) {
-    const byActor = new Map<string, BigBookActorPocketMetrics>();
-    for (const row of data as Array<{
-      actor_id: string;
-      actor_code: "A" | "B";
-      actor_display_name: string;
-      pocket_id: string;
-      pocket_name: string;
-      is_active: boolean;
-      net: number;
-    }>) {
-      const group =
-        byActor.get(row.actor_id) ??
-        ({
-          actor_id: row.actor_id,
-          actor_code: row.actor_code ?? "A",
-          actor_display_name: row.actor_display_name ?? "Unknown Actor",
-          pockets: []
-        } as BigBookActorPocketMetrics);
-      group.pockets.push({
-        pocket_id: row.pocket_id,
-        pocket_name: row.pocket_name,
-        is_active: row.is_active,
-        net: Number(row.net)
-      });
-      byActor.set(row.actor_id, group);
-    }
-    return [...byActor.values()].sort((a, b) => a.actor_code.localeCompare(b.actor_code));
+  if (bigBookResult.error && !isMissingRpcError(bigBookResult.error)) throw bigBookResult.error;
+  if (webSpendingResult.error && !isMissingRpcError(webSpendingResult.error)) {
+    throw webSpendingResult.error;
+  }
+
+  const webSpendingRows =
+    !webSpendingResult.error && webSpendingResult.data
+      ? (webSpendingResult.data as Array<{
+          pocket_id: string;
+          brand_id: string;
+          brand_name: string;
+          net: number;
+        }>)
+      : [];
+
+  if (!bigBookResult.error && bigBookResult.data) {
+    return mergePocketMetricsWithWebSpending(
+      bigBookResult.data as Array<{
+        actor_id: string;
+        actor_code: "A" | "B";
+        actor_display_name: string;
+        pocket_id: string;
+        pocket_name: string;
+        is_active: boolean;
+        net: number;
+      }>,
+      webSpendingRows
+    );
   }
 
   const [actors, pockets] = await Promise.all([
@@ -1452,29 +1483,21 @@ export async function getBigBookActorPocketMetrics(): Promise<BigBookActorPocket
   }
 
   const actorById = new Map(actors.map((actor) => [actor.id, actor]));
-  const byActor = new Map<string, BigBookActorPocketMetrics>();
-
-  for (const pocket of pockets) {
+  const fallbackRows = pockets.map((pocket) => {
     const actor = actorById.get(pocket.actor_id);
-    const group =
-      byActor.get(pocket.actor_id) ??
-      ({
-        actor_id: pocket.actor_id,
-        actor_code: (actor?.actor_code ?? "A") as "A" | "B",
-        actor_display_name: actor?.display_name ?? "Unknown Actor",
-        pockets: []
-      } as BigBookActorPocketMetrics);
-
-    group.pockets.push({
+    return {
+      actor_id: pocket.actor_id,
+      actor_code: (actor?.actor_code ?? "A") as "A" | "B",
+      actor_display_name: actor?.display_name ?? "Unknown Actor",
       pocket_id: pocket.id,
       pocket_name: pocket.name,
       is_active: pocket.is_active,
-      net: netByPocket.get(pocket.id) ?? 0
-    });
-    byActor.set(pocket.actor_id, group);
-  }
+      net: netByPocket.get(pocket.id) ?? 0,
+      linked_brand_id: pocket.linked_brand_id
+    };
+  });
 
-  return [...byActor.values()].sort((a, b) => a.actor_code.localeCompare(b.actor_code));
+  return mergePocketMetricsWithWebSpending(fallbackRows, webSpendingRows);
 }
 
 const BIG_BOOK_CASHFLOW_SCAN_PAGE_SIZE = 1000;
@@ -1941,6 +1964,7 @@ export async function getDashboardReportRows(params: {
       category_id,
       subcategory_id,
       month_key,
+      entry_direction,
       amount,
       expense_categories(name),
       expense_subcategories(name)
@@ -1976,6 +2000,7 @@ export async function getDashboardReportRows(params: {
       subcategory_id: row.subcategory_id,
       subcategory_name: subcategory?.name ?? "-",
       month_key: row.month_key,
+      entry_direction: (row.entry_direction === "profit" ? "profit" : "spending") as "spending" | "profit",
       amount: Number(row.amount)
     };
   });

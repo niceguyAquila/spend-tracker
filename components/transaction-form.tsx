@@ -15,6 +15,7 @@ type Props = {
 
 type FormState = {
   expense_date: string;
+  entry_direction: "spending" | "profit";
   category_id: string;
   subcategory_id: string;
   amount: string;
@@ -78,6 +79,7 @@ export function TransactionForm({
   const [creatingSubcategory, setCreatingSubcategory] = useState(false);
   const [form, setForm] = useState<FormState>({
     expense_date: today,
+    entry_direction: "spending",
     category_id: defaultCategoryId ?? categories[0]?.id ?? "",
     subcategory_id: "",
     amount: "",
@@ -196,6 +198,24 @@ export function TransactionForm({
             value={form.expense_date}
             onChange={(event) => setForm((prev) => ({ ...prev, expense_date: event.target.value }))}
           />
+        </label>
+        <label className="text-sm">
+          Direction *
+          <select
+            className="field mt-1"
+            required
+            disabled={saving}
+            value={form.entry_direction}
+            onChange={(event) =>
+              setForm((prev) => ({
+                ...prev,
+                entry_direction: event.target.value as "spending" | "profit"
+              }))
+            }
+          >
+            <option value="spending">Out</option>
+            <option value="profit">In</option>
+          </select>
         </label>
         <label className="text-sm">
           Category *

@@ -31,6 +31,7 @@ export async function POST(request: Request) {
     .insert({
       expense_date: payload.expense_date,
       brand_id: activeBrandId,
+      entry_direction: payload.entry_direction,
       category_id: payload.category_id,
       subcategory_id: payload.subcategory_id,
       amount: payload.amount,
@@ -81,6 +82,7 @@ export async function PATCH(request: Request) {
     .update({
       expense_date: payload.expense_date,
       brand_id: activeBrandId,
+      entry_direction: payload.entry_direction,
       category_id: payload.category_id,
       subcategory_id: payload.subcategory_id,
       amount: payload.amount,

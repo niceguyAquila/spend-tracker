@@ -172,6 +172,70 @@ describe("big book pockets route", () => {
     expect(updateMock.mock.calls[0][0]).toMatchObject({ is_active: false });
   });
 
+  it("links a brand when creating a pocket", async () => {
+    const { POST } = await import("@/app/api/big-book/pockets/route");
+    const brandId = "33333333-3333-4333-8333-333333333333";
+    const request = new Request("https://app.localhost/api/big-book/pockets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        actor_id: "11111111-1111-4111-8111-111111111111",
+        code: "BRAND_POCKET",
+        name: "Brand Pocket",
+        linked_brand_id: brandId
+      })
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    expect(insertMock.mock.calls[0][0]).toMatchObject({
+      linked_brand_id: brandId
+    });
+  });
+
+  it("clears a linked brand via PATCH null", async () => {
+    const { PATCH } = await import("@/app/api/big-book/pockets/route");
+    const request = new Request("https://app.localhost/api/big-book/pockets", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: "55555555-5555-4555-8555-555555555555",
+        linked_brand_id: null
+      })
+    });
+    const response = await PATCH(request);
+    expect(response.status).toBe(200);
+    expect(updateMock.mock.calls[0][0]).toMatchObject({ linked_brand_id: null });
+  });
+
+  it("returns 409 when linked brand is already claimed", async () => {
+    insertSelectSingleMock.mockResolvedValueOnce({
+      data: null,
+      error: {
+        code: "23505",
+        message: 'duplicate key value violates unique constraint "uq_big_book_actor_pockets_linked_brand"',
+        details: "Key (linked_brand_id)=(...) already exists."
+      }
+    });
+
+    const { POST } = await import("@/app/api/big-book/pockets/route");
+    const request = new Request("https://app.localhost/api/big-book/pockets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        actor_id: "11111111-1111-4111-8111-111111111111",
+        code: "OTHER",
+        name: "Other Pocket",
+        linked_brand_id: "33333333-3333-4333-8333-333333333333"
+      })
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+    expect(response.status).toBe(409);
+    expect(data.error).toBe("That brand is already linked to another pocket.");
+  });
+
   it("deletes a pocket via DELETE", async () => {
     const { DELETE } = await import("@/app/api/big-book/pockets/route");
     const request = new Request(

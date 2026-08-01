@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const expenseInputSchema = z.object({
   expense_date: z.string().min(1, "Date is required"),
+  entry_direction: z.enum(["spending", "profit"]).default("spending"),
   category_id: z.string().uuid("Category is required"),
   subcategory_id: z.string().uuid("Sub-category is required"),
   amount: z.coerce.number().positive("Amount must be greater than 0"),

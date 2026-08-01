@@ -5,6 +5,11 @@ import { PageHeader } from "@/components/ui/page-header";
 import { SetupRequiredCard } from "@/components/ui/setup-required-card";
 import { getCategories, getDashboardReportRows, getSubcategories } from "@/lib/db/queries";
 import { requireAllowedUser } from "@/lib/auth";
+import {
+  buildSpendingNetByMonth,
+  buildSpendingPivot,
+  partitionSpendingRowsByDirection
+} from "@/lib/spending/pivot";
 
 type SearchParamValue = string | string[] | undefined;
 
@@ -59,11 +64,15 @@ export default async function SpendingOverviewPage({ searchParams }: DashboardPa
 
     const baseRows = allReportRows.filter((row) => {
       if (validSelectedCategoryIds.length && !validSelectedCategoryIds.includes(row.category_id)) return false;
-      if (validSelectedSubcategoryIds.length && !validSelectedSubcategoryIds.includes(row.subcategory_id)) return false;
+      if (validSelectedSubcategoryIds.length && !validSelectedSubcategoryIds.includes(row.subcategory_id)) {
+        return false;
+      }
       return true;
     });
 
-    const monthOptions = Array.from(new Set(baseRows.map((row) => row.month_key))).sort((a, b) => a.localeCompare(b));
+    const monthOptions = Array.from(new Set(baseRows.map((row) => row.month_key))).sort((a, b) =>
+      a.localeCompare(b)
+    );
     const monthKeySet = new Set(monthOptions);
 
     let rangeStart = monthFromRaw && monthKeySet.has(monthFromRaw) ? monthFromRaw : null;
@@ -88,66 +97,14 @@ export default async function SpendingOverviewPage({ searchParams }: DashboardPa
       return true;
     });
 
-    const groupedRows = new Map<
-      string,
-      {
-        categoryId: string;
-        categoryName: string;
-        subcategoryId: string;
-        subcategoryName: string;
-        byMonth: Record<string, number>;
-        subtotal: number;
-      }
-    >();
-
-    for (const row of filteredRows) {
-      const key = `${row.category_id}:${row.subcategory_id}`;
-      const existing = groupedRows.get(key);
-      if (!existing) {
-        const byMonth = Object.fromEntries(activeMonthColumns.map((monthKey) => [monthKey, 0]));
-        byMonth[row.month_key] = row.amount;
-        groupedRows.set(key, {
-          categoryId: row.category_id,
-          categoryName: row.category_name,
-          subcategoryId: row.subcategory_id,
-          subcategoryName: row.subcategory_name,
-          byMonth,
-          subtotal: row.amount
-        });
-        continue;
-      }
-
-      existing.byMonth[row.month_key] = (existing.byMonth[row.month_key] ?? 0) + row.amount;
-      existing.subtotal += row.amount;
-    }
-
-    const pivotRows = [...groupedRows.values()].sort((a, b) => {
-      if (a.categoryName !== b.categoryName) return a.categoryName.localeCompare(b.categoryName);
-      return a.subcategoryName.localeCompare(b.subcategoryName);
-    });
-
-    const monthGrandTotals = Object.fromEntries(activeMonthColumns.map((monthKey) => [monthKey, 0])) as Record<
-      string,
-      number
-    >;
-    for (const row of pivotRows) {
-      for (const monthKey of activeMonthColumns) {
-        monthGrandTotals[monthKey] += row.byMonth[monthKey] ?? 0;
-      }
-    }
-    const categorySubtotals: Record<string, { byMonth: Record<string, number>; subtotal: number }> = {};
-    for (const row of pivotRows) {
-      if (!categorySubtotals[row.categoryId]) {
-        categorySubtotals[row.categoryId] = {
-          byMonth: Object.fromEntries(activeMonthColumns.map((monthKey) => [monthKey, 0])),
-          subtotal: 0
-        };
-      }
-      for (const monthKey of activeMonthColumns) {
-        categorySubtotals[row.categoryId].byMonth[monthKey] += row.byMonth[monthKey] ?? 0;
-      }
-      categorySubtotals[row.categoryId].subtotal += row.subtotal;
-    }
+    const { outflowRows, inflowRows } = partitionSpendingRowsByDirection(filteredRows);
+    const outflowPivot = buildSpendingPivot(outflowRows, activeMonthColumns);
+    const inflowPivot = buildSpendingPivot(inflowRows, activeMonthColumns);
+    const netByMonth = buildSpendingNetByMonth(
+      inflowPivot.monthGrandTotals,
+      outflowPivot.monthGrandTotals,
+      activeMonthColumns
+    );
 
     const filterKey = [
       validSelectedCategoryIds.join(","),
@@ -188,10 +145,23 @@ export default async function SpendingOverviewPage({ searchParams }: DashboardPa
         ) : null}
 
         <DashboardReportTable
+          title="Outflow"
+          description="Cash leaving the brand (spending)."
           monthColumns={activeMonthColumns}
-          rows={pivotRows}
-          categorySubtotals={categorySubtotals}
-          monthGrandTotals={monthGrandTotals}
+          rows={outflowPivot.pivotRows}
+          categorySubtotals={outflowPivot.categorySubtotals}
+          monthGrandTotals={outflowPivot.monthGrandTotals}
+        />
+
+        <DashboardReportTable
+          title="Inflow"
+          description="Cash entering the brand (profit)."
+          monthColumns={activeMonthColumns}
+          rows={inflowPivot.pivotRows}
+          categorySubtotals={inflowPivot.categorySubtotals}
+          monthGrandTotals={inflowPivot.monthGrandTotals}
+          netRow={netByMonth}
+          netRowLabel="Net (Inflow − Outflow)"
         />
       </div>
     );

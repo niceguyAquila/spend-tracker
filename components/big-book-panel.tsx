@@ -155,6 +155,16 @@ function pocketExcludedLabel(count: number) {
   if (count < 1) return null;
   return ` · ${count} pocket transaction${count === 1 ? "" : "s"} excluded from totals`;
 }
+
+function ResetColumnsIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor">
+      <rect x="1.5" y="2.5" width="3" height="11" rx="0.75" />
+      <rect x="6.5" y="2.5" width="3" height="11" rx="0.75" opacity="0.65" />
+      <rect x="11.5" y="2.5" width="3" height="11" rx="0.75" opacity="0.35" />
+    </svg>
+  );
+}
 const GROUP_MENU_PREFIX = "group:";
 
 const CREDIT_FLAG_OPTIONS = [
@@ -329,6 +339,7 @@ export function BigBookPanel({
   const {
     widths: columnWidths,
     totalWidth: ledgerTableWidth,
+    isModified: columnWidthsModified,
     resetWidths: resetColumnWidths,
     getResizeHandleProps
   } = useColumnWidths({
@@ -1923,11 +1934,22 @@ export function BigBookPanel({
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                className="text-xs text-[rgb(var(--info))] underline"
+                className="btn-secondary btn-sm gap-1.5"
                 onClick={resetColumnWidths}
+                disabled={!columnWidthsModified}
+                title={
+                  columnWidthsModified
+                    ? "Restore all column widths to their defaults"
+                    : "Column widths are already at their defaults"
+                }
               >
+                <ResetColumnsIcon />
                 Reset columns
               </button>
+              <span
+                aria-hidden="true"
+                className="hidden h-6 w-px bg-[rgb(var(--border))] sm:block"
+              />
               <button
                 className="btn-secondary"
                 onClick={() => void exportEntries()}

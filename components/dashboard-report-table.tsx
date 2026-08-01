@@ -2,6 +2,7 @@
 
 import { Fragment } from "react";
 import { TableEmptyState } from "@/components/ui/table-empty-state";
+import { formatAmount, getAmountColorClass } from "@/lib/display-format";
 import { rowStripeClass } from "@/lib/ui/table";
 
 type PivotRow = {
@@ -20,6 +21,9 @@ type Props = {
   monthGrandTotals: Record<string, number>;
   title?: string;
   description?: string;
+  /** Optional net amounts per month rendered as a second footer row. */
+  netRow?: Record<string, number>;
+  netRowLabel?: string;
 };
 
 const CATEGORY_ROW_COLORS: Record<string, string> = {
@@ -30,12 +34,11 @@ const CATEGORY_ROW_COLORS: Record<string, string> = {
 };
 
 function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "IDR",
+  return `IDR ${formatAmount(value, {
+    locale: "en-US",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
-  }).format(value);
+  })}`;
 }
 
 function formatMonthLabel(monthKey: string) {
@@ -52,7 +55,9 @@ export function DashboardReportTable({
   categorySubtotals,
   monthGrandTotals,
   title = "Dashboard Report",
-  description
+  description,
+  netRow,
+  netRowLabel = "Net"
 }: Props) {
   const categoryOrder = Array.from(new Set(rows.map((row) => row.categoryId)));
 
@@ -86,42 +91,40 @@ export function DashboardReportTable({
               return (
                 <Fragment key={categoryId}>
                   {categoryRows.map((row, index) => (
-                        <tr
-                          key={`${row.categoryId}:${row.subcategoryId}`}
-                          className={`border-b border-[rgb(var(--border))] ${
-                            rowBackgroundColor ? "text-[rgb(var(--text))]" : rowStripeClass(index)
-                          }`}
-                          style={rowBackgroundColor ? { backgroundColor: rowBackgroundColor } : undefined}
-                        >
-                          <td className="px-3 py-2 font-medium">
-                            {index === 0 ? categoryName : ""}
-                          </td>
-                          <td className="px-3 py-2">{row.subcategoryName}</td>
-                          {monthColumns.map((monthKey) => (
-                            <td key={monthKey} className="px-3 py-2 text-right">
-                              {formatCurrency(row.byMonth[monthKey] ?? 0)}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                      <tr
-                        className="border-b border-[rgb(var(--border))] text-[rgb(var(--text))]"
-                        style={{ backgroundColor: "rgba(250, 204, 21, 0.28)" }}
-                      >
-                        <td className="px-3 py-2 font-semibold" colSpan={2}>
-                          {categoryName} Subtotal
+                    <tr
+                      key={`${row.categoryId}:${row.subcategoryId}`}
+                      className={`border-b border-[rgb(var(--border))] ${
+                        rowBackgroundColor ? "text-[rgb(var(--text))]" : rowStripeClass(index)
+                      }`}
+                      style={rowBackgroundColor ? { backgroundColor: rowBackgroundColor } : undefined}
+                    >
+                      <td className="px-3 py-2 font-medium">{index === 0 ? categoryName : ""}</td>
+                      <td className="px-3 py-2">{row.subcategoryName}</td>
+                      {monthColumns.map((monthKey) => (
+                        <td key={monthKey} className="px-3 py-2 text-right">
+                          {formatCurrency(row.byMonth[monthKey] ?? 0)}
                         </td>
-                        {monthColumns.map((monthKey) => (
-                          <td key={monthKey} className="px-3 py-2 text-right font-semibold">
-                            {formatCurrency(totals?.byMonth[monthKey] ?? 0)}
-                          </td>
-                        ))}
-                      </tr>
-                      {!isLastCategory ? (
-                        <tr aria-hidden="true">
-                          <td colSpan={monthColumns.length + 2} className="h-3 !p-0" />
-                        </tr>
-                      ) : null}
+                      ))}
+                    </tr>
+                  ))}
+                  <tr
+                    className="border-b border-[rgb(var(--border))] text-[rgb(var(--text))]"
+                    style={{ backgroundColor: "rgba(250, 204, 21, 0.28)" }}
+                  >
+                    <td className="px-3 py-2 font-semibold" colSpan={2}>
+                      {categoryName} Subtotal
+                    </td>
+                    {monthColumns.map((monthKey) => (
+                      <td key={monthKey} className="px-3 py-2 text-right font-semibold">
+                        {formatCurrency(totals?.byMonth[monthKey] ?? 0)}
+                      </td>
+                    ))}
+                  </tr>
+                  {!isLastCategory ? (
+                    <tr aria-hidden="true">
+                      <td colSpan={monthColumns.length + 2} className="h-3 !p-0" />
+                    </tr>
+                  ) : null}
                 </Fragment>
               );
             })}
@@ -143,6 +146,24 @@ export function DashboardReportTable({
                 </td>
               ))}
             </tr>
+            {netRow ? (
+              <tr className="border-t border-white/20 bg-[rgb(var(--surface-muted))] text-[rgb(var(--text))]">
+                <td className="px-3 py-2 font-semibold" colSpan={2}>
+                  {netRowLabel}
+                </td>
+                {monthColumns.map((monthKey) => {
+                  const value = netRow[monthKey] ?? 0;
+                  return (
+                    <td
+                      key={monthKey}
+                      className={`px-3 py-2 text-right font-semibold ${getAmountColorClass(value)}`}
+                    >
+                      {formatCurrency(value)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ) : null}
           </tfoot>
         </table>
       </div>
