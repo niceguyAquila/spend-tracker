@@ -102,6 +102,18 @@ function arraysEqual(left: string[], right: string[]) {
 }
 
 const SUPPORTED_CURRENCIES: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR", "USDT", "TRX"];
+
+function TotalsBox({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2">
+      <p className="text-xs uppercase text-[rgb(var(--text-muted))]">{label}</p>
+      <p className={`font-medium ${getAmountColorClass(value)}`}>
+        {formatAmount(value, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
+      </p>
+    </div>
+  );
+}
+
 const LEDGER_SKELETON_ROW_COUNT = 6;
 const LEDGER_COLUMN_COUNT = 16;
 const LEDGER_COLUMN_WIDTH_DEFAULTS: Record<string, number> = {
@@ -112,11 +124,11 @@ const LEDGER_COLUMN_WIDTH_DEFAULTS: Record<string, number> = {
   sub_type_name: 120,
   vendor_type_name: 120,
   vendor_name: 140,
+  action_by_name: 120,
   explanation: 220,
   amount: 150,
   credit: 160,
   actor_display_name: 110,
-  action_by_name: 120,
   pocket_name: 120,
   remark: 180,
   attachments: 140,
@@ -742,6 +754,18 @@ export function BigBookPanel({
   useEffect(() => {
     setActorCurrencyMetrics(initialActorMetrics);
   }, [initialActorMetrics]);
+
+  const combinedCurrencyTotals = useMemo(
+    () =>
+      actorCurrencyMetrics.reduce(
+        (acc, metric) => {
+          for (const currency of SUPPORTED_CURRENCIES) acc[currency] += metric.totals[currency];
+          return acc;
+        },
+        { IDR: 0, MYR: 0, USDT: 0, TRX: 0 } as BigBookActorCurrencyMetrics["totals"]
+      ),
+    [actorCurrencyMetrics]
+  );
 
   const applyMetricDelta = useCallback(
     (
@@ -1841,6 +1865,9 @@ export function BigBookPanel({
         <td className="overflow-hidden break-words px-3 py-2">
           {entry.vendor_name ? entry.vendor_name : <span className="text-xs text-muted">-</span>}
         </td>
+        <td className="overflow-hidden break-words px-3 py-2">
+          {entry.action_by_name ? entry.action_by_name : <span className="text-xs text-muted">-</span>}
+        </td>
         <td className="overflow-hidden break-words px-3 py-2">{entry.explanation}</td>
         <td className="overflow-hidden px-3 py-2 text-right tabular-nums whitespace-nowrap">
           <span
@@ -1883,9 +1910,6 @@ export function BigBookPanel({
           )}
         </td>
         <td className="overflow-hidden break-words px-3 py-2">{entry.actor_display_name}</td>
-        <td className="overflow-hidden break-words px-3 py-2">
-          {entry.action_by_name ? entry.action_by_name : <span className="text-xs text-muted">-</span>}
-        </td>
         <td className="overflow-hidden break-words px-3 py-2">
           {entry.pocket_name ? entry.pocket_name : <span className="text-xs text-muted">-</span>}
         </td>
@@ -1978,94 +2002,60 @@ export function BigBookPanel({
         <h2 className="text-lg font-semibold">Grand Total by Actor (All Time)</h2>
         <p className="mt-1 text-sm text-muted">
           Total amount grouped by actor and currency across all Big Book records. Pocket transactions are excluded
-          here and counted under Pocket Totals instead.
+          from the actor columns and reported under Pocket Totals instead.
         </p>
-        <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <article className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-4">
+            <p className="font-semibold">All Actors</p>
+            <div className="mt-3 space-y-2 text-sm">
+              {SUPPORTED_CURRENCIES.map((currency) => (
+                <TotalsBox key={currency} label={currency} value={combinedCurrencyTotals[currency]} />
+              ))}
+            </div>
+          </article>
+
           {actorCurrencyMetrics.map((metric) => (
             <article
               key={metric.actor_id}
               className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-4"
             >
-              <p className="font-semibold">
-                Actor {metric.actor_display_name}
-              </p>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2">
-                  <p className="text-xs uppercase text-[rgb(var(--text-muted))]">IDR</p>
-                  <p
-                    className={`font-medium ${getAmountColorClass(metric.totals.IDR)}`}
-                  >
-                    {formatAmount(metric.totals.IDR, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
-                  </p>
-                </div>
-                <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2">
-                  <p className="text-xs uppercase text-[rgb(var(--text-muted))]">MYR</p>
-                  <p
-                    className={`font-medium ${getAmountColorClass(metric.totals.MYR)}`}
-                  >
-                    {formatAmount(metric.totals.MYR, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
-                  </p>
-                </div>
-                <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2">
-                  <p className="text-xs uppercase text-[rgb(var(--text-muted))]">USDT</p>
-                  <p
-                    className={`font-medium ${getAmountColorClass(metric.totals.USDT)}`}
-                  >
-                    {formatAmount(metric.totals.USDT, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
-                  </p>
-                </div>
-                <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2">
-                  <p className="text-xs uppercase text-[rgb(var(--text-muted))]">TRX</p>
-                  <p
-                    className={`font-medium ${getAmountColorClass(metric.totals.TRX)}`}
-                  >
-                    {formatAmount(metric.totals.TRX, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
-                  </p>
-                </div>
-              </div>
-            </article>
-          ))}
-          {!actorCurrencyMetrics.length ? (
-            <p className="text-sm text-muted">No actor totals yet.</p>
-          ) : null}
-        </div>
-      </section>
-
-      <section className="card">
-        <h2 className="text-lg font-semibold">Pocket Totals by Actor (All Time)</h2>
-        <p className="mt-1 text-sm text-muted">
-          Net IDR movement per pocket across all Big Book records. Each pocket is listed under the actor who owns it.
-        </p>
-        <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
-          {initialActorPocketMetrics.map((group) => (
-            <article
-              key={group.actor_id}
-              className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-4"
-            >
-              <p className="font-semibold">{group.actor_display_name}</p>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                {group.pockets.map((pocket) => (
-                  <div
-                    key={pocket.pocket_id}
-                    className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2"
-                  >
-                    <p className="text-xs uppercase text-[rgb(var(--text-muted))]">
-                      {pocket.pocket_name}
-                      {!pocket.is_active ? " (Inactive)" : ""}
-                    </p>
-                    <p className={`font-medium ${getAmountColorClass(pocket.net)}`}>
-                      {formatAmount(pocket.net, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
-                    </p>
-                  </div>
+              <p className="font-semibold">Actor {metric.actor_display_name}</p>
+              <div className="mt-3 space-y-2 text-sm">
+                {SUPPORTED_CURRENCIES.map((currency) => (
+                  <TotalsBox key={currency} label={currency} value={metric.totals[currency]} />
                 ))}
               </div>
             </article>
           ))}
-          {!initialActorPocketMetrics.length ? (
-            <p className="text-sm text-muted">
-              No pockets yet. Add one under Big Book Settings to start tracking pocket totals.
-            </p>
+          {!actorCurrencyMetrics.length ? (
+            <p className="text-sm text-muted sm:col-span-1 xl:col-span-2">No actor totals yet.</p>
           ) : null}
+
+          <article className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-4">
+            <p className="font-semibold">Pocket Totals by Actor</p>
+            {initialActorPocketMetrics.length ? (
+              <div className="mt-3 space-y-4 text-sm">
+                {initialActorPocketMetrics.map((group) => (
+                  <div key={group.actor_id} className="space-y-2">
+                    <p className="text-xs font-medium uppercase text-[rgb(var(--text-muted))]">
+                      {group.actor_display_name}
+                    </p>
+                    {group.pockets.map((pocket) => (
+                      <TotalsBox
+                        key={pocket.pocket_id}
+                        label={`${pocket.pocket_name}${!pocket.is_active ? " (Inactive)" : ""}`}
+                        value={pocket.net}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-muted">
+                No pockets yet. Add one under Big Book Settings to start tracking pocket totals.
+              </p>
+            )}
+          </article>
         </div>
       </section>
 
@@ -2346,6 +2336,7 @@ export function BigBookPanel({
                     ["sub_type_name", "Sub-Type"],
                     ["vendor_type_name", "Vendor Type"],
                     ["vendor_name", "Vendor Name"],
+                    ["action_by_name", "Action By"],
                     ["explanation", "Explanation"]
                   ] as Array<[BigBookLedgerSortKey, string]>
                 ).map(([key, label]) => (
@@ -2389,7 +2380,6 @@ export function BigBookPanel({
                 {(
                   [
                     ["actor_display_name", "Actor"],
-                    ["action_by_name", "Action By"],
                     ["pocket_name", "Pocket"]
                   ] as Array<[BigBookLedgerSortKey, string]>
                 ).map(([key, label]) => (
@@ -2442,11 +2432,11 @@ export function BigBookPanel({
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
+                      <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-56 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-5 w-16 rounded-full bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-28 rounded bg-[rgb(var(--surface-muted))]" /></td>
-                      <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-20 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-16 rounded bg-[rgb(var(--surface-muted))]" /></td>
