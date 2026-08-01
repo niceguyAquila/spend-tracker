@@ -1908,47 +1908,40 @@ export function BigBookPanel({
 
   return (
     <div className="space-y-6">
-      <section className="card relative" aria-busy={criticalPending}>
-        <BlockingOverlay active={criticalPending} label="Processing..." />
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold">Create Ledger Entry</h2>
-            <p className="mt-1 text-sm text-muted">
-              Add operational spending/profit records from a dedicated popup form.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              className="btn-secondary"
-              onClick={() => void exportEntries()}
-              disabled={criticalPending || exportSubmitting}
-            >
-              {exportSubmitting ? "Exporting..." : "Export CSV"}
-            </button>
-            <button className="btn-secondary" onClick={() => setImportModalOpen(true)} disabled={criticalPending}>
-              Import CSV
-            </button>
-            <button className="btn" onClick={() => setCreateModalOpen(true)} disabled={criticalPending}>
-              New Ledger Entry
-            </button>
-          </div>
-        </div>
-      </section>
-
       <BigBookMetricsSection promise={metricsPromise} override={metricsOverride} />
 
-      <section className="card">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold">Ledger Records</h2>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              className="text-xs text-[rgb(var(--info))] underline"
-              onClick={resetColumnWidths}
-            >
-              Reset columns
-            </button>
-            {entriesLoading ? <LoadingIndicator label="Refreshing..." /> : null}
+      <section className="card" aria-busy={criticalPending}>
+        {/* Sticky so the create/import actions stay reachable while scanning rows.
+            Sits above the table's sticky head and the blocking overlay (both z-20). */}
+        <div className="sticky top-0 z-30 -mx-4 -mt-4 mb-4 rounded-t-xl border-b border-[rgb(var(--border))] bg-[rgb(var(--surface))] lg:-mx-5 lg:-mt-5">
+          <div className="relative flex flex-wrap items-center justify-between gap-3 px-4 py-3 lg:px-5">
+            <BlockingOverlay active={criticalPending} label="Processing..." />
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-semibold">Ledger Records</h2>
+              {entriesLoading ? <LoadingIndicator label="Refreshing..." /> : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="text-xs text-[rgb(var(--info))] underline"
+                onClick={resetColumnWidths}
+              >
+                Reset columns
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={() => void exportEntries()}
+                disabled={criticalPending || exportSubmitting}
+              >
+                {exportSubmitting ? "Exporting..." : "Export CSV"}
+              </button>
+              <button className="btn-secondary" onClick={() => setImportModalOpen(true)} disabled={criticalPending}>
+                Import CSV
+              </button>
+              <button className="btn" onClick={() => setCreateModalOpen(true)} disabled={criticalPending}>
+                New Ledger Entry
+              </button>
+            </div>
           </div>
         </div>
         <form
