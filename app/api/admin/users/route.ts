@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdminApi } from "@/lib/auth-api";
+import { invalidateAccessCache } from "@/lib/auth-access";
+import { invalidateDisplayNameDirectory } from "@/lib/db/display-names";
 import { assertCsrfAndOrigin } from "@/lib/security/origin";
 
 const updateSchema = z.object({
@@ -80,6 +82,10 @@ export async function PATCH(request: Request) {
   if (typeof parsed.data.is_active === "boolean") payload.is_active = parsed.data.is_active;
 
   const adminClient = createAdminClient();
+  // Cleared both before and after the writes: the first call drops the stale
+  // entry even if a write below fails, the second closes the window where a
+  // concurrent request could have re-cached the pre-edit state.
+  invalidateAccessCache(email);
   const { data: userRow, error: userRowError } = await adminClient
     .from("allowed_users")
     .select("id, auth_user_id, normalized_email")
@@ -147,5 +153,7 @@ export async function PATCH(request: Request) {
     }
   }
 
+  invalidateAccessCache(email);
+  invalidateDisplayNameDirectory();
   return NextResponse.json({ ok: true });
 }

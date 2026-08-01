@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdminApi } from "@/lib/auth-api";
+import { invalidateAccessCache } from "@/lib/auth-access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertCsrfAndOrigin } from "@/lib/security/origin";
 
@@ -87,6 +88,8 @@ export async function PATCH(request: Request) {
 
   const adminClient = createAdminClient();
   const { error } = await adminClient.from("brands").update(payload).eq("id", parsed.data.id);
+  // A rename or deactivation changes the brand embedded in every user's record.
+  invalidateAccessCache();
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }

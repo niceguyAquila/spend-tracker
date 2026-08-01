@@ -867,7 +867,6 @@ export function BigBookPanel({
       void viewAttachment(attachmentId);
     },
     // viewAttachment closes over setState only; keep stable for memoized rows.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdminApi } from "@/lib/auth-api";
+import { invalidateAccessCache } from "@/lib/auth-access";
+import { invalidateDisplayNameDirectory } from "@/lib/db/display-names";
 import { assertCsrfAndOrigin } from "@/lib/security/origin";
 
 const inviteSchema = z.object({
@@ -40,6 +42,7 @@ export async function POST(request: Request) {
   const normalizedEmail = parsed.data.email.toLowerCase();
   const normalizedDisplayName = parsed.data.display_name?.trim() || null;
   const authMethod = parsed.data.auth_method;
+  invalidateAccessCache(normalizedEmail);
 
   const { error: upsertError } = await adminClient.from("allowed_users").upsert(
     {
@@ -140,6 +143,9 @@ export async function POST(request: Request) {
       }
     }
   }
+
+  invalidateAccessCache(normalizedEmail);
+  invalidateDisplayNameDirectory();
 
   if (inviteError) {
     return NextResponse.json({ error: inviteError.message }, { status: 400 });

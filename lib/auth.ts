@@ -2,16 +2,12 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { loadAccessResult } from "@/lib/auth-access";
 import { AppRole, UserBrandRole } from "@/lib/types";
 import { perfStart } from "@/lib/perf";
 
 export const ACTIVE_BRAND_COOKIE = "active_brand_id";
 export type { AppRole } from "@/lib/types";
-
-function isUuid(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
 
 export const requireUser = cache(async function requireUser() {
   const supabase = await createClient();
@@ -40,7 +36,7 @@ export async function requireRole(allowed: AppRole[]) {
 
 /**
  * Request-scoped via React cache() so nested layouts (dashboard + big-book)
- * share one resolution instead of repeating the same 3–4 admin queries.
+ * share one resolution, on top of the cross-request cache in auth-access.
  */
 export const requireAllowedUser = cache(async function requireAllowedUser() {
   const end = perfStart("requireAllowedUser");
@@ -52,109 +48,16 @@ export const requireAllowedUser = cache(async function requireAllowedUser() {
       redirect("/login");
     }
 
-    const adminClient = createAdminClient();
-
-    // Hot path: look up the allowlist row by normalized_email first.
-    let { data, error } = await adminClient
-      .from("allowed_users")
-      .select("id, role, is_active")
-      .eq("normalized_email", email)
-      .maybeSingle();
-
-    // Cold path only: legacy rows where normalized_email may be missing.
-    if ((!data || error) && email) {
-      const fallback = await adminClient
-        .from("allowed_users")
-        .select("id, role, is_active")
-        .ilike("email", email)
-        .maybeSingle();
-      data = fallback.data ?? null;
-      error = fallback.error ?? null;
-    }
-
-    if (error || !data || !data.is_active) {
+    const access = await loadAccessResult(email);
+    if (access.kind === "not-allowed") {
       redirect("/login?error=not-allowed");
     }
-    const allowedUserId = data.id;
-    const globalRole = data.role as AppRole;
-
-    async function fetchBrandRows() {
-      return adminClient
-        .from("user_brand_roles")
-        .select("brand_id, role, is_active")
-        .eq("allowed_user_id", allowedUserId)
-        .eq("is_active", true)
-        .order("created_at", { ascending: true });
-    }
-
-    let { data: brandRows, error: brandError } = await fetchBrandRows();
-
-    // Cold path: seed a ZENPLAY membership only when the user has none yet.
-    if (!brandError && (!brandRows || brandRows.length === 0)) {
-      const { data: zenplayBrand } = await adminClient
-        .from("brands")
-        .select("id")
-        .eq("code", "ZENPLAY")
-        .maybeSingle();
-      if (zenplayBrand?.id) {
-        await adminClient.from("user_brand_roles").upsert(
-          {
-            allowed_user_id: allowedUserId,
-            brand_id: zenplayBrand.id,
-            role: globalRole,
-            is_active: true
-          },
-          { onConflict: "allowed_user_id,brand_id" }
-        );
-        const refetched = await fetchBrandRows();
-        brandRows = refetched.data ?? null;
-        brandError = refetched.error ?? null;
-      }
-    }
-
-    if (brandError || !brandRows || brandRows.length === 0) {
+    if (access.kind === "no-brand-access") {
       redirect("/login?error=no-brand-access");
     }
 
-    const normalizedBrandRows = (brandRows ?? []).filter(
-      (row) => typeof row.brand_id === "string" && isUuid(row.brand_id)
-    );
-    if (!normalizedBrandRows.length) {
-      redirect("/login?error=no-brand-access");
-    }
-
-    const brandIds = Array.from(new Set(normalizedBrandRows.map((row) => row.brand_id)));
-    const { data: brands, error: brandsError } = await adminClient
-      .from("brands")
-      .select("id, code, name, is_active")
-      .in("id", brandIds);
-    if (brandsError) {
-      redirect("/login?error=no-brand-access");
-    }
-
-    const brandById = new Map((brands ?? []).map((brand) => [brand.id, brand]));
-    const brandRoles: UserBrandRole[] = normalizedBrandRows
-      .map((row) => {
-        const brand =
-          brandById.get(row.brand_id) ??
-          ({
-            id: row.brand_id,
-            code: "UNKNOWN",
-            name: "Unknown Brand",
-            is_active: true
-          } as const);
-        return {
-          brand_id: row.brand_id,
-          role: row.role as AppRole,
-          is_active: row.is_active,
-          brand
-        };
-      })
-      .filter((row): row is UserBrandRole => Boolean(row));
-
-    if (!brandRoles.length) {
-      redirect("/login?error=no-brand-access");
-    }
+    const { allowedUserId, globalRole } = access.record;
+    const brandRoles: UserBrandRole[] = access.record.memberships;
 
     const cookieStore = await cookies();
     const requestedBrandId = cookieStore.get(ACTIVE_BRAND_COOKIE)?.value ?? null;

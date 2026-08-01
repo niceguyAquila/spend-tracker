@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { loadDisplayNameDirectory } from "@/lib/db/display-names";
 import { perfStart } from "@/lib/perf";
 import {
   computeBigBookCreditStatus,
@@ -143,20 +144,7 @@ export async function getExpenses(params: {
     }
   }
 
-  const actorMap = new Map<string, string>();
-  if (actorIds.size > 0) {
-    const { data: actorRows, error: actorError } = await supabase
-      .from("allowed_users")
-      .select("auth_user_id, display_name, email")
-      .in("auth_user_id", [...actorIds]);
-    if (actorError) throw actorError;
-
-    for (const actor of actorRows ?? []) {
-      if (!actor.auth_user_id) continue;
-      const resolvedName = actor.display_name?.trim() || actor.email || actor.auth_user_id;
-      actorMap.set(actor.auth_user_id, resolvedName);
-    }
-  }
+  const actorMap = await resolveDisplayNameMap(supabase, [...actorIds]);
 
   return (data ?? []).map((row) => {
     const category = Array.isArray(row.expense_categories)
@@ -591,6 +579,17 @@ async function resolveDisplayNameMap(
   const actorMap = new Map<string, string>();
   const uniqueIds = [...new Set(userIds.filter(isUuid))];
   if (!uniqueIds.length) return actorMap;
+
+  // The directory covers the whole allowed_users table, so an id missing from
+  // it would not be found by a scoped query either.
+  const directory = await loadDisplayNameDirectory();
+  if (directory) {
+    for (const id of uniqueIds) {
+      const name = directory.get(id);
+      if (name) actorMap.set(id, name);
+    }
+    return actorMap;
+  }
 
   const { data: actorRows, error: actorError } = await supabase
     .from("allowed_users")
@@ -2551,18 +2550,7 @@ export async function getCreditBookEntries(
     }
   }
 
-  const actorMap = new Map<string, string>();
-  if (actorIds.size > 0) {
-    const { data: actorRows, error: actorError } = await supabase
-      .from("allowed_users")
-      .select("auth_user_id, display_name, email")
-      .in("auth_user_id", [...actorIds]);
-    if (actorError) throw actorError;
-    for (const actor of actorRows ?? []) {
-      if (!actor.auth_user_id) continue;
-      actorMap.set(actor.auth_user_id, actor.display_name?.trim() || actor.email || actor.auth_user_id);
-    }
-  }
+  const actorMap = await resolveDisplayNameMap(supabase, [...actorIds]);
 
   const mapped = (data ?? []).map((row) => {
     const type = Array.isArray(row.credit_ledger_types)
@@ -2720,18 +2708,7 @@ export async function getCreditBookEntriesPaged(
     }
   }
 
-  const actorMap = new Map<string, string>();
-  if (actorIds.size > 0) {
-    const { data: actorRows, error: actorError } = await supabase
-      .from("allowed_users")
-      .select("auth_user_id, display_name, email")
-      .in("auth_user_id", [...actorIds]);
-    if (actorError) throw actorError;
-    for (const actor of actorRows ?? []) {
-      if (!actor.auth_user_id) continue;
-      actorMap.set(actor.auth_user_id, actor.display_name?.trim() || actor.email || actor.auth_user_id);
-    }
-  }
+  const actorMap = await resolveDisplayNameMap(supabase, [...actorIds]);
 
   const rows: CreditBookEntry[] = (data ?? []).map((row) => {
     const type = Array.isArray(row.credit_ledger_types)
@@ -3130,18 +3107,7 @@ export async function getCreditBookSettlementsForEntry(
     if (row.updated_by && isCreditBookUuid(row.updated_by)) actorIds.add(row.updated_by);
   }
 
-  const actorMap = new Map<string, string>();
-  if (actorIds.size > 0) {
-    const { data: actorRows, error: actorError } = await supabase
-      .from("allowed_users")
-      .select("auth_user_id, display_name, email")
-      .in("auth_user_id", [...actorIds]);
-    if (actorError) throw actorError;
-    for (const actor of actorRows ?? []) {
-      if (!actor.auth_user_id) continue;
-      actorMap.set(actor.auth_user_id, actor.display_name?.trim() || actor.email || actor.auth_user_id);
-    }
-  }
+  const actorMap = await resolveDisplayNameMap(supabase, [...actorIds]);
 
   return rawRows.map((row) => mapCreditBookSettlementRow(row, actorMap));
 }
