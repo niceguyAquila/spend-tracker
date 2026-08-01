@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const requireFinanceApiMock = vi.fn();
 const assertCsrfAndOriginMock = vi.fn();
-const upsertMock = vi.fn();
+const insertMock = vi.fn();
 const categorySelectMock = vi.fn();
 const typeSelectMock = vi.fn();
 const staffSelectMock = vi.fn();
@@ -64,11 +64,12 @@ vi.mock("@/lib/supabase/server", () => ({
       }
       if (table === "expenses") {
         return {
-          upsert: (...args: unknown[]) => {
-            upsertMock(...args);
+          insert: (rows: unknown) => {
+            insertMock(rows);
+            const inserted = (rows as unknown[]).map((_row, index) => ({ id: `exp-${index + 1}` }));
             return {
               select: vi.fn(async () => ({
-                data: [{ id: "exp-1" }],
+                data: inserted,
                 error: null
               }))
             };
@@ -120,9 +121,8 @@ describe("POST /api/expenses/import", () => {
 
     expect(response.status).toBe(200);
     expect(data.processed).toBe(1);
-    expect(data.skipped_duplicates).toBe(0);
-    expect(upsertMock).toHaveBeenCalledTimes(1);
-    const payload = upsertMock.mock.calls[0]?.[0] as Array<Record<string, unknown>>;
+    expect(insertMock).toHaveBeenCalledTimes(1);
+    const payload = insertMock.mock.calls[0]?.[0] as Array<Record<string, unknown>>;
     expect(payload[0]).toMatchObject({
       brand_id: BRAND_ID,
       entry_direction: "spending",
@@ -135,7 +135,28 @@ describe("POST /api/expenses/import", () => {
       remarks: "INV-001",
       source: "csv_import"
     });
-    expect(upsertMock.mock.calls[0]?.[1]).toEqual({ ignoreDuplicates: true });
+  });
+
+  it("imports identical rows instead of skipping them as duplicates", async () => {
+    const { POST } = await import("@/app/api/expenses/import/route");
+    const csv = [
+      "date,type,category,description,staff,currency,amount,cash_flow,remarks",
+      "2026-04-25,Ads,Facebook,April boost,John,IDR,150000,spending,INV-001",
+      "2026-04-25,Ads,Facebook,April boost,John,IDR,150000,spending,INV-001"
+    ].join("\n");
+    const formData = new FormData();
+    formData.append("file", new File([csv], "spend.csv", { type: "text/csv" }));
+
+    const response = await POST(
+      new Request("https://app.localhost/api/expenses/import", { method: "POST", body: formData })
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.processed).toBe(2);
+    expect(data.skipped_duplicates).toBeUndefined();
+    const payload = insertMock.mock.calls[0]?.[0] as Array<Record<string, unknown>>;
+    expect(payload).toHaveLength(2);
   });
 
   it("rejects CSRF failures", async () => {
@@ -166,6 +187,6 @@ describe("POST /api/expenses/import", () => {
 
     expect(response.status).toBe(400);
     expect(Array.isArray(data.errors)).toBe(true);
-    expect(upsertMock).not.toHaveBeenCalled();
+    expect(insertMock).not.toHaveBeenCalled();
   });
 });

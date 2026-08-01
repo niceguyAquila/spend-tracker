@@ -38,10 +38,7 @@ export function SpendingCsvToolbar({ role, filters, disabled = false }: Props) {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importSubmitting, setImportSubmitting] = useState(false);
   const [importErrors, setImportErrors] = useState<string[]>([]);
-  const [importSuccess, setImportSuccess] = useState<{
-    processed: number;
-    skipped: number;
-  } | null>(null);
+  const [importSuccess, setImportSuccess] = useState<{ processed: number } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -143,15 +140,10 @@ export function SpendingCsvToolbar({ role, filters, disabled = false }: Props) {
       }
 
       const processed = typeof data.processed === "number" ? data.processed : 0;
-      const skipped = typeof data.skipped_duplicates === "number" ? data.skipped_duplicates : 0;
       setImportFile(null);
       setImportModalOpen(false);
-      setImportSuccess({ processed, skipped });
-      setMessage(
-        skipped > 0
-          ? `Imported ${processed} row${processed === 1 ? "" : "s"} (${skipped} duplicate${skipped === 1 ? "" : "s"} skipped).`
-          : `Imported ${processed} row${processed === 1 ? "" : "s"} successfully.`
-      );
+      setImportSuccess({ processed });
+      setMessage(`Imported ${processed} row${processed === 1 ? "" : "s"} successfully.`);
       router.refresh();
     } catch {
       setError("Failed to import CSV due to a network error.");
@@ -242,7 +234,8 @@ export function SpendingCsvToolbar({ role, filters, disabled = false }: Props) {
               </p>
               <p className="mt-1 text-xs text-muted">
                 Blank or unknown category names fall back to Uncategorized. Blank or unknown type/staff import as
-                empty. Duplicate rows already in the ledger are skipped. Use cash_flow values spending or profit.
+                empty. Every row is imported, including rows identical to existing ones. Use cash_flow values
+                spending or profit.
               </p>
               {error ? <p className="mt-2 text-sm text-[rgb(var(--danger))]">{error}</p> : null}
             </div>
@@ -291,11 +284,7 @@ export function SpendingCsvToolbar({ role, filters, disabled = false }: Props) {
       >
         <p className="text-sm text-muted">
           Imported {importSuccess?.processed ?? 0} spending row
-          {(importSuccess?.processed ?? 0) === 1 ? "" : "s"}
-          {(importSuccess?.skipped ?? 0) > 0
-            ? ` (${importSuccess?.skipped} duplicate${(importSuccess?.skipped ?? 0) === 1 ? "" : "s"} skipped)`
-            : ""}
-          .
+          {(importSuccess?.processed ?? 0) === 1 ? "" : "s"}.
         </p>
       </Modal>
     </>

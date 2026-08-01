@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireFinanceApi } from "@/lib/auth-api";
 import { assertCsrfAndOrigin } from "@/lib/security/origin";
-import { parseSpendingCsv, spendingDedupeKey } from "@/lib/spending/csv";
+import { parseSpendingCsv } from "@/lib/spending/csv";
 import { ensureUncategorizedCategory } from "@/lib/spending/uncategorized";
 import { expenseInputSchema } from "@/lib/validation/expense";
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const MAX_ROWS = 5000;
-const UPSERT_CHUNK_SIZE = 500;
+const INSERT_CHUNK_SIZE = 500;
 
 function normalizeLookupKey(value: string) {
   return value.trim().toLowerCase();
@@ -202,26 +202,12 @@ export async function POST(request: Request) {
     );
   }
 
-  const seen = new Set<string>();
-  const uniqueRecords: ResolvedRow[] = [];
-  let skippedInFile = 0;
-  for (const row of records) {
-    const key = spendingDedupeKey(row);
-    if (seen.has(key)) {
-      skippedInFile += 1;
-      continue;
-    }
-    seen.add(key);
-    uniqueRecords.push(row);
-  }
-
   const actorId = authCheck.user.id;
   let processed = 0;
-  let skippedDuplicates = skippedInFile;
   const insertErrors: string[] = [];
 
-  for (let i = 0; i < uniqueRecords.length; i += UPSERT_CHUNK_SIZE) {
-    const chunk = uniqueRecords.slice(i, i + UPSERT_CHUNK_SIZE).map((row) => ({
+  for (let i = 0; i < records.length; i += INSERT_CHUNK_SIZE) {
+    const chunk = records.slice(i, i + INSERT_CHUNK_SIZE).map((row) => ({
       expense_date: row.expense_date,
       brand_id: brandId,
       entry_direction: row.entry_direction,
@@ -237,16 +223,14 @@ export async function POST(request: Request) {
       updated_by: actorId
     }));
 
-    const { data, error } = await supabase.from("expenses").upsert(chunk, { ignoreDuplicates: true }).select("id");
+    const { data, error } = await supabase.from("expenses").insert(chunk).select("id");
 
     if (error) {
       insertErrors.push(error.message);
       continue;
     }
 
-    const inserted = data?.length ?? 0;
-    processed += inserted;
-    skippedDuplicates += chunk.length - inserted;
+    processed += data?.length ?? 0;
   }
 
   if (insertErrors.length && processed === 0) {
@@ -264,7 +248,6 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: insertErrors.length === 0,
     processed,
-    skipped_duplicates: skippedDuplicates,
     total_rows: parsed.rows.length,
     errors: insertErrors.slice(0, 25)
   });

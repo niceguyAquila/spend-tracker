@@ -154,30 +154,3 @@ export function parseSpendingCsv(content: string): ParseSpendingCsvResult {
 
   return { rows: parsedRows, errors };
 }
-
-const NIL_UUID = "00000000-0000-0000-0000-000000000000";
-
-/** Key matching uq_expenses_dedupe (expression-based uniqueness). */
-export function spendingDedupeKey(row: {
-  entry_direction: string;
-  expense_date: string;
-  currency_code: string;
-  amount: number;
-  category_id: string;
-  type_id: string | null;
-  staff_id: string | null;
-  description: string | null;
-  remarks: string | null;
-}): string {
-  return [
-    row.entry_direction,
-    row.expense_date,
-    row.currency_code,
-    String(row.amount),
-    row.category_id,
-    row.type_id ?? NIL_UUID,
-    row.staff_id ?? NIL_UUID,
-    (row.description ?? "").trim(),
-    (row.remarks ?? "").trim()
-  ].join("|");
-}

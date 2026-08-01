@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildSpendingImportTemplateCsv,
   parseSpendingCsv,
-  spendingDedupeKey,
   SPENDING_CSV_EXPORT_HEADERS,
   SPENDING_CSV_HEADERS
 } from "@/lib/spending/csv";
@@ -93,33 +92,5 @@ describe("buildSpendingImportTemplateCsv", () => {
     }
     expect(SPENDING_CSV_EXPORT_HEADERS).toContain("source");
     expect(SPENDING_CSV_EXPORT_HEADERS).toContain("created_by_name");
-  });
-});
-
-describe("spendingDedupeKey", () => {
-  it("normalizes blank description/remarks and null FKs like the expression index", () => {
-    const a = spendingDedupeKey({
-      entry_direction: "spending",
-      expense_date: "2026-04-01",
-      currency_code: "IDR",
-      amount: 100,
-      category_id: "c1",
-      type_id: null,
-      staff_id: null,
-      description: "  ",
-      remarks: null
-    });
-    const b = spendingDedupeKey({
-      entry_direction: "spending",
-      expense_date: "2026-04-01",
-      currency_code: "IDR",
-      amount: 100,
-      category_id: "c1",
-      type_id: null,
-      staff_id: null,
-      description: "",
-      remarks: ""
-    });
-    expect(a).toBe(b);
   });
 });
