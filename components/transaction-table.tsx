@@ -768,12 +768,15 @@ export function TransactionTable({
       >
         <table
           className="data-table data-table-sticky-head table-fixed"
-          style={{ width: ledgerTableWidth, minWidth: ledgerTableWidth }}
+          style={{ width: "100%", minWidth: ledgerTableWidth }}
         >
+          {/* Trailing auto-width column soaks up leftover space on wide screens so
+              the table fills the card without rescaling the resizable columns. */}
           <colgroup>
             {SPENDING_COLUMN_KEYS.map((key) => (
               <col key={key} style={{ width: columnWidths[key] }} />
             ))}
+            <col />
           </colgroup>
           <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
             <tr>
@@ -862,6 +865,7 @@ export function TransactionTable({
                   {...getResizeHandleProps("actions")}
                 />
               </th>
+              <th aria-hidden="true" className="px-3 py-2" />
             </tr>
           </thead>
           <tbody>
@@ -877,7 +881,7 @@ export function TransactionTable({
             ))}
             {!filteredRows.length ? (
               <TableEmptyState
-                colSpan={SPENDING_COLUMN_COUNT}
+                colSpan={SPENDING_COLUMN_COUNT + 1}
                 message="No transactions found for the selected month and filters."
               />
             ) : null}

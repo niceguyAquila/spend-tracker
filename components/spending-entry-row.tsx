@@ -75,6 +75,7 @@ function SpendingEntryRowInner({
           </button>
         </div>
       </td>
+      <td aria-hidden="true" className="px-3 py-2" />
     </tr>
   );
 }
