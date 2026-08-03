@@ -44,18 +44,13 @@ function SpendingEntryRowInner({
         {row.staff_name ? row.staff_name : <EmptyCell />}
       </td>
       <td className="overflow-hidden break-words px-3 py-2">{row.currency_code}</td>
-      <td className="overflow-hidden px-3 py-2 text-right tabular-nums whitespace-nowrap">
-        <span
-          className={`inline-flex w-full items-baseline justify-between gap-2 ${getAmountColorClass(signedAmount)}`}
-        >
-          <span>{row.currency_code}</span>
-          <span>
-            {formatAmount(Math.abs(row.amount), {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 4
-            })}
-          </span>
-        </span>
+      <td
+        className={`overflow-hidden px-3 py-2 text-right tabular-nums whitespace-nowrap ${getAmountColorClass(signedAmount)}`}
+      >
+        {formatAmount(Math.abs(row.amount), {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 4
+        })}
       </td>
       <td className="overflow-hidden break-words px-3 py-2">
         {row.remarks ? row.remarks : <EmptyCell />}
