@@ -92,6 +92,55 @@ describe("big book entry schema", () => {
     expect(parsed.success).toBe(false);
   });
 
+  it("accepts a USDT create payload with a positive gas fee", () => {
+    const parsed = bigBookEntryInputSchema.safeParse({
+      ...clientPayload,
+      currency_code: "USDT",
+      gas_fee_amount: 1.33
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.gas_fee_amount).toBe(1.33);
+  });
+
+  it("treats an omitted or empty gas fee as skipped", () => {
+    const omitted = bigBookEntryInputSchema.safeParse(clientPayload);
+    expect(omitted.success).toBe(true);
+    if (omitted.success) expect(omitted.data.gas_fee_amount).toBeUndefined();
+
+    const empty = bigBookEntryInputSchema.safeParse({ ...clientPayload, currency_code: "USDT", gas_fee_amount: "" });
+    expect(empty.success).toBe(true);
+    if (empty.success) expect(empty.data.gas_fee_amount).toBeUndefined();
+  });
+
+  it("rejects a non-positive gas fee", () => {
+    const parsed = bigBookEntryInputSchema.safeParse({
+      ...clientPayload,
+      currency_code: "USDT",
+      gas_fee_amount: 0
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects a gas fee when currency is not USDT", () => {
+    const parsed = bigBookEntryInputSchema.safeParse({
+      ...clientPayload,
+      currency_code: "IDR",
+      gas_fee_amount: 1.33
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("strips gas_fee_amount from update payloads", () => {
+    const parsed = bigBookEntryUpdateSchema.safeParse({
+      ...clientPayload,
+      id: ENTRY_ID,
+      currency_code: "USDT",
+      gas_fee_amount: 1.33
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect("gas_fee_amount" in parsed.data).toBe(false);
+  });
+
   it("accepts a credit settle payload with a null note", () => {
     const parsed = bigBookCreditSettleSchema.safeParse({
       id: CREDIT_ID,

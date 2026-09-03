@@ -25,6 +25,7 @@ export type EntryFormState = {
   explanation: string;
   amount: string;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
+  gas_fee_amount: string;
   remark: string;
   responsible_actor_id: string;
   is_credit: boolean;
@@ -85,6 +86,7 @@ export function createEmptyEntryForm(options: {
     explanation: "",
     amount: "",
     currency_code: "IDR",
+    gas_fee_amount: "",
     remark: "",
     responsible_actor_id: options.defaultActorId,
     is_credit: false,
@@ -116,6 +118,8 @@ type Props = {
   onFetchConversionRate?: () => void;
   fetchingConversionRate?: boolean;
   hideCreditToggle?: boolean;
+  /** Create-only: show an optional TRX gas-fee amount when currency is USDT. */
+  showGasFee?: boolean;
   /**
    * `full` shows labeled sections with a 1/2/3-column grid.
    * `nested` drops section headers and uses a 2-column grid (for grouped cards).
@@ -143,6 +147,7 @@ export function BigBookEntryFields({
   onFetchConversionRate,
   fetchingConversionRate = false,
   hideCreditToggle = false,
+  showGasFee = false,
   layout = "full"
 }: Props) {
   const activeTypes = types.filter((row) => row.is_active);
@@ -233,16 +238,18 @@ export function BigBookEntryFields({
           <select
             className="shrink-0 border-0 border-l border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] px-2 py-2 text-sm font-medium text-[rgb(var(--text))] focus:outline-none"
             value={value.currency_code}
-            onChange={(event) =>
+            onChange={(event) => {
+              const nextCurrency = event.target.value as EntryFormState["currency_code"];
               patch({
-                currency_code: event.target.value as EntryFormState["currency_code"],
+                currency_code: nextCurrency,
                 pocket_id: "",
+                gas_fee_amount: nextCurrency === "USDT" ? value.gas_fee_amount : "",
                 settlement_conversion_rate:
-                  settlesEntry && event.target.value === settlesEntry.currency_code
+                  settlesEntry && nextCurrency === settlesEntry.currency_code
                     ? "1"
                     : value.settlement_conversion_rate
-              })
-            }
+              });
+            }}
             aria-label="Currency"
           >
             {currencies.map((currency) => (
@@ -253,6 +260,28 @@ export function BigBookEntryFields({
           </select>
         </div>
       </label>
+      {showGasFee && value.currency_code === "USDT" ? (
+        <label className="text-sm">
+          Gas fee
+          <div className="mt-1 flex overflow-hidden rounded-md border border-[rgb(var(--border))] focus-within:shadow-[0_0_0_3px_rgba(var(--focus),0.25)]">
+            <input
+              className="min-w-0 flex-1 border-0 bg-[rgb(var(--surface))] px-3 py-2 text-right text-base font-medium text-[rgb(var(--text))] focus:outline-none"
+              inputMode="decimal"
+              placeholder="0"
+              value={value.gas_fee_amount}
+              onChange={(event) => patch({ gas_fee_amount: formatAmountInput(event.target.value) })}
+              aria-label="Gas fee amount"
+            />
+            <span
+              className="shrink-0 border-0 border-l border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] px-2 py-2 text-sm font-medium text-[rgb(var(--text))]"
+              aria-hidden
+            >
+              TRX
+            </span>
+          </div>
+          <span className="mt-1 block text-xs text-muted">Optional. Creates a grouped TRX spending entry.</span>
+        </label>
+      ) : null}
       <label className={`text-sm ${spanClass}`}>
         Explanation *
         <input

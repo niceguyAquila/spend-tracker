@@ -7,6 +7,9 @@ const deleteSelectMock = vi.fn(() => ({ maybeSingle: deleteMaybeSingleMock }));
 const deleteEqIdMock = vi.fn(() => ({ select: deleteSelectMock }));
 const updateEqIdMock = vi.fn().mockResolvedValue({ error: null });
 const insertSelectSingleMock = vi.fn();
+const groupInsertMock = vi.fn();
+const groupInsertSingleMock = vi.fn();
+const groupDeleteEqMock = vi.fn();
 const requireAdminApiMock = vi.fn();
 const assertCsrfAndOriginMock = vi.fn();
 const getBigBookEntriesPagedMock = vi.fn();
@@ -14,6 +17,11 @@ const getBigBookLedgerRowsPagedMock = vi.fn();
 const creditLookupMaybeSingleMock = vi.fn();
 const creditLookupEqMock = vi.fn(() => ({ maybeSingle: creditLookupMaybeSingleMock }));
 const creditLookupSelectMock = vi.fn(() => ({ eq: creditLookupEqMock }));
+
+let insertManyResponse: { data: Array<{ id: string }> | null; error: { message: string } | null } = {
+  data: [{ id: "entry-1" }, { id: "entry-gas" }],
+  error: null
+};
 
 vi.mock("@/lib/security/origin", () => ({
   assertCsrfAndOrigin: assertCsrfAndOriginMock,
@@ -33,6 +41,12 @@ vi.mock("@/lib/supabase/server", () => ({
           update: updateMock,
           delete: vi.fn(() => ({ eq: deleteEqIdMock })),
           select: (_columns?: string) => creditLookupSelectMock()
+        };
+      }
+      if (table === "business_ledger_entry_groups") {
+        return {
+          insert: groupInsertMock,
+          delete: vi.fn(() => ({ eq: groupDeleteEqMock }))
         };
       }
       return {};
@@ -55,15 +69,29 @@ describe("big book entries route", () => {
       user: { id: "auth-user-1" }
     });
 
-    insertMock.mockReturnValue({
-      select: vi.fn(() => ({
-        single: insertSelectSingleMock
-      }))
-    });
+    insertManyResponse = {
+      data: [{ id: "entry-1" }, { id: "entry-gas" }],
+      error: null
+    };
+    insertMock.mockImplementation((rows: unknown) => ({
+      select: vi.fn(() => {
+        if (Array.isArray(rows)) {
+          return Promise.resolve(insertManyResponse);
+        }
+        return { single: insertSelectSingleMock };
+      })
+    }));
     insertSelectSingleMock.mockResolvedValue({
       data: { id: "entry-1" },
       error: null
     });
+    groupInsertMock.mockReturnValue({
+      select: vi.fn(() => ({
+        single: groupInsertSingleMock
+      }))
+    });
+    groupInsertSingleMock.mockResolvedValue({ data: { id: "group-1" }, error: null });
+    groupDeleteEqMock.mockResolvedValue({ error: null });
     updateMock.mockReturnValue({
       eq: updateEqIdMock
     });
@@ -117,6 +145,94 @@ describe("big book entries route", () => {
       pocket_id: null,
       action_by_id: null
     });
+    expect(groupInsertMock).not.toHaveBeenCalled();
+  });
+
+  it("creates a grouped TRX gas-fee companion for a USDT entry", async () => {
+    const { POST } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_date: "2026-04-23",
+        entry_direction: "profit",
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        entry_sub_type_id: "44444444-4444-4444-8444-444444444444",
+        vendor_type_id: "66666666-6666-4666-8666-666666666666",
+        vendor_id: "77777777-7777-4777-8777-777777777777",
+        action_by_id: "99999999-9999-4999-8999-999999999999",
+        explanation: "Vendor payout",
+        amount: 250,
+        currency_code: "USDT",
+        gas_fee_amount: 1.33,
+        remark: "Monthly run rate",
+        responsible_actor_id: "22222222-2222-4222-8222-222222222222"
+      })
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.id).toBe("entry-1");
+    expect(groupInsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        label: "Vendor payout",
+        remark: null,
+        created_by: "auth-user-1"
+      })
+    );
+    expect(insertMock).toHaveBeenCalledTimes(1);
+    const inserted = insertMock.mock.calls[0][0] as unknown[];
+    expect(inserted).toHaveLength(2);
+    expect(inserted[0]).toMatchObject({
+      group_id: "group-1",
+      currency_code: "USDT",
+      amount: 250,
+      entry_direction: "profit",
+      explanation: "Vendor payout"
+    });
+    expect(inserted[1]).toMatchObject({
+      group_id: "group-1",
+      currency_code: "TRX",
+      amount: 1.33,
+      entry_direction: "spending",
+      pocket_id: null,
+      is_credit: false,
+      explanation: "Gas fee — Vendor payout",
+      entry_sub_type_id: "44444444-4444-4444-8444-444444444444",
+      vendor_id: "77777777-7777-4777-8777-777777777777",
+      action_by_id: "99999999-9999-4999-8999-999999999999"
+    });
+    expect(groupDeleteEqMock).not.toHaveBeenCalled();
+  });
+
+  it("rolls back the gas-fee group when entry insert fails", async () => {
+    insertManyResponse = { data: null, error: { message: "insert failed" } };
+    const { POST } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_date: "2026-04-23",
+        entry_direction: "spending",
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        explanation: "Operational cloud cost",
+        amount: 1240.5,
+        currency_code: "USDT",
+        gas_fee_amount: 1.33,
+        remark: "",
+        responsible_actor_id: "22222222-2222-4222-8222-222222222222"
+      })
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toBe("insert failed");
+    expect(groupInsertMock).toHaveBeenCalled();
+    expect(groupDeleteEqMock).toHaveBeenCalledWith("id", "group-1");
   });
 
   it("persists entry_sub_type_id on create when provided", async () => {

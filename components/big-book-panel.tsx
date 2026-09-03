@@ -57,6 +57,12 @@ import {
   describeMissingFields,
   missingEntryFields
 } from "@/lib/big-book/entry-form-validation";
+import {
+  BIG_BOOK_GROUP_ENTRY_MAX,
+  expandGroupPayloadsWithGasFees,
+  parseOptionalGasFeeAmount,
+  willCreateGasFeeEntry
+} from "@/lib/big-book/gas-fee-entry";
 import { rowStripeClass } from "@/lib/ui/table";
 import { useColumnWidths } from "@/lib/ui/use-column-widths";
 import { TableEmptyState } from "@/components/ui/table-empty-state";
@@ -257,6 +263,7 @@ function entryFormFromEntry(entry: BigBookEntry): GroupEntryFormState {
     explanation: entry.explanation,
     amount: formatAmountInput(String(entry.amount)),
     currency_code: entry.currency_code,
+    gas_fee_amount: "",
     remark: entry.remark ?? "",
     responsible_actor_id: entry.responsible_actor_id,
     is_credit: entry.is_credit,
@@ -381,6 +388,7 @@ export function BigBookPanel({
     explanation: "",
     amount: "",
     currency_code: "IDR",
+    gas_fee_amount: "",
     remark: "",
     responsible_actor_id: "",
     is_credit: false,
@@ -514,6 +522,7 @@ export function BigBookPanel({
     explanation: "",
     amount: "",
     currency_code: "IDR",
+    gas_fee_amount: "",
     remark: "",
     responsible_actor_id: initialActors[0]?.id ?? "",
     is_credit: false,
@@ -1055,9 +1064,18 @@ export function BigBookPanel({
       setError("Group label must be at least 2 characters.");
       return;
     }
-    const payloadEntries = groupEntryForms.filter(isEntryFormComplete).map(toEntryPayload);
+    const completeForms = groupEntryForms.filter(isEntryFormComplete);
+    const payloadEntries = expandGroupPayloadsWithGasFees(
+      completeForms.map((form) => ({ entry: toEntryPayload(form), gasFeeAmount: form.gas_fee_amount }))
+    );
     if (payloadEntries.length < 2) {
       setError("A grouped transaction needs at least 2 entries with an explanation and amount.");
+      return;
+    }
+    if (payloadEntries.length > BIG_BOOK_GROUP_ENTRY_MAX) {
+      setError(
+        `A grouped transaction can have at most ${BIG_BOOK_GROUP_ENTRY_MAX} entries, including gas fees.`
+      );
       return;
     }
 
@@ -1115,6 +1133,8 @@ export function BigBookPanel({
       setError("Amount must be greater than 0.");
       return;
     }
+    const gasFeeAmount =
+      entryForm.currency_code === "USDT" ? parseOptionalGasFeeAmount(entryForm.gas_fee_amount) : null;
 
     setEntrySubmitting(true);
     setError(null);
@@ -1131,6 +1151,7 @@ export function BigBookPanel({
           pocket_id: entryForm.pocket_id || null,
           action_by_id: entryForm.action_by_id || null,
           amount: amountValue,
+          gas_fee_amount: gasFeeAmount,
           ...toCreditPayload(entryForm, null)
         })
       });
@@ -1199,11 +1220,21 @@ export function BigBookPanel({
         createdDelta,
         entryForm.pocket_id || null
       );
+      if (gasFeeAmount != null) {
+        applyMetricDelta(
+          entryForm.responsible_actor_id,
+          createdActor?.display_name ?? "Unknown Actor",
+          "TRX",
+          -gasFeeAmount,
+          null
+        );
+      }
       setEntryForm((prev) => ({
         ...prev,
         explanation: "",
         amount: "",
         remark: "",
+        gas_fee_amount: "",
         ...(keepModalOpen
           ? {}
           : {
@@ -1695,6 +1726,7 @@ export function BigBookPanel({
       explanation: `Settlement for: ${row.explanation}`,
       amount: formatAmountInput(String(row.amount)),
       currency_code: row.currency_code,
+      gas_fee_amount: "",
       remark: "",
       responsible_actor_id: row.responsible_actor_id,
       is_credit: false,
@@ -1926,6 +1958,16 @@ export function BigBookPanel({
       ? describeGroupedMissingFields(groupEntryForms, { groupLabel })
       : describeMissingFields(missingEntryFields(entryForm));
   const createValid = createMissingHint == null;
+  const createHasGasFee =
+    createMode === "single" && willCreateGasFeeEntry(entryForm.currency_code, entryForm.gas_fee_amount);
+  const groupedCreateEntryCount =
+    createMode === "group"
+      ? expandGroupPayloadsWithGasFees(
+          groupEntryForms
+            .filter(isEntryFormComplete)
+            .map((form) => ({ entry: toEntryPayload(form), gasFeeAmount: form.gas_fee_amount }))
+        ).length
+      : 0;
   const editMissingHint = editingGroupId
     ? describeGroupedMissingFields(editGroupForms, { groupLabel: editGroupLabel })
     : describeMissingFields(missingEntryFields(editForm));
@@ -2711,6 +2753,7 @@ export function BigBookPanel({
               actors={initialActors}
               currencies={currencies}
               showAttachments
+              showGasFee
               attachmentFiles={createAttachmentFiles}
               onAttachmentFilesChange={setCreateAttachmentFiles}
               onRemoveAttachmentAt={removeCreateAttachmentAt}
@@ -2807,6 +2850,7 @@ export function BigBookPanel({
                           actors={initialActors}
                           currencies={currencies}
                           layout="nested"
+                          showGasFee
                         />
                       </div>
                     ) : null}
@@ -2839,12 +2883,16 @@ export function BigBookPanel({
         title={createMode === "group" ? "Create grouped transaction?" : "Create ledger entry?"}
         description={
           createMode === "group"
-            ? `This will create a group with ${groupEntryForms.length} transaction${
-                groupEntryForms.length === 1 ? "" : "s"
+            ? `This will create a group with ${groupedCreateEntryCount} transaction${
+                groupedCreateEntryCount === 1 ? "" : "s"
               } in the Big Book.`
-            : createAttachmentFiles.length
-              ? `This will create a new record and upload ${createAttachmentFiles.length} attachment(s).`
-              : "This will create a new operational/profit record in the Big Book."
+            : createHasGasFee
+              ? createAttachmentFiles.length
+                ? `This will create a USDT entry and a grouped TRX gas-fee entry, then upload ${createAttachmentFiles.length} attachment(s) to the USDT record.`
+                : "This will create a USDT entry and a grouped TRX gas-fee entry in the Big Book."
+              : createAttachmentFiles.length
+                ? `This will create a new record and upload ${createAttachmentFiles.length} attachment(s).`
+                : "This will create a new operational/profit record in the Big Book."
         }
         confirmLabel={
           createMode === "group"

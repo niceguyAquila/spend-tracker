@@ -8,6 +8,7 @@ import {
   bigBookEntryInputSchema,
   bigBookEntryUpdateSchema
 } from "@/lib/validation/big-book";
+import { buildGasFeeEntry, buildGasFeeGroupLabel } from "@/lib/big-book/gas-fee-entry";
 import {
   getBigBookActorCurrencyMetrics,
   getBigBookActorPocketMetrics,
@@ -192,7 +193,7 @@ export async function POST(request: Request) {
 
   const supabase = await createClient();
   const actorId = authCheck.user.id;
-  const payload = parsed.data;
+  const { gas_fee_amount: gasFeeAmount, ...payload } = parsed.data;
 
   const settlement = await resolveSettlementFields(supabase, {
     settles_entry_id: payload.settles_entry_id ?? null,
@@ -204,36 +205,98 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: settlement.error }, { status: settlement.status });
   }
 
-  const { data, error } = await supabase
-    .from("business_ledger_entries")
-    .insert({
+  let groupId: string | null = null;
+  if (gasFeeAmount != null) {
+    const { data: group, error: groupError } = await supabase
+      .from("business_ledger_entry_groups")
+      .insert({
+        label: buildGasFeeGroupLabel(payload.explanation),
+        remark: null,
+        created_by: actorId,
+        updated_by: actorId
+      })
+      .select("id")
+      .single();
+
+    if (groupError || !group) {
+      return NextResponse.json(
+        { error: groupError?.message ?? "Failed to create gas fee group." },
+        { status: 400 }
+      );
+    }
+    groupId = group.id;
+  }
+
+  const mainRow = {
+    brand_id: authCheck.activeBrandId,
+    group_id: groupId,
+    entry_date: payload.entry_date,
+    entry_direction: payload.entry_direction,
+    entry_type_id: payload.entry_type_id,
+    entry_sub_type_id: payload.entry_sub_type_id ?? null,
+    vendor_type_id: payload.vendor_type_id ?? null,
+    vendor_id: payload.vendor_id ?? null,
+    pocket_id: payload.pocket_id ?? null,
+    action_by_id: payload.action_by_id ?? null,
+    explanation: payload.explanation,
+    amount: payload.amount,
+    currency_code: payload.currency_code,
+    remark: payload.remark || null,
+    responsible_actor_id: payload.responsible_actor_id,
+    is_credit: settlement.settles_entry_id ? false : Boolean(payload.is_credit),
+    settles_entry_id: settlement.settles_entry_id,
+    settlement_conversion_rate: settlement.settlement_conversion_rate,
+    settlement_amount_in_credit_currency: settlement.settlement_amount_in_credit_currency,
+    settlement_note: settlement.settles_entry_id ? payload.settlement_note ?? null : null,
+    created_by: actorId,
+    updated_by: actorId
+  };
+
+  let createdEntryId: string;
+
+  if (groupId && gasFeeAmount != null) {
+    const gasEntry = buildGasFeeEntry(payload, gasFeeAmount);
+    const gasRow = {
       brand_id: authCheck.activeBrandId,
-      entry_date: payload.entry_date,
-      entry_direction: payload.entry_direction,
-      entry_type_id: payload.entry_type_id,
-      entry_sub_type_id: payload.entry_sub_type_id ?? null,
-      vendor_type_id: payload.vendor_type_id ?? null,
-      vendor_id: payload.vendor_id ?? null,
-      pocket_id: payload.pocket_id ?? null,
-      action_by_id: payload.action_by_id ?? null,
-      explanation: payload.explanation,
-      amount: payload.amount,
-      currency_code: payload.currency_code,
-      remark: payload.remark || null,
-      responsible_actor_id: payload.responsible_actor_id,
-      is_credit: settlement.settles_entry_id ? false : Boolean(payload.is_credit),
-      settles_entry_id: settlement.settles_entry_id,
-      settlement_conversion_rate: settlement.settlement_conversion_rate,
-      settlement_amount_in_credit_currency: settlement.settlement_amount_in_credit_currency,
-      settlement_note: settlement.settles_entry_id ? payload.settlement_note ?? null : null,
+      group_id: groupId,
+      entry_date: gasEntry.entry_date,
+      entry_direction: gasEntry.entry_direction,
+      entry_type_id: gasEntry.entry_type_id,
+      entry_sub_type_id: gasEntry.entry_sub_type_id,
+      vendor_type_id: gasEntry.vendor_type_id,
+      vendor_id: gasEntry.vendor_id,
+      pocket_id: gasEntry.pocket_id,
+      action_by_id: gasEntry.action_by_id,
+      explanation: gasEntry.explanation,
+      amount: gasEntry.amount,
+      currency_code: gasEntry.currency_code,
+      remark: gasEntry.remark || null,
+      responsible_actor_id: gasEntry.responsible_actor_id,
+      is_credit: false,
       created_by: actorId,
       updated_by: actorId
-    })
-    .select("id")
-    .single();
+    };
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    const { data: inserted, error } = await supabase
+      .from("business_ledger_entries")
+      .insert([mainRow, gasRow])
+      .select("id");
+
+    if (error || !inserted?.[0]) {
+      await supabase.from("business_ledger_entry_groups").delete().eq("id", groupId);
+      return NextResponse.json(
+        { error: error?.message ?? "Failed to create ledger entry." },
+        { status: 400 }
+      );
+    }
+    createdEntryId = inserted[0].id;
+  } else {
+    const { data, error } = await supabase.from("business_ledger_entries").insert(mainRow).select("id").single();
+
+    if (error || !data) {
+      return NextResponse.json({ error: error?.message ?? "Failed to create ledger entry." }, { status: 400 });
+    }
+    createdEntryId = data.id;
   }
 
   if (payload.close_credit && settlement.settles_entry_id) {
@@ -253,7 +316,7 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({
-    id: data.id,
+    id: createdEntryId,
     settlement_conversion_rate: settlement.settlement_conversion_rate,
     settlement_amount_in_credit_currency: settlement.settlement_amount_in_credit_currency,
     credit_closed: Boolean(payload.close_credit && settlement.settles_entry_id)

@@ -146,6 +146,11 @@ const bigBookEntryBaseSchema = z.object({
   credit_settlement_note: optionalNoteSchema
 });
 
+const optionalGasFeeAmountSchema = z.preprocess((value) => {
+  if (value === "" || value == null) return undefined;
+  return value;
+}, z.coerce.number().positive("Gas fee must be greater than 0").optional());
+
 function refineBigBookEntryCreditFields<
   T extends {
     is_credit?: boolean;
@@ -179,7 +184,20 @@ function refineBigBookEntryCreditFields<
   }
 }
 
-export const bigBookEntryInputSchema = bigBookEntryBaseSchema.superRefine(refineBigBookEntryCreditFields);
+export const bigBookEntryInputSchema = bigBookEntryBaseSchema
+  .extend({
+    gas_fee_amount: optionalGasFeeAmountSchema
+  })
+  .superRefine((value, ctx) => {
+    refineBigBookEntryCreditFields(value, ctx);
+    if (value.gas_fee_amount != null && value.currency_code !== "USDT") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Gas fee is only allowed for USDT entries.",
+        path: ["gas_fee_amount"]
+      });
+    }
+  });
 
 export const bigBookEntryUpdateSchema = bigBookEntryBaseSchema
   .extend({
