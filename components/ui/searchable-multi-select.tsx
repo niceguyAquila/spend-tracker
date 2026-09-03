@@ -68,10 +68,11 @@ export function SearchableMultiSelect({
     };
   }, [isOpen]);
 
+  // z-50 lifts an open menu above sticky ledger headers (z-20) and the records toolbar (z-30).
   return (
     <details
       ref={rootRef}
-      className="relative"
+      className={`relative ${isOpen ? "z-50" : ""}`}
       open={isOpen}
       onClick={(event) => {
         if (disabled) event.preventDefault();
@@ -81,7 +82,7 @@ export function SearchableMultiSelect({
       <summary className="field mt-1 list-none cursor-pointer text-[rgb(var(--text))] disabled:cursor-not-allowed disabled:opacity-60">
         {selectedLabel}
       </summary>
-      <div className="absolute z-10 mt-2 w-full min-w-64 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2 text-[rgb(var(--text))] shadow-lg">
+      <div className="absolute z-50 mt-2 w-full min-w-64 rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2 text-[rgb(var(--text))] shadow-lg">
         <div className="mb-2 flex items-center gap-2 text-xs text-[rgb(var(--text-muted))]">
           <button className="btn-secondary btn-sm" type="button" onClick={selectAll} disabled={disabled}>
             All

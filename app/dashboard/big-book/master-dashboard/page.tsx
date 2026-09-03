@@ -112,7 +112,13 @@ export default async function BigBookMasterDashboardPage({ searchParams }: BigBo
             not yet marked settled. Filters above also apply here; date range selects which open credits are
             included.
           </p>
-          <BigBookVendorActorOutstandingTable rows={vendorActorOutstanding} />
+          <BigBookVendorActorOutstandingTable
+            rows={vendorActorOutstanding}
+            detailFilters={{
+              dateFrom: dateFrom || undefined,
+              dateTo: dateTo || undefined
+            }}
+          />
         </section>
       </div>
     );

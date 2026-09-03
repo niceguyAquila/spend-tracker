@@ -18,8 +18,25 @@ import { DEFAULT_PAGE_SIZE } from "@/lib/table-pagination";
 import { perfTimed } from "@/lib/perf";
 import type { BigBookMetricsBundle } from "@/components/big-book-metrics-cards";
 
-export default async function BigBookPage() {
+type SearchParamValue = string | string[] | undefined;
+
+type BigBookPageProps = {
+  searchParams?: Promise<Record<string, SearchParamValue>>;
+};
+
+function normalizeEntryIdParam(param: SearchParamValue): string | undefined {
+  const value = Array.isArray(param) ? param[0] ?? "" : param ?? "";
+  const trimmed = value.trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(trimmed)
+    ? trimmed
+    : undefined;
+}
+
+export default async function BigBookPage({ searchParams }: BigBookPageProps) {
   try {
+    const params = (await searchParams) ?? {};
+    const entryId = normalizeEntryIdParam(params.entryId);
+
     const pageEnd =
       process.env.PERF_DEBUG === "1"
         ? (() => {
@@ -54,7 +71,8 @@ export default async function BigBookPage() {
             page: 0,
             pageSize: DEFAULT_PAGE_SIZE,
             sortBy: "entry_date",
-            sortDir: "desc"
+            sortDir: "desc",
+            ...(entryId ? { entryId } : {})
           })
         )
       ]);
@@ -67,6 +85,7 @@ export default async function BigBookPage() {
           description="Manage operational spendings and business profits."
         />
         <BigBookPanel
+          key={entryId ?? "ledger"}
           initialTypes={types}
           initialSubTypes={subTypes}
           initialVendorTypes={vendorTypes}
@@ -78,6 +97,7 @@ export default async function BigBookPage() {
           initialTotalCount={entriesPage.totalCount}
           initialTotals={entriesPage.totals}
           metricsPromise={metricsPromise}
+          initialEntryId={entryId}
         />
       </div>
     );

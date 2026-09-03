@@ -37,6 +37,8 @@ import {
   BigBookSettlementTargetRef,
   BigBookActionBy,
   BigBookVendor,
+  BigBookVendorActorOutstandingEntry,
+  BigBookVendorActorOutstandingEntriesResult,
   BigBookVendorActorOutstandingRow,
   BigBookVendorType,
   BigBookTypeCashflowByCurrency,
@@ -506,6 +508,7 @@ export type BigBookEntryFilters = {
   dateFrom?: string;
   dateTo?: string;
   query?: string;
+  entryId?: string;
 };
 
 const BIG_BOOK_ENTRY_SELECT = `
@@ -647,6 +650,7 @@ function applyBigBookEntryFilters<T extends BigBookFilterableQuery<T>>(
     }
     if (clauses.length) next = next.or(clauses.join(","));
   }
+  if (filters?.entryId) next = next.eq("id", filters.entryId);
   if (filters?.dateFrom) next = next.gte("entry_date", filters.dateFrom);
   if (filters?.dateTo) next = next.lte("entry_date", filters.dateTo);
   if (filters?.query) {
@@ -1097,6 +1101,27 @@ export type BigBookLedgerRowsPagedResult = {
   totals: BigBookLedgerTotals;
 };
 
+const EMPTY_LEDGER_TOTALS: BigBookLedgerTotals = {
+  pageTotals: [],
+  pageEntryCount: 0,
+  grandTotals: [],
+  grandEntryCount: 0,
+  pagePocketExcludedCount: 0,
+  grandPocketExcludedCount: 0
+};
+
+function ledgerTotalsFromEntries(entries: BigBookEntry[]): BigBookLedgerTotals {
+  const totalRows = entries.filter((entry) => !entry.pocket_id);
+  return {
+    pageTotals: summarizeCurrencies(totalRows),
+    pageEntryCount: entries.length,
+    grandTotals: summarizeCurrencies(totalRows),
+    grandEntryCount: entries.length,
+    pagePocketExcludedCount: entries.length - totalRows.length,
+    grandPocketExcludedCount: entries.length - totalRows.length
+  };
+}
+
 export async function getBigBookLedgerRowsPaged(
   filters: BigBookEntryFilters & {
     page: number;
@@ -1111,6 +1136,26 @@ export async function getBigBookLedgerRowsPaged(
   const sortBy = filters.sortBy ?? "entry_date";
   const sortDir = filters.sortDir ?? "desc";
 
+  let pageKeys: Array<{ kind: "entry" | "group"; id: string; sort_date: string }> = [];
+  let totalCount = 0;
+  let totals: BigBookLedgerTotals = EMPTY_LEDGER_TOTALS;
+  const focusedEntryId = filters.entryId;
+
+  if (focusedEntryId) {
+    const { data: focusRow, error: focusError } = await supabase
+      .from("business_ledger_entries")
+      .select("id, group_id, entry_date")
+      .eq("id", focusedEntryId)
+      .maybeSingle();
+    if (focusError) throw focusError;
+    if (!focusRow) {
+      return { rows: [], totalCount: 0, totals: EMPTY_LEDGER_TOTALS };
+    }
+    pageKeys = focusRow.group_id
+      ? [{ kind: "group", id: focusRow.group_id, sort_date: focusRow.entry_date }]
+      : [{ kind: "entry", id: focusRow.id, sort_date: focusRow.entry_date }];
+    totalCount = 1;
+  } else {
   const endRpc = perfStart("ledgerRowsPaged.rpc");
   const { data: rpcData, error: rpcError } = await tryRpc<LedgerPageRpcResult>(
     supabase,
@@ -1138,17 +1183,6 @@ export async function getBigBookLedgerRowsPaged(
   endRpc();
 
   if (rpcError && !isMissingRpcError(rpcError)) throw rpcError;
-
-  let pageKeys: Array<{ kind: "entry" | "group"; id: string; sort_date: string }> = [];
-  let totalCount = 0;
-  let totals: BigBookLedgerTotals = {
-    pageTotals: [],
-    pageEntryCount: 0,
-    grandTotals: [],
-    grandEntryCount: 0,
-    pagePocketExcludedCount: 0,
-    grandPocketExcludedCount: 0
-  };
 
   if (!rpcError && rpcData) {
     const parsed = rpcData as LedgerPageRpcResult;
@@ -1220,6 +1254,7 @@ export async function getBigBookLedgerRowsPaged(
       pagePocketExcludedCount: pageScanRows.length - pageTotalRows.length,
       grandPocketExcludedCount: scanRows.length - grandTotalRows.length
     };
+  }
   }
 
   const standaloneIds = pageKeys.filter((key) => key.kind === "entry").map((key) => key.id);
@@ -1360,6 +1395,13 @@ export async function getBigBookLedgerRowsPaged(
       return a.created_at < b.created_at ? 1 : -1;
     });
     rows.push({ kind: "group", sort_date: key.sort_date, group, entries });
+  }
+
+  if (focusedEntryId) {
+    const focusedEntries = rows.flatMap((row) =>
+      row.kind === "entry" ? [row.entry] : row.entries
+    );
+    totals = ledgerTotalsFromEntries(focusedEntries);
   }
 
   return { rows, totalCount, totals };
@@ -1983,6 +2025,68 @@ export async function getBigBookVendorActorOutstanding(filters?: {
       };
     })
   );
+}
+
+export const BIG_BOOK_VENDOR_ACTOR_OUTSTANDING_ENTRIES_LIMIT = 500;
+
+export async function getBigBookVendorActorOutstandingEntries(params: {
+  vendorId: string | null;
+  actorId: string;
+  currency: BigBookVendorActorOutstandingRow["currency"];
+  dateFrom?: string;
+  dateTo?: string;
+}): Promise<BigBookVendorActorOutstandingEntriesResult> {
+  const supabase = await createClient();
+  const limit = BIG_BOOK_VENDOR_ACTOR_OUTSTANDING_ENTRIES_LIMIT;
+
+  let query = supabase
+    .from("business_ledger_entries")
+    .select(
+      `
+      id, entry_date, entry_direction, explanation, amount, currency_code, remark,
+      business_ledger_types(name)
+    `,
+      { count: "exact" }
+    )
+    .eq("is_credit", true)
+    .is("credit_settled_at", null)
+    .eq("responsible_actor_id", params.actorId)
+    .eq("currency_code", params.currency);
+
+  query = params.vendorId
+    ? query.eq("vendor_id", params.vendorId)
+    : query.is("vendor_id", null);
+
+  if (params.dateFrom) query = query.gte("entry_date", params.dateFrom);
+  if (params.dateTo) query = query.lte("entry_date", params.dateTo);
+
+  const { data, error, count } = await query
+    .order("entry_date", { ascending: false })
+    .order("created_at", { ascending: false })
+    .range(0, limit - 1);
+
+  if (error) throw error;
+
+  const rows: BigBookVendorActorOutstandingEntry[] = (data ?? []).map((row) => {
+    const type = Array.isArray(row.business_ledger_types)
+      ? row.business_ledger_types[0]
+      : row.business_ledger_types;
+    return {
+      id: row.id,
+      entry_date: row.entry_date,
+      entry_direction: row.entry_direction === "profit" ? "profit" : "spending",
+      type_name: type?.name ?? "-",
+      explanation: row.explanation,
+      amount: Math.abs(Number(row.amount)),
+      currency_code: row.currency_code,
+      remark: row.remark ?? null
+    };
+  });
+
+  return {
+    rows,
+    totalCount: typeof count === "number" ? count : rows.length
+  };
 }
 
 export async function getMonthlySummary(brandId: string) {

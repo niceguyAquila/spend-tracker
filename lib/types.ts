@@ -416,6 +416,22 @@ export type BigBookVendorActorOutstandingRow = {
   open_credit_count: number;
 };
 
+export type BigBookVendorActorOutstandingEntry = {
+  id: string;
+  entry_date: string;
+  entry_direction: "spending" | "profit";
+  type_name: string;
+  explanation: string;
+  amount: number;
+  currency_code: BigBookCashflowCurrency;
+  remark: string | null;
+};
+
+export type BigBookVendorActorOutstandingEntriesResult = {
+  rows: BigBookVendorActorOutstandingEntry[];
+  totalCount: number;
+};
+
 export type CreditBookLedgerType = {
   id: string;
   code: string;

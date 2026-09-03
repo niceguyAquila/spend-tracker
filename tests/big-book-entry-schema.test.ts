@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   bigBookCreditSettleSchema,
   bigBookEntryInputSchema,
-  bigBookEntryUpdateSchema
+  bigBookEntryUpdateSchema,
+  bigBookEntriesQuerySchema,
+  bigBookVendorActorOutstandingEntriesQuerySchema
 } from "@/lib/validation/big-book";
 
 const TYPE_ID = "11111111-1111-1111-1111-111111111111";
@@ -98,5 +100,35 @@ describe("big book entry schema", () => {
     });
     expect(parsed.success).toBe(true);
     if (parsed.success) expect(parsed.data.note).toBeNull();
+  });
+});
+
+describe("big book outstanding entries query schema", () => {
+  it("defaults missing vendorId to none", () => {
+    const parsed = bigBookVendorActorOutstandingEntriesQuerySchema.safeParse({
+      actorId: ACTOR_ID,
+      currency: "MYR"
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.vendorId).toBe("none");
+  });
+
+  it("rejects an invalid vendorId", () => {
+    const parsed = bigBookVendorActorOutstandingEntriesQuerySchema.safeParse({
+      actorId: ACTOR_ID,
+      currency: "MYR",
+      vendorId: "not-a-vendor"
+    });
+    expect(parsed.success).toBe(false);
+  });
+});
+
+describe("big book entries query schema", () => {
+  it("accepts an optional entryId focus", () => {
+    const parsed = bigBookEntriesQuerySchema.safeParse({
+      entryId: ENTRY_ID
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.entryId).toBe(ENTRY_ID);
   });
 });

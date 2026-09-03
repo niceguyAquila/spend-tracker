@@ -118,6 +118,7 @@ export async function GET(request: Request) {
     dateFrom: searchParams.get("dateFrom") ?? "",
     dateTo: searchParams.get("dateTo") ?? "",
     query: searchParams.get("query") ?? "",
+    entryId: searchParams.get("entryId") ?? "",
     page: searchParams.get("page") ?? undefined,
     pageSize: searchParams.get("pageSize") ?? undefined,
     sortBy: searchParams.get("sortBy") ?? undefined,

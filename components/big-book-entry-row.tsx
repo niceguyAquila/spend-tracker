@@ -24,6 +24,7 @@ export type BigBookEntryRowProps = {
   entry: BigBookEntry;
   isGroupMember: boolean;
   stripeClass: string;
+  highlighted?: boolean;
   selected: boolean;
   actionMenuOpen: boolean;
   criticalPending: boolean;
@@ -38,6 +39,7 @@ function BigBookEntryRowInner({
   entry,
   isGroupMember,
   stripeClass,
+  highlighted = false,
   selected,
   actionMenuOpen,
   criticalPending,
@@ -48,7 +50,11 @@ function BigBookEntryRowInner({
   onToggleActionMenu
 }: BigBookEntryRowProps) {
   return (
-    <tr className={`border-b border-[rgb(var(--border))] align-top ${stripeClass}`}>
+    <tr
+      className={`border-b border-[rgb(var(--border))] align-top ${stripeClass}${
+        highlighted ? " bg-[rgb(var(--info)/0.12)] ring-1 ring-inset ring-[rgb(var(--info))]" : ""
+      }`}
+    >
       <td className="overflow-hidden px-3 py-2">
         {isGroupMember ? null : (
           <input

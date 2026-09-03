@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import type {
   BigBookActionBy,
   BigBookActor,
@@ -77,6 +78,7 @@ type Props = {
   initialActorMetrics?: BigBookActorCurrencyMetrics[];
   initialActorPocketMetrics?: BigBookActorPocketMetrics[];
   initialVendorActorOutstanding?: BigBookVendorActorOutstandingRow[];
+  initialEntryId?: string;
 };
 
 type ApiErrorShape = {
@@ -302,8 +304,11 @@ export function BigBookPanel({
   metricsPromise,
   initialActorMetrics,
   initialActorPocketMetrics,
-  initialVendorActorOutstanding
+  initialVendorActorOutstanding,
+  initialEntryId
 }: Props) {
+  const router = useRouter();
+  const [focusedEntryId, setFocusedEntryId] = useState<string | null>(initialEntryId ?? null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -408,7 +413,16 @@ export function BigBookPanel({
   const [totalCount, setTotalCount] = useState<number>(initialTotalCount);
   const [totals, setTotals] = useState<BigBookLedgerTotals>(initialTotals);
   const [entriesLoading, setEntriesLoading] = useState(false);
-  const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(() => new Set());
+  const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(() => {
+    const next = new Set<string>();
+    if (!initialEntryId) return next;
+    for (const row of initialLedgerRows) {
+      if (row.kind === "group" && row.entries.some((entry) => entry.id === initialEntryId)) {
+        next.add(row.group.id);
+      }
+    }
+    return next;
+  });
   const [groupSubmitting, setGroupSubmitting] = useState(false);
   const [pendingDeleteGroup, setPendingDeleteGroup] = useState<{
     group: BigBookEntryGroup;
@@ -539,7 +553,7 @@ export function BigBookPanel({
 
   useEffect(() => {
     ledgerPagination.setPage(0);
-  }, [query, dateFrom, dateTo, typeFilter, currencyFilter, actorFilter, directionFilter, vendorTypeFilter, vendorFilter, pocketFilter, actionByFilter, creditFlagFilter, creditStatusFilter, sortBy, sortDir]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [query, dateFrom, dateTo, typeFilter, currencyFilter, actorFilter, directionFilter, vendorTypeFilter, vendorFilter, pocketFilter, actionByFilter, creditFlagFilter, creditStatusFilter, focusedEntryId, sortBy, sortDir]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Race-safe request token: ignore stale fetch responses.
   const loadRequestIdRef = useRef(0);
@@ -573,6 +587,7 @@ export function BigBookPanel({
       for (const actionById of actionByFilter) params.append("actionById", actionById);
       for (const creditFlag of creditFlagFilter) params.append("creditFlag", creditFlag);
       for (const creditStatus of creditStatusFilter) params.append("creditStatus", creditStatus);
+      if (focusedEntryId) params.set("entryId", focusedEntryId);
 
       const response = await fetch(`/api/big-book/entries?${params.toString()}`);
       if (handleUnauthorizedResponse(response)) return;
@@ -633,6 +648,7 @@ export function BigBookPanel({
     actionByFilter,
     creditFlagFilter,
     creditStatusFilter,
+    focusedEntryId,
     sortBy,
     sortDir
   ]);
@@ -673,7 +689,8 @@ export function BigBookPanel({
     Boolean(pocketFilter.length) ||
     Boolean(actionByFilter.length) ||
     Boolean(creditFlagFilter.length) ||
-    Boolean(creditStatusFilter.length);
+    Boolean(creditStatusFilter.length) ||
+    Boolean(focusedEntryId);
 
   const draftFiltersActive =
     Boolean(draftQuery) ||
@@ -688,9 +705,22 @@ export function BigBookPanel({
     Boolean(draftPocketFilter.length) ||
     Boolean(draftActionByFilter.length) ||
     Boolean(draftCreditFlagFilter.length) ||
-    Boolean(draftCreditStatusFilter.length);
+    Boolean(draftCreditStatusFilter.length) ||
+    Boolean(focusedEntryId);
+
+  function discardFocusedEntryClientOnly() {
+    if (!focusedEntryId) return;
+    setFocusedEntryId(null);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("entryId") && url.hash !== "#ledger-records") return;
+    url.searchParams.delete("entryId");
+    url.hash = "";
+    window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+  }
 
   function applyFilters() {
+    discardFocusedEntryClientOnly();
     setQuery(draftQuery);
     setDateFrom(draftDateFrom);
     setDateTo(draftDateTo);
@@ -707,6 +737,10 @@ export function BigBookPanel({
   }
 
   function resetFilters() {
+    if (focusedEntryId) {
+      setFocusedEntryId(null);
+      router.replace("/dashboard/big-book", { scroll: false });
+    }
     setDraftQuery("");
     setDraftDateFrom("");
     setDraftDateTo("");
@@ -754,6 +788,11 @@ export function BigBookPanel({
     if (sortBy !== key) return "none";
     return sortDir === "asc" ? "ascending" : "descending";
   }
+
+  useEffect(() => {
+    if (!initialEntryId) return;
+    document.getElementById("ledger-records")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [initialEntryId]);
 
   const advancedDraftCount =
     (draftCurrencyFilter.length ? 1 : 0) +
@@ -1905,6 +1944,7 @@ export function BigBookPanel({
         entry={entry}
         isGroupMember={isGroupMember}
         stripeClass={stripe}
+        highlighted={focusedEntryId === entry.id}
         selected={selectedEntryIds.has(entry.id)}
         actionMenuOpen={openActionMenu?.id === entry.id}
         criticalPending={criticalPending}
@@ -1921,7 +1961,7 @@ export function BigBookPanel({
     <div className="space-y-6">
       <BigBookMetricsSection promise={metricsPromise} override={metricsOverride} />
 
-      <section className="card" aria-busy={criticalPending}>
+      <section id="ledger-records" className="card" aria-busy={criticalPending}>
         {/* Sticky so the create/import actions stay reachable while scanning rows.
             Sits above the table's sticky head and the blocking overlay (both z-20). */}
         <div className="sticky top-0 z-30 -mx-4 -mt-4 mb-4 rounded-t-xl border-b border-[rgb(var(--border))] bg-[rgb(var(--surface))] lg:-mx-5 lg:-mt-5">
@@ -1967,7 +2007,7 @@ export function BigBookPanel({
           </div>
         </div>
         <form
-          className="mb-4 space-y-3"
+          className="relative z-10 mb-4 space-y-3"
           onSubmit={(event) => {
             event.preventDefault();
             applyFilters();
@@ -2188,7 +2228,7 @@ export function BigBookPanel({
           </div>
         ) : null}
         <div
-          className="max-h-[70vh] overflow-auto"
+          className="relative z-0 max-h-[70vh] overflow-auto"
           onScroll={() => {
             // Action menus are positioned from the trigger's document coordinates,
             // so they would drift away from their row once the table scrolls.

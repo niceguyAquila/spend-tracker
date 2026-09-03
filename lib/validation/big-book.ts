@@ -287,6 +287,12 @@ export const bigBookEntriesQuerySchema = z.object({
   dateFrom: optionalString,
   dateTo: optionalString,
   query: z.string().max(200).optional().or(z.literal("")).transform((v) => (v ? v : undefined)),
+  entryId: z
+    .string()
+    .uuid()
+    .optional()
+    .or(z.literal(""))
+    .transform((value) => (value && value.length ? value : undefined)),
   page: z.coerce.number().int().min(0).default(0),
   pageSize: z.coerce.number().int().min(1).max(200).default(20),
   sortBy: bigBookLedgerSortKeySchema.optional().default("entry_date"),
@@ -296,6 +302,14 @@ export const bigBookEntriesQuerySchema = z.object({
 export const bigBookCreditsPickerQuerySchema = z.object({
   query: z.string().max(200).optional().or(z.literal("")).transform((v) => (v ? v : undefined)),
   limit: z.coerce.number().int().min(1).max(200).default(50)
+});
+
+export const bigBookVendorActorOutstandingEntriesQuerySchema = z.object({
+  actorId: z.string().uuid(),
+  currency: bigBookCurrencySchema,
+  vendorId: z.union([z.string().uuid(), z.literal("none")]).default("none"),
+  dateFrom: optionalString,
+  dateTo: optionalString
 });
 
 export type BigBookEntriesQuery = z.infer<typeof bigBookEntriesQuerySchema>;

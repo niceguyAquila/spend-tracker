@@ -408,6 +408,21 @@ describe("big book entries route", () => {
     );
   });
 
+  it("forwards entryId for GET rows view", async () => {
+    const { GET } = await import("@/app/api/big-book/entries/route");
+    const request = new Request(
+      "https://app.localhost/api/big-book/entries?view=rows&entryId=11111111-1111-4111-8111-111111111111"
+    );
+
+    const response = await GET(request);
+    expect(response.status).toBe(200);
+    expect(getBigBookLedgerRowsPagedMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entryId: "11111111-1111-4111-8111-111111111111"
+      })
+    );
+  });
+
   it("returns 400 when GET has an unknown sort key", async () => {
     const { GET } = await import("@/app/api/big-book/entries/route");
     const request = new Request("https://app.localhost/api/big-book/entries?view=rows&sortBy=not_a_column");
