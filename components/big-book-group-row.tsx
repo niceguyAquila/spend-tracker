@@ -82,19 +82,19 @@ function BigBookGroupHeaderRowInner({
             </div>
           </div>
         </td>
-        <td className="overflow-hidden whitespace-nowrap px-3 py-2 text-right tabular-nums">
+        <td className="px-3 py-2 text-right tabular-nums">
           {totals.length ? (
-            <div className="space-y-1">
+            <div className="flex flex-col items-stretch gap-1">
               {totals.map((total) => (
-                <span
+                <div
                   key={total.currency}
-                  className={`inline-flex w-full items-baseline justify-between gap-2 ${getAmountColorClass(
+                  className={`flex min-w-0 items-baseline justify-between gap-2 ${getAmountColorClass(
                     total.net
                   )}`}
                 >
-                  <span>{total.currency}</span>
-                  <span>{formatAmount(total.net, NET_AMOUNT_FORMAT)}</span>
-                </span>
+                  <span className="shrink-0 text-xs">{total.currency}</span>
+                  <span className="min-w-0 break-all">{formatAmount(total.net, NET_AMOUNT_FORMAT)}</span>
+                </div>
               ))}
             </div>
           ) : (
