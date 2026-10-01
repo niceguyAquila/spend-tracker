@@ -9,6 +9,7 @@ import type {
   BigBookAllowedUserOption,
   BigBookLedgerSubType,
   BigBookLedgerType,
+  BigBookTypeVendorTypeMap,
   BigBookVendor,
   BigBookVendorType
 } from "@/lib/types";
@@ -21,6 +22,7 @@ import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { TableEmptyState } from "@/components/ui/table-empty-state";
 import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
+import { BigBookTypeVendorTypeMapSection } from "@/components/big-book-type-vendor-type-map-section";
 
 type StatusFilter = "all" | "active" | "inactive";
 
@@ -33,6 +35,7 @@ type Props = {
   initialPockets: BigBookActorPocket[];
   initialActors: BigBookActor[];
   allowedUsers: BigBookAllowedUserOption[];
+  initialTypeVendorTypeMaps?: BigBookTypeVendorTypeMap[];
 };
 
 type ApiErrorShape = {
@@ -68,7 +71,8 @@ export function BigBookSettingsPanel({
   initialActionBy,
   initialPockets,
   initialActors,
-  allowedUsers
+  allowedUsers,
+  initialTypeVendorTypeMaps = []
 }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -1026,6 +1030,12 @@ export function BigBookSettingsPanel({
           rangeLabel={typePagination.rangeLabel}
         />
       </section>
+
+      <BigBookTypeVendorTypeMapSection
+        initialMaps={initialTypeVendorTypeMaps}
+        types={initialTypes}
+        vendorTypes={initialVendorTypes}
+      />
 
       <section
         className="card relative"

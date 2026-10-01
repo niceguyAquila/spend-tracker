@@ -59,12 +59,14 @@ export function BigBookMetricsSkeleton() {
 
 export function BigBookMetricsCardsView({
   actorCurrencyMetrics,
-  actorPocketMetrics,
-  vendorActorOutstanding
+  actorPocketMetrics: _actorPocketMetrics,
+  vendorActorOutstanding,
+  onOutstandingSettled
 }: {
   actorCurrencyMetrics: BigBookActorCurrencyMetrics[];
   actorPocketMetrics: BigBookActorPocketMetrics[];
   vendorActorOutstanding: BigBookVendorActorOutstandingRow[];
+  onOutstandingSettled?: () => void;
 }) {
   const combinedCurrencyTotals = actorCurrencyMetrics.reduce(
     (acc, metric) => {
@@ -79,11 +81,10 @@ export function BigBookMetricsCardsView({
       <section className="card">
         <h2 className="text-lg font-semibold">Grand Total by Actor (All Time)</h2>
         <p className="mt-1 text-sm text-muted">
-          Total amount grouped by actor and currency across all Big Book records. Pocket transactions are
-          excluded from the actor columns and reported under Pocket Totals instead. Linked Web Spending
-          nets are included in Pocket Totals with a breakdown.
+          Total amount grouped by actor and currency across all Big Book records. Pocket-tagged entries
+          stay excluded from these actor columns.
         </p>
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <article className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-4">
             <p className="font-semibold">All Actors</p>
             <div className="mt-3 space-y-2 text-sm">
@@ -109,53 +110,38 @@ export function BigBookMetricsCardsView({
           {!actorCurrencyMetrics.length ? (
             <p className="text-sm text-muted sm:col-span-1 xl:col-span-2">No actor totals yet.</p>
           ) : null}
-
-          <article className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-4">
-            <p className="font-semibold">Pocket Totals by Actor</p>
-            {actorPocketMetrics.length ? (
-              <div className="mt-3 space-y-4 text-sm">
-                {actorPocketMetrics.map((group) => (
-                  <div key={group.actor_id} className="space-y-2">
-                    <p className="text-xs font-medium uppercase text-[rgb(var(--text-muted))]">
-                      {group.actor_display_name}
-                    </p>
-                    {group.pockets.map((pocket) => (
-                      <TotalsBox
-                        key={pocket.pocket_id}
-                        label={`${pocket.pocket_name}${!pocket.is_active ? " (Inactive)" : ""}`}
-                        value={pocket.net}
-                      />
-                    ))}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-3 text-sm text-muted">
-                No pockets yet. Add one under Big Book Settings to start tracking pocket totals.
-              </p>
-            )}
-          </article>
         </div>
       </section>
 
       <section className="card">
         <h2 className="text-lg font-semibold">Outstanding Credit by Vendor and Actor (All Time)</h2>
         <p className="mt-1 text-sm text-muted">
-          Total of open credits (not yet marked settled) by vendor and actor, per currency.
+          Total of open credits (not yet marked settled) by vendor and actor, per currency. Settle one
+          vendor row or multi-select rows/credits for bulk settlement.
         </p>
-        <BigBookVendorActorOutstandingTable rows={vendorActorOutstanding} />
+        <BigBookVendorActorOutstandingTable
+          rows={vendorActorOutstanding}
+          onSettled={onOutstandingSettled}
+        />
       </section>
     </>
   );
 }
 
-function BigBookMetricsFromPromise({ promise }: { promise: Promise<BigBookMetricsBundle> }) {
+function BigBookMetricsFromPromise({
+  promise,
+  onOutstandingSettled
+}: {
+  promise: Promise<BigBookMetricsBundle>;
+  onOutstandingSettled?: () => void;
+}) {
   const metrics = use(promise);
   return (
     <BigBookMetricsCardsView
       actorCurrencyMetrics={metrics.actorMetrics}
       actorPocketMetrics={metrics.actorPocketMetrics}
       vendorActorOutstanding={metrics.vendorActorOutstanding}
+      onOutstandingSettled={onOutstandingSettled}
     />
   );
 }
@@ -166,10 +152,12 @@ function BigBookMetricsFromPromise({ promise }: { promise: Promise<BigBookMetric
  */
 export function BigBookMetricsSection({
   promise,
-  override
+  override,
+  onOutstandingSettled
 }: {
   promise?: Promise<BigBookMetricsBundle>;
   override?: BigBookMetricsBundle | null;
+  onOutstandingSettled?: () => void;
 }) {
   if (override) {
     return (
@@ -177,6 +165,7 @@ export function BigBookMetricsSection({
         actorCurrencyMetrics={override.actorMetrics}
         actorPocketMetrics={override.actorPocketMetrics}
         vendorActorOutstanding={override.vendorActorOutstanding}
+        onOutstandingSettled={onOutstandingSettled}
       />
     );
   }
@@ -187,7 +176,7 @@ export function BigBookMetricsSection({
 
   return (
     <Suspense fallback={<BigBookMetricsSkeleton />}>
-      <BigBookMetricsFromPromise promise={promise} />
+      <BigBookMetricsFromPromise promise={promise} onOutstandingSettled={onOutstandingSettled} />
     </Suspense>
   );
 }

@@ -7,11 +7,15 @@ import type {
   BigBookLedgerSubType,
   BigBookLedgerType,
   BigBookSettlementTargetRef,
+  BigBookTypeVendorTypeMap,
   BigBookVendor,
   BigBookVendorType
 } from "@/lib/types";
 import { formatAmount } from "@/lib/display-format";
 import { FormSection } from "@/components/ui/form-section";
+import { mappedVendorTypeIdForType } from "@/lib/big-book/type-vendor-type-map";
+
+export { mappedVendorTypeIdForType } from "@/lib/big-book/type-vendor-type-map";
 
 export type EntryFormState = {
   entry_date: string;
@@ -73,13 +77,18 @@ export function createEmptyEntryForm(options: {
   today: string;
   defaultTypeId: string;
   defaultActorId: string;
+  typeVendorTypeMaps?: BigBookTypeVendorTypeMap[];
 }): EntryFormState {
+  const mappedVendorTypeId = mappedVendorTypeIdForType(
+    options.defaultTypeId,
+    options.typeVendorTypeMaps
+  );
   return {
     entry_date: options.today,
     entry_direction: "spending",
     entry_type_id: options.defaultTypeId,
     entry_sub_type_id: "",
-    vendor_type_id: "",
+    vendor_type_id: mappedVendorTypeId,
     vendor_id: "",
     pocket_id: "",
     action_by_id: "",
@@ -108,6 +117,7 @@ type Props = {
   actionByOptions: BigBookActionBy[];
   pockets: BigBookActorPocket[];
   actors: BigBookActor[];
+  typeVendorTypeMaps?: BigBookTypeVendorTypeMap[];
   currencies?: Array<"IDR" | "MYR" | "USDT" | "TRX">;
   showAttachments?: boolean;
   attachmentFiles?: File[];
@@ -131,12 +141,11 @@ export function BigBookEntryFields({
   value,
   onChange,
   types,
-  subTypes,
   vendorTypes,
-  vendors,
   actionByOptions,
   pockets,
   actors,
+  typeVendorTypeMaps = [],
   currencies = ["IDR", "MYR", "USDT", "TRX"],
   showAttachments = false,
   attachmentFiles = [],
@@ -151,13 +160,7 @@ export function BigBookEntryFields({
   layout = "full"
 }: Props) {
   const activeTypes = types.filter((row) => row.is_active);
-  const subTypesForForm = subTypes.filter(
-    (row) => row.is_active && row.entry_type_id === value.entry_type_id
-  );
   const activeVendorTypes = vendorTypes.filter((row) => row.is_active);
-  const vendorsForForm = vendors.filter(
-    (row) => row.is_active && row.vendor_type_id === value.vendor_type_id
-  );
   const activeActionBy = actionByOptions.filter((row) => row.is_active);
   const pocketsForForm = pockets.filter(
     (row) =>
@@ -197,6 +200,16 @@ export function BigBookEntryFields({
 
   function patch(partial: Partial<EntryFormState>) {
     onChange({ ...value, ...partial });
+  }
+
+  function applyTypeChange(nextTypeId: string) {
+    const mappedVendorTypeId = mappedVendorTypeIdForType(nextTypeId, typeVendorTypeMaps);
+    patch({
+      entry_type_id: nextTypeId,
+      entry_sub_type_id: "",
+      vendor_type_id: mappedVendorTypeId,
+      vendor_id: mappedVendorTypeId === value.vendor_type_id ? value.vendor_id : ""
+    });
   }
 
   const moneyFields = (
@@ -302,12 +315,7 @@ export function BigBookEntryFields({
         <select
           className="field mt-1"
           value={value.entry_type_id}
-          onChange={(event) =>
-            patch({
-              entry_type_id: event.target.value,
-              entry_sub_type_id: ""
-            })
-          }
+          onChange={(event) => applyTypeChange(event.target.value)}
         >
           {activeTypes.map((type) => (
             <option key={type.id} value={type.id}>
@@ -316,22 +324,7 @@ export function BigBookEntryFields({
           ))}
         </select>
       </label>
-      <label className="text-sm">
-        Sub-Type
-        <select
-          className="field mt-1"
-          value={value.entry_sub_type_id}
-          onChange={(event) => patch({ entry_sub_type_id: event.target.value })}
-          disabled={!subTypesForForm.length}
-        >
-          <option value="">(none)</option>
-          {subTypesForForm.map((subType) => (
-            <option key={subType.id} value={subType.id}>
-              {subType.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      {/* Sub-Type and Vendor Name are hidden for now; values remain stored and linked. */}
       <label className="text-sm">
         Vendor Type
         <select
@@ -351,23 +344,37 @@ export function BigBookEntryFields({
             </option>
           ))}
         </select>
+        {typeVendorTypeMaps.length ? (
+          <span className="mt-1 block text-xs text-muted">
+            Auto-fills from Type mapping when available; you can still override.
+          </span>
+        ) : null}
       </label>
-      <label className="text-sm">
-        Vendor Name
-        <select
-          className="field mt-1"
-          value={value.vendor_id}
-          onChange={(event) => patch({ vendor_id: event.target.value })}
-          disabled={!value.vendor_type_id || !vendorsForForm.length}
-        >
-          <option value="">(none)</option>
-          {vendorsForForm.map((vendor) => (
-            <option key={vendor.id} value={vendor.id}>
-              {vendor.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      {!hideCreditToggle && !isSettlementMode ? (
+        <label className={`flex items-start gap-2 text-sm ${spanClass}`}>
+          <input
+            className="mt-1"
+            type="checkbox"
+            checked={value.is_credit}
+            onChange={(event) =>
+              patch({
+                is_credit: event.target.checked,
+                settles_entry_id: "",
+                settlement_conversion_rate: "",
+                settlement_note: "",
+                close_credit: false,
+                credit_settlement_note: ""
+              })
+            }
+          />
+          <span>
+            <span className="font-medium">Mark as Credit</span>
+            <span className="mt-0.5 block text-xs text-muted">
+              Vendor owes our company this amount. You can record settlement payments later.
+            </span>
+          </span>
+        </label>
+      ) : null}
     </>
   );
 
@@ -524,32 +531,6 @@ export function BigBookEntryFields({
           </FormSection>
         </>
       )}
-
-      {!hideCreditToggle && !isSettlementMode ? (
-        <label className="flex items-start gap-2 text-sm">
-          <input
-            className="mt-1"
-            type="checkbox"
-            checked={value.is_credit}
-            onChange={(event) =>
-              patch({
-                is_credit: event.target.checked,
-                settles_entry_id: "",
-                settlement_conversion_rate: "",
-                settlement_note: "",
-                close_credit: false,
-                credit_settlement_note: ""
-              })
-            }
-          />
-          <span>
-            <span className="font-medium">Mark as Credit</span>
-            <span className="mt-0.5 block text-xs text-muted">
-              Vendor owes our company this amount. You can record settlement payments later.
-            </span>
-          </span>
-        </label>
-      ) : null}
 
       {isSettlementMode ? (
         <div className="space-y-3">

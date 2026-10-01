@@ -80,12 +80,16 @@ function BigBookEntryRowInner({
           {entry.entry_direction === "profit" ? "In" : "Out"}
         </span>
       </td>
-      <td className="overflow-hidden break-words px-3 py-2">{entry.type_name}</td>
       <td className="overflow-hidden break-words px-3 py-2">
-        {entry.sub_type_name ? entry.sub_type_name : <span className="text-xs text-muted">-</span>}
+        <div>{entry.type_name}</div>
+        {entry.vendor_type_name ? (
+          <div className="mt-0.5 text-xs text-muted">{entry.vendor_type_name}</div>
+        ) : (
+          <div className="mt-0.5 text-xs text-muted">-</div>
+        )}
       </td>
       <td className="overflow-hidden break-words px-3 py-2">
-        {entry.vendor_type_name ? entry.vendor_type_name : <span className="text-xs text-muted">-</span>}
+        {entry.sub_type_name ? entry.sub_type_name : <span className="text-xs text-muted">-</span>}
       </td>
       <td className="overflow-hidden break-words px-3 py-2">
         {entry.vendor_name ? entry.vendor_name : <span className="text-xs text-muted">-</span>}
@@ -134,9 +138,6 @@ function BigBookEntryRowInner({
         ) : (
           <span className="text-xs text-muted">-</span>
         )}
-      </td>
-      <td className="overflow-hidden break-words px-3 py-2">
-        {entry.pocket_name ? entry.pocket_name : <span className="text-xs text-muted">-</span>}
       </td>
       <td className="overflow-hidden break-words px-3 py-2">
         {entry.remark ? (

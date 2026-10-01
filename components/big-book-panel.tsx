@@ -16,6 +16,7 @@ import type {
   BigBookLedgerSubType,
   BigBookLedgerType,
   BigBookSettlementTargetRef,
+  BigBookTypeVendorTypeMap,
   BigBookVendor,
   BigBookVendorActorOutstandingRow,
   BigBookVendorType
@@ -75,6 +76,7 @@ type Props = {
   initialActionBy: BigBookActionBy[];
   initialPockets: BigBookActorPocket[];
   initialActors: BigBookActor[];
+  initialTypeVendorTypeMaps?: BigBookTypeVendorTypeMap[];
   initialLedgerRows: BigBookLedgerRow[];
   initialTotalCount: number;
   initialTotals: BigBookLedgerTotals;
@@ -124,21 +126,19 @@ function arraysEqual(left: string[], right: string[]) {
 const SUPPORTED_CURRENCIES: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR", "USDT", "TRX"];
 
 const LEDGER_SKELETON_ROW_COUNT = 6;
-const LEDGER_COLUMN_COUNT = 16;
+const LEDGER_COLUMN_COUNT = 14;
 const LEDGER_COLUMN_WIDTH_DEFAULTS: Record<string, number> = {
   select: 44,
   entry_date: 110,
   entry_direction: 90,
-  type_name: 130,
+  type_name: 150,
   sub_type_name: 120,
-  vendor_type_name: 120,
   vendor_name: 140,
   actor_display_name: 110,
   action_by_name: 120,
   explanation: 220,
   amount: 150,
   credit: 160,
-  pocket_name: 120,
   remark: 180,
   attachments: 140,
   actions: 100
@@ -305,6 +305,7 @@ export function BigBookPanel({
   initialActionBy,
   initialPockets,
   initialActors,
+  initialTypeVendorTypeMaps = [],
   initialLedgerRows,
   initialTotalCount,
   initialTotals,
@@ -536,15 +537,31 @@ export function BigBookPanel({
   const defaultTypeId = activeTypes[0]?.id ?? initialTypes[0]?.id ?? "";
   const defaultActorId = initialActors[0]?.id ?? "";
   const newEntryForm = useCallback(
-    () => createEmptyEntryForm({ today, defaultTypeId, defaultActorId }),
-    [today, defaultTypeId, defaultActorId]
+    () =>
+      createEmptyEntryForm({
+        today,
+        defaultTypeId,
+        defaultActorId,
+        typeVendorTypeMaps: initialTypeVendorTypeMaps
+      }),
+    [today, defaultTypeId, defaultActorId, initialTypeVendorTypeMaps]
   );
 
   const [groupLabel, setGroupLabel] = useState("");
   const [groupRemark, setGroupRemark] = useState("");
   const [groupEntryForms, setGroupEntryForms] = useState<EntryFormState[]>(() => [
-    createEmptyEntryForm({ today, defaultTypeId, defaultActorId }),
-    createEmptyEntryForm({ today, defaultTypeId, defaultActorId })
+    createEmptyEntryForm({
+      today,
+      defaultTypeId,
+      defaultActorId,
+      typeVendorTypeMaps: initialTypeVendorTypeMaps
+    }),
+    createEmptyEntryForm({
+      today,
+      defaultTypeId,
+      defaultActorId,
+      typeVendorTypeMaps: initialTypeVendorTypeMaps
+    })
   ]);
   // Which transaction cards are expanded in create/edit grouped mode.
   const [expandedCreateTxnIndexes, setExpandedCreateTxnIndexes] = useState<Set<number>>(
@@ -2001,7 +2018,11 @@ export function BigBookPanel({
 
   return (
     <div className="space-y-6">
-      <BigBookMetricsSection promise={metricsPromise} override={metricsOverride} />
+      <BigBookMetricsSection
+        promise={metricsPromise}
+        override={metricsOverride}
+        onOutstandingSettled={triggerRefresh}
+      />
 
       <section id="ledger-records" className="card" aria-busy={criticalPending}>
         {/* Sticky so the create/import actions stay reachable while scanning rows.
@@ -2311,7 +2332,6 @@ export function BigBookPanel({
                     ["entry_direction", "Cash Flow"],
                     ["type_name", "Type"],
                     ["sub_type_name", "Sub-Type"],
-                    ["vendor_type_name", "Vendor Type"],
                     ["vendor_name", "Vendor Name"],
                     ["actor_display_name", "Actor"],
                     ["action_by_name", "Action By"],
@@ -2355,19 +2375,6 @@ export function BigBookPanel({
                     {...getResizeHandleProps("credit")}
                   />
                 </th>
-                <th className="relative px-3 py-2" aria-sort={ariaSortFor("pocket_name")}>
-                  <button type="button" className="font-semibold" onClick={() => toggleSort("pocket_name")}>
-                    Pocket
-                    {sortMarker("pocket_name")}
-                  </button>
-                  <span
-                    role="separator"
-                    aria-orientation="vertical"
-                    aria-label="Resize Pocket column"
-                    className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize touch-none select-none hover:bg-[rgb(var(--primary)/0.35)]"
-                    {...getResizeHandleProps("pocket_name")}
-                  />
-                </th>
                 {(
                   [
                     ["remark", "Remark"],
@@ -2402,13 +2409,11 @@ export function BigBookPanel({
                       <td className="px-3 py-2"><div className="h-4 w-28 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
-                      <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-28 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-56 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-5 w-16 rounded-full bg-[rgb(var(--surface-muted))]" /></td>
-                      <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-20 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-16 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-8 w-20 rounded bg-[rgb(var(--surface-muted))]" /></td>
@@ -2751,6 +2756,7 @@ export function BigBookPanel({
               actionByOptions={initialActionBy}
               pockets={initialPockets}
               actors={initialActors}
+              typeVendorTypeMaps={initialTypeVendorTypeMaps}
               currencies={currencies}
               showAttachments
               showGasFee
@@ -2848,6 +2854,7 @@ export function BigBookPanel({
                           actionByOptions={initialActionBy}
                           pockets={initialPockets}
                           actors={initialActors}
+                          typeVendorTypeMaps={initialTypeVendorTypeMaps}
                           currencies={currencies}
                           layout="nested"
                           showGasFee
@@ -3093,6 +3100,7 @@ export function BigBookPanel({
                         actionByOptions={initialActionBy}
                         pockets={initialPockets}
                         actors={initialActors}
+                        typeVendorTypeMaps={initialTypeVendorTypeMaps}
                         currencies={currencies}
                         layout="nested"
                       />
@@ -3128,6 +3136,7 @@ export function BigBookPanel({
             actionByOptions={initialActionBy}
             pockets={initialPockets}
             actors={initialActors}
+            typeVendorTypeMaps={initialTypeVendorTypeMaps}
             currencies={currencies}
             settlesEntry={editSettlesEntry}
             fetchingConversionRate={fetchingConversionRate}
@@ -3353,6 +3362,7 @@ export function BigBookPanel({
             actionByOptions={initialActionBy}
             pockets={initialPockets}
             actors={initialActors}
+            typeVendorTypeMaps={initialTypeVendorTypeMaps}
             currencies={currencies}
             showAttachments
             attachmentFiles={settlementAttachmentFiles}
