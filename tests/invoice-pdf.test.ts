@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { formatInvoiceMoney } from "@/lib/big-book/invoice-money";
 import { renderInvoicePdf } from "@/lib/big-book/invoice-pdf";
+
+describe("formatInvoiceMoney", () => {
+  it("formats with currency first, commas, and two decimal places", () => {
+    expect(formatInvoiceMoney(3006610, "RM")).toBe("RM 3,006,610.00");
+    expect(formatInvoiceMoney(1500, "USDT")).toBe("USDT 1,500.00");
+    expect(formatInvoiceMoney(12.3456, "MYR")).toBe("MYR 12.3456");
+  });
+});
 
 describe("renderInvoicePdf", () => {
   it("produces a PDF buffer with sample-equivalent fields", async () => {
