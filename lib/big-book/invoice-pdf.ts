@@ -277,54 +277,35 @@ export async function renderInvoicePdf(payload: InvoicePdfPayload): Promise<Buff
   });
   y = doc.y + 16;
 
-  // Notes / Terms — order: Wallets → FX note → manual note
+  // Notes / Terms — continuous block: wallets → FX note → manual note (no sub-labels)
   ensureSpace(80);
   drawRule(doc, left, y, pageWidth);
   y += 12;
 
   doc.font("Helvetica-Bold").fontSize(11).text("Notes / Terms", left, y);
   y = doc.y + 8;
-
-  // 1. Wallets
-  ensureSpace(40);
-  doc.font("Helvetica-Bold").fontSize(10).text("Wallets", left, y);
-  y = doc.y + 4;
-  if (payload.wallets.length) {
-    doc.font("Helvetica").fontSize(9);
-    for (const wallet of payload.wallets) {
-      ensureSpace(28);
-      const label = `${wallet.name} (${wallet.network})`;
-      y = drawWrappedText(doc, label, left, y, { width: pageWidth, fontSize: 9 });
-      y = drawWrappedText(doc, wallet.address, left, y, { width: pageWidth, fontSize: 9 });
-      y += 6;
-    }
-  } else {
-    doc.font("Helvetica").fontSize(9).text("—", left, y);
-    y = doc.y + 8;
-  }
-
-  // 2. FX Note
-  ensureSpace(36);
-  doc.font("Helvetica-Bold").fontSize(10).text("FX Note", left, y);
-  y = doc.y + 4;
   doc.font("Helvetica").fontSize(9);
+
+  const noteBlocks: string[] = [];
+  for (const wallet of payload.wallets) {
+    noteBlocks.push(`${wallet.name} (${wallet.network})`);
+    noteBlocks.push(wallet.address);
+  }
   if (payload.fx_note.trim()) {
-    y = drawWrappedText(doc, payload.fx_note.trim(), left, y, { width: pageWidth, fontSize: 9 });
-    y += 8;
-  } else {
-    doc.text("—", left, y);
-    y = doc.y + 8;
+    noteBlocks.push(payload.fx_note.trim());
+  }
+  if (payload.notes.trim()) {
+    noteBlocks.push(payload.notes.trim());
   }
 
-  // 3. Manual input note
-  ensureSpace(36);
-  doc.font("Helvetica-Bold").fontSize(10).text("Notes", left, y);
-  y = doc.y + 4;
-  doc.font("Helvetica").fontSize(9);
-  if (payload.notes.trim()) {
-    drawWrappedText(doc, payload.notes.trim(), left, y, { width: pageWidth, fontSize: 9 });
-  } else {
+  if (!noteBlocks.length) {
     doc.text("—", left, y);
+  } else {
+    for (const block of noteBlocks) {
+      ensureSpace(24);
+      y = drawWrappedText(doc, block, left, y, { width: pageWidth, fontSize: 9 });
+      y += 4;
+    }
   }
 
   doc.end();
