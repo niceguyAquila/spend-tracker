@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { formatAmount } from "@/lib/display-format";
+import { formatAmountInput, parseAmountInput } from "@/components/big-book-entry-fields";
+import { formatInvoiceMoney } from "@/lib/big-book/invoice-money";
 import type { BigBookCashflowCurrency, BigBookInvoiceWallet } from "@/lib/types";
 
 export type InvoiceBuilderCreditDraft = {
@@ -82,7 +84,7 @@ function creditToLine(credit: InvoiceBuilderCreditDraft): InvoiceLineDraft {
     unit_no: "1",
     period: credit.entry_date,
     description: credit.explanation || credit.remark || "Open credit",
-    price: String(Math.abs(credit.amount)),
+    price: formatAmountInput(String(Math.abs(credit.amount))),
     big_book_entry_id: credit.id
   };
 }
@@ -108,7 +110,7 @@ function extractApiError(error: unknown, fallback: string) {
 }
 
 function parsePrice(value: string) {
-  const normalized = value.replace(/,/g, "").trim();
+  const normalized = parseAmountInput(value).trim();
   if (!normalized) return NaN;
   return Number(normalized);
 }
@@ -386,7 +388,7 @@ export function BigBookInvoiceBuilderModal({ open, seed, wallets: walletsProp, o
           <p className="text-sm text-muted">
             Total{" "}
             <span className="font-medium text-[rgb(var(--text))]">
-              {formatAmount(total, { minimumFractionDigits: 0, maximumFractionDigits: 4 })} {currency}
+              {formatInvoiceMoney(total, currency)}
             </span>
           </p>
           <div className="flex gap-2">
@@ -610,9 +612,11 @@ export function BigBookInvoiceBuilderModal({ open, seed, wallets: walletsProp, o
                     </td>
                     <td className="px-2 py-2">
                       <input
-                        className="field w-full"
+                        className="field w-full text-right"
                         value={line.price}
-                        onChange={(e) => updateLine(line.key, { price: e.target.value })}
+                        onChange={(e) => updateLine(line.key, { price: formatAmountInput(e.target.value) })}
+                        inputMode="decimal"
+                        aria-label="Price"
                       />
                     </td>
                     <td className="px-2 py-2 text-right">

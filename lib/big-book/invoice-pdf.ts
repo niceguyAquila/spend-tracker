@@ -1,4 +1,5 @@
 import PDFDocument from "pdfkit";
+import { formatInvoiceMoney } from "@/lib/big-book/invoice-money";
 
 export type InvoicePdfWallet = {
   name: string;
@@ -32,14 +33,7 @@ export type InvoicePdfPayload = {
   wallets: InvoicePdfWallet[];
 };
 
-function formatMoney(value: number, currency: string) {
-  const abs = Math.abs(value);
-  const formatted = abs.toLocaleString("en-US", {
-    minimumFractionDigits: Number.isInteger(abs) ? 0 : 2,
-    maximumFractionDigits: 4
-  });
-  return `${formatted} ${currency}`.trim();
-}
+export { formatInvoiceMoney } from "@/lib/big-book/invoice-money";
 
 function formatDisplayDate(isoDate: string) {
   const trimmed = isoDate.trim();
@@ -165,11 +159,11 @@ export async function renderInvoicePdf(payload: InvoicePdfPayload): Promise<Buff
 
   // Line table
   const cols = [
-    { key: "unit_name" as const, label: "UNIT NAME", width: 95 },
-    { key: "unit_no" as const, label: "UNIT NO", width: 55 },
-    { key: "period" as const, label: "PERIOD", width: 90 },
-    { key: "description" as const, label: "DESCRIPTION", width: 170 },
-    { key: "price" as const, label: "PRICE", width: 90 }
+    { key: "unit_name" as const, label: "UNIT NAME", width: 90 },
+    { key: "unit_no" as const, label: "UNIT NO", width: 50 },
+    { key: "period" as const, label: "PERIOD", width: 85 },
+    { key: "description" as const, label: "DESCRIPTION", width: 155 },
+    { key: "price" as const, label: "PRICE", width: 120 }
   ];
   const tableWidth = cols.reduce((sum, col) => sum + col.width, 0);
   const tableLeft = left + Math.max(0, (pageWidth - tableWidth) / 2);
@@ -202,7 +196,7 @@ export async function renderInvoicePdf(payload: InvoicePdfPayload): Promise<Buff
 
   let total = 0;
   for (const line of lines) {
-    const priceText = formatMoney(line.price, payload.currency);
+    const priceText = formatInvoiceMoney(line.price, payload.currency);
     doc.font("Helvetica").fontSize(9);
     const cellHeights = [
       doc.heightOfString(line.unit_name || "—", { width: cols[0].width - 8 }),
@@ -239,7 +233,7 @@ export async function renderInvoicePdf(payload: InvoicePdfPayload): Promise<Buff
   ensureSpace(36);
   y += 8;
   doc.font("Helvetica-Bold").fontSize(11);
-  doc.text(`Total: ${formatMoney(total, payload.currency)}`, tableLeft, y, {
+  doc.text(`Total: ${formatInvoiceMoney(total, payload.currency)}`, tableLeft, y, {
     width: tableWidth,
     align: "right"
   });
