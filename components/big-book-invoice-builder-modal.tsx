@@ -128,6 +128,7 @@ export function BigBookInvoiceBuilderModal({ open, seed, wallets: walletsProp, o
   const [terms, setTerms] = useState("Due on receipt");
   const [currency, setCurrency] = useState<BigBookCashflowCurrency>("USDT");
   const [billToCompany, setBillToCompany] = useState("");
+  const [billToName, setBillToName] = useState("");
   const [billToPassport, setBillToPassport] = useState("");
   const [billToAddress, setBillToAddress] = useState("");
   const [billToPhone, setBillToPhone] = useState("");
@@ -154,6 +155,7 @@ export function BigBookInvoiceBuilderModal({ open, seed, wallets: walletsProp, o
     setTerms("Due on receipt");
     setCurrency(seed.currency);
     setBillToCompany(seed.vendor_name && seed.vendor_name !== "—" ? seed.vendor_name : "");
+    setBillToName("");
     setBillToPassport("");
     setBillToAddress("");
     setBillToPhone("");
@@ -304,7 +306,7 @@ export function BigBookInvoiceBuilderModal({ open, seed, wallets: walletsProp, o
       return;
     }
     if (!billToCompany.trim()) {
-      setError("Bill To company / name is required.");
+      setError("Bill To company is required.");
       setDownloading(false);
       return;
     }
@@ -331,6 +333,7 @@ export function BigBookInvoiceBuilderModal({ open, seed, wallets: walletsProp, o
           terms: terms.trim(),
           currency,
           bill_to_company: billToCompany.trim(),
+          bill_to_name: billToName.trim(),
           bill_to_passport: billToPassport.trim(),
           bill_to_address: billToAddress.trim(),
           bill_to_phone: billToPhone.trim(),
@@ -479,7 +482,7 @@ export function BigBookInvoiceBuilderModal({ open, seed, wallets: walletsProp, o
           <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">Bill To</h3>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <label className="block text-sm md:col-span-2">
-              Company / name
+              Company name
               <input
                 className="field mt-1 w-full"
                 value={billToCompany}
@@ -487,19 +490,19 @@ export function BigBookInvoiceBuilderModal({ open, seed, wallets: walletsProp, o
               />
             </label>
             <label className="block text-sm">
-              Passport
+              Name (PIC)
+              <input
+                className="field mt-1 w-full"
+                value={billToName}
+                onChange={(e) => setBillToName(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm">
+              Passport No
               <input
                 className="field mt-1 w-full"
                 value={billToPassport}
                 onChange={(e) => setBillToPassport(e.target.value)}
-              />
-            </label>
-            <label className="block text-sm">
-              Phone
-              <input
-                className="field mt-1 w-full"
-                value={billToPhone}
-                onChange={(e) => setBillToPhone(e.target.value)}
               />
             </label>
             <label className="block text-sm md:col-span-2">
@@ -508,6 +511,14 @@ export function BigBookInvoiceBuilderModal({ open, seed, wallets: walletsProp, o
                 className="field mt-1 w-full min-h-[72px]"
                 value={billToAddress}
                 onChange={(e) => setBillToAddress(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm md:col-span-2">
+              Phone
+              <input
+                className="field mt-1 w-full"
+                value={billToPhone}
+                onChange={(e) => setBillToPhone(e.target.value)}
               />
             </label>
           </div>
@@ -662,25 +673,8 @@ export function BigBookInvoiceBuilderModal({ open, seed, wallets: walletsProp, o
 
         <section className="space-y-3">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">Notes & wallets</h3>
-          <label className="block text-sm">
-            Notes / terms
-            <textarea
-              className="field mt-1 w-full min-h-[80px]"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-          </label>
-          <label className="block text-sm">
-            FX note
-            <textarea
-              className="field mt-1 w-full min-h-[64px]"
-              value={fxNote}
-              onChange={(e) => setFxNote(e.target.value)}
-              placeholder="Optional free-text FX note for this invoice"
-            />
-          </label>
           <div>
-            <p className="text-sm font-medium">Wallets to print</p>
+            <p className="text-sm font-medium">1. Wallets to print</p>
             {activeWallets.length ? (
               <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
                 {activeWallets.map((wallet) => (
@@ -711,6 +705,24 @@ export function BigBookInvoiceBuilderModal({ open, seed, wallets: walletsProp, o
               </p>
             )}
           </div>
+          <label className="block text-sm">
+            2. FX note
+            <textarea
+              className="field mt-1 w-full min-h-[64px]"
+              value={fxNote}
+              onChange={(e) => setFxNote(e.target.value)}
+              placeholder="Optional free-text FX note for this invoice"
+            />
+          </label>
+          <label className="block text-sm">
+            3. Notes
+            <textarea
+              className="field mt-1 w-full min-h-[80px]"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Optional free-text notes / terms"
+            />
+          </label>
         </section>
       </div>
     </Modal>

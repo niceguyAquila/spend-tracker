@@ -61,6 +61,7 @@ export const invoicePdfRequestSchema = z.object({
   terms: optionalText(80),
   currency: bigBookCurrencySchema,
   bill_to_company: z.string().trim().min(1).max(200),
+  bill_to_name: optionalText(200),
   bill_to_passport: optionalText(120),
   bill_to_address: optionalText(400),
   bill_to_phone: optionalText(80),

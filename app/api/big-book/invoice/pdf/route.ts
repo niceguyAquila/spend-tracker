@@ -73,6 +73,7 @@ export async function POST(request: Request) {
       terms: parsed.data.terms,
       currency: parsed.data.currency,
       bill_to_company: parsed.data.bill_to_company,
+      bill_to_name: parsed.data.bill_to_name,
       bill_to_passport: parsed.data.bill_to_passport,
       bill_to_address: parsed.data.bill_to_address,
       bill_to_phone: parsed.data.bill_to_phone,
