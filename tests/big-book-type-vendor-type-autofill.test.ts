@@ -19,4 +19,11 @@ describe("type → vendor type mapping helper", () => {
     expect(mappedVendorTypeIdForType("type-op", [])).toBe("");
     expect(mappedVendorTypeIdForType("", maps)).toBe("");
   });
+
+  it("maps are used to seed create-form vendor_type_id (same helper as createEmptyEntryForm)", () => {
+    const defaultTypeId = "type-op";
+    const vendorTypeId = mappedVendorTypeIdForType(defaultTypeId, maps);
+    expect(vendorTypeId).toBe("vt-merchant");
+    expect(mappedVendorTypeIdForType("type-other", maps)).toBe("");
+  });
 });
