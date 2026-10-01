@@ -7,8 +7,7 @@ import { sanitizeNextPath } from "@/lib/auth/redirect";
 
 const LOGIN_ERROR_MESSAGES: Record<string, string> = {
   "session-expired": "Your session has expired. Please sign in again.",
-  "not-allowed": "Your account is not authorized to access this workspace.",
-  "no-brand-access": "Your account is not assigned to any active brand. Contact an administrator."
+  "not-allowed": "Your account is not authorized to access this workspace."
 };
 
 function LoginForm() {

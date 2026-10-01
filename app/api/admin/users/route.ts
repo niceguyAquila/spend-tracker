@@ -4,23 +4,13 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdminApi } from "@/lib/auth-api";
 import { invalidateAccessCache } from "@/lib/auth-access";
 import { invalidateDisplayNameDirectory } from "@/lib/db/display-names";
-import { replaceUserBrandRoles } from "@/lib/db/user-brand-roles";
 import { assertCsrfAndOrigin } from "@/lib/security/origin";
 
 const updateSchema = z.object({
   email: z.string().email(),
   role: z.enum(["admin", "finance", "viewer"]).optional(),
   display_name: z.string().trim().min(1).max(120).nullable().optional(),
-  is_active: z.boolean().optional(),
-  brand_roles: z
-    .array(
-      z.object({
-        brand_id: z.string().uuid(),
-        role: z.enum(["admin", "finance", "viewer"]),
-        is_active: z.boolean().default(true)
-      })
-    )
-    .optional()
+  is_active: z.boolean().optional()
 });
 
 export async function GET() {
@@ -30,34 +20,16 @@ export async function GET() {
   }
 
   const adminClient = createAdminClient();
-  const [{ data, error }, { data: brandRoles, error: brandRoleError }, { data: brands, error: brandsError }] =
-    await Promise.all([
-      adminClient
-        .from("allowed_users")
-        .select("id, auth_user_id, email, display_name, role, is_active, invited_at, updated_at")
-        .order("invited_at", { ascending: false }),
-      adminClient
-        .from("user_brand_roles")
-        .select("allowed_user_id, brand_id, role, is_active"),
-      adminClient
-        .from("brands")
-        .select("id, code, name, is_active")
-        .order("created_at", { ascending: true })
-    ]);
+  const { data, error } = await adminClient
+    .from("allowed_users")
+    .select("id, auth_user_id, email, display_name, role, is_active, invited_at, updated_at")
+    .order("invited_at", { ascending: false });
 
-  if (error || brandRoleError || brandsError) {
-    return NextResponse.json(
-      { error: error?.message ?? brandRoleError?.message ?? brandsError?.message ?? "Failed to load users." },
-      { status: 400 }
-    );
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  const userRows = (data ?? []).map((user) => ({
-    ...user,
-    brand_roles: (brandRoles ?? []).filter((item) => item.allowed_user_id === user.id)
-  }));
-
-  return NextResponse.json({ users: userRows, brands: brands ?? [] });
+  return NextResponse.json({ users: data ?? [] });
 }
 
 export async function PATCH(request: Request) {
@@ -107,13 +79,6 @@ export async function PATCH(request: Request) {
     const { error } = await adminClient.from("allowed_users").update(payload).eq("id", userRow.id);
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-  }
-
-  if (parsed.data.brand_roles) {
-    const replaced = await replaceUserBrandRoles(adminClient, userRow.id, parsed.data.brand_roles);
-    if (!replaced.ok) {
-      return NextResponse.json({ error: replaced.message }, { status: 400 });
     }
   }
 

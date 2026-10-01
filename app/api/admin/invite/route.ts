@@ -4,21 +4,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdminApi } from "@/lib/auth-api";
 import { invalidateAccessCache } from "@/lib/auth-access";
 import { invalidateDisplayNameDirectory } from "@/lib/db/display-names";
-import { replaceUserBrandRoles } from "@/lib/db/user-brand-roles";
 import { assertCsrfAndOrigin } from "@/lib/security/origin";
 
 const inviteSchema = z.object({
   email: z.string().email(),
   display_name: z.string().trim().min(1).max(120).optional(),
   role: z.enum(["admin", "finance", "viewer"]),
-  brand_roles: z
-    .array(
-      z.object({
-        brand_id: z.string().uuid(),
-        role: z.enum(["admin", "finance", "viewer"])
-      })
-    )
-    .min(1, "At least one brand role is required."),
   auth_method: z.enum(["password", "magic_link"]).default("password"),
   password: z.string().min(8).optional()
 });
@@ -66,13 +57,6 @@ export async function POST(request: Request) {
     .single();
   if (allowedUserError) {
     return NextResponse.json({ error: allowedUserError.message }, { status: 400 });
-  }
-
-  // Re-inviting an existing user rewrites their memberships, so this has to be
-  // as non-destructive as the update route.
-  const replaced = await replaceUserBrandRoles(adminClient, allowedUserRow.id, parsed.data.brand_roles);
-  if (!replaced.ok) {
-    return NextResponse.json({ error: replaced.message }, { status: 400 });
   }
 
   const listedUsers = await adminClient.auth.admin.listUsers();

@@ -1,12 +1,10 @@
 import { cache } from "react";
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import { loadAccessResult, preferActiveBrands } from "@/lib/auth-access";
-import { AppRole, UserBrandRole } from "@/lib/types";
+import { loadAccessResult } from "@/lib/auth-access";
+import { AppRole } from "@/lib/types";
 import { perfStart } from "@/lib/perf";
 
-export const ACTIVE_BRAND_COOKIE = "active_brand_id";
 export type { AppRole } from "@/lib/types";
 
 export const requireUser = cache(async function requireUser() {
@@ -52,32 +50,14 @@ export const requireAllowedUser = cache(async function requireAllowedUser() {
     if (access.kind === "not-allowed") {
       redirect("/login?error=not-allowed");
     }
-    if (access.kind === "no-brand-access") {
-      redirect("/login?error=no-brand-access");
-    }
 
     const { allowedUserId, globalRole } = access.record;
-    // Must match resolveApiAccess(): if a page offers a brand the API layer
-    // filters out, the switcher and the mutation it triggers disagree on which
-    // brand is active and writes land on the wrong one.
-    const brandRoles: UserBrandRole[] = preferActiveBrands(access.record.memberships);
-    if (!brandRoles.length) {
-      redirect("/login?error=no-brand-access");
-    }
-
-    const cookieStore = await cookies();
-    const requestedBrandId = cookieStore.get(ACTIVE_BRAND_COOKIE)?.value ?? null;
-    const activeBrandRole =
-      brandRoles.find((row) => row.brand_id === requestedBrandId) ?? brandRoles[0];
 
     return {
       user,
       allowedUserId,
       globalRole,
-      role: activeBrandRole.role,
-      activeBrandId: activeBrandRole.brand_id,
-      activeBrand: activeBrandRole.brand,
-      brandRoles
+      role: globalRole
     };
   } finally {
     end();

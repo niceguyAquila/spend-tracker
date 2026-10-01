@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { BrandSwitcher } from "@/components/brand-switcher";
 import { LogoutButton } from "@/components/logout-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import type { AppRole } from "@/lib/types";
@@ -23,17 +22,12 @@ type NavModule = {
 
 type DashboardSidebarProps = {
   globalRole: AppRole;
-  role: AppRole;
-  activeBrandId: string;
-  brandOptions: Array<{ id: string; name: string }>;
   onNavigate?: () => void;
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
 };
 
 const MODULE_ICONS: Record<string, string> = {
-  "Web Spending": "/asset/wallet.png",
-  "Web Transaction": "/asset/transaction.png",
   "Transaction Big Book": "/asset/accounting-book.png",
   "Credit Big Book": "/asset/accounting-book.png",
   Admin: "/asset/admin.png"
@@ -49,61 +43,11 @@ function SidebarHamburgerIcon() {
   );
 }
 
-function createNavModules(globalRole: AppRole, role: AppRole): NavModule[] {
-  const canManageCategories = role === "finance" || role === "admin";
-  const modules: NavModule[] = [
-    {
-      title: "Web Spending",
-      isModuleActive: (pathname) => pathname.startsWith("/dashboard/spending") || pathname.startsWith("/dashboard/settings/categories"),
-      links: [
-        {
-          href: "/dashboard/spending/overview",
-          label: "Overview",
-          isActive: (pathname) => pathname === "/dashboard/spending/overview"
-        },
-        {
-          href: "/dashboard/spending/entries",
-          label: "Add Spending",
-          isActive: (pathname) => pathname === "/dashboard/spending/entries"
-        }
-      ]
-    },
-    {
-      title: "Web Transaction",
-      isModuleActive: (pathname) => pathname.startsWith("/dashboard/transactions"),
-      links: [
-        {
-          href: "/dashboard/transactions?source=backoffice",
-          label: "Backoffice",
-          isActive: (pathname, searchParams) =>
-            pathname === "/dashboard/transactions" && searchParams.get("source") === "backoffice"
-        },
-        {
-          href: "/dashboard/transactions?source=payment_gateway",
-          label: "Payment Gateway",
-          isActive: (pathname, searchParams) =>
-            pathname === "/dashboard/transactions" &&
-            (searchParams.get("source") === "payment_gateway" || searchParams.get("source") === null)
-        },
-        {
-          href: "/dashboard/transactions/comparison",
-          label: "Comparison",
-          isActive: (pathname) => pathname === "/dashboard/transactions/comparison"
-        }
-      ]
-    }
-  ];
+function createNavModules(globalRole: AppRole): NavModule[] {
+  if (globalRole !== "admin") return [];
 
-  if (canManageCategories) {
-    modules[0].links.push({
-      href: "/dashboard/settings/categories",
-      label: "Add Category",
-      isActive: (pathname) => pathname === "/dashboard/settings/categories"
-    });
-  }
-
-  if (globalRole === "admin") {
-    modules.push({
+  return [
+    {
       title: "Transaction Big Book",
       isModuleActive: (pathname) => pathname.startsWith("/dashboard/big-book"),
       links: [
@@ -133,8 +77,8 @@ function createNavModules(globalRole: AppRole, role: AppRole): NavModule[] {
           isActive: (pathname) => pathname === "/dashboard/big-book/exchange-helper"
         }
       ]
-    });
-    modules.push({
+    },
+    {
       title: "Credit Big Book",
       isModuleActive: (pathname) => pathname.startsWith("/dashboard/credit-big-book"),
       links: [
@@ -164,34 +108,19 @@ function createNavModules(globalRole: AppRole, role: AppRole): NavModule[] {
           isActive: (pathname) => pathname === "/dashboard/credit-big-book/exchange-helper"
         }
       ]
-    });
-    modules.push({
+    },
+    {
       title: "Admin",
-      isModuleActive: (pathname) =>
-        pathname.startsWith("/dashboard/master-dashboard") ||
-        pathname.startsWith("/dashboard/admin/users") ||
-        pathname.startsWith("/dashboard/admin/brands"),
+      isModuleActive: (pathname) => pathname.startsWith("/dashboard/admin/users"),
       links: [
-        {
-          href: "/dashboard/master-dashboard",
-          label: "Master Dashboard",
-          isActive: (pathname) => pathname.startsWith("/dashboard/master-dashboard")
-        },
         {
           href: "/dashboard/admin/users",
           label: "Admin Users",
           isActive: (pathname) => pathname.startsWith("/dashboard/admin/users")
-        },
-        {
-          href: "/dashboard/admin/brands",
-          label: "Admin Brands",
-          isActive: (pathname) => pathname.startsWith("/dashboard/admin/brands")
         }
       ]
-    });
-  }
-
-  return modules;
+    }
+  ];
 }
 
 function getSubmenuItemClassName(isActive: boolean) {
@@ -204,20 +133,13 @@ function getSubmenuItemClassName(isActive: boolean) {
 
 export function DashboardSidebar({
   globalRole,
-  role,
-  activeBrandId,
-  brandOptions,
   onNavigate,
   collapsed = false,
   onToggleCollapsed
 }: DashboardSidebarProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const modules = useMemo(() => createNavModules(globalRole, role), [globalRole, role]);
-  const shouldHideBrandSwitcher =
-    pathname.startsWith("/dashboard/master-dashboard") ||
-    pathname.startsWith("/dashboard/big-book") ||
-    pathname.startsWith("/dashboard/credit-big-book");
+  const modules = useMemo(() => createNavModules(globalRole), [globalRole]);
   const [openModules, setOpenModules] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -259,13 +181,6 @@ export function DashboardSidebar({
               Navigation
             </span>
           ) : null}
-        </div>
-      ) : null}
-
-      {!collapsed && !shouldHideBrandSwitcher ? (
-        <div className="mb-4 border-b border-[rgb(var(--border))] pb-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Brand</p>
-          <BrandSwitcher activeBrandId={activeBrandId} options={brandOptions} compact />
         </div>
       ) : null}
 

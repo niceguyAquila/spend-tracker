@@ -81,7 +81,6 @@ export async function POST(request: Request) {
   const { data, error } = await supabase
     .from("credit_ledger_entries")
     .insert({
-      brand_id: authCheck.activeBrandId,
       entry_date: payload.entry_date,
       entry_direction: payload.entry_direction,
       entry_type_id: payload.entry_type_id,
@@ -158,7 +157,6 @@ export async function DELETE(request: Request) {
     .from("credit_ledger_entries")
     .delete()
     .eq("id", id)
-    .eq("brand_id", authCheck.activeBrandId)
     .select("id")
     .maybeSingle();
 

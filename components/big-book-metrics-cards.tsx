@@ -124,15 +124,6 @@ export function BigBookMetricsCardsView({
                         key={pocket.pocket_id}
                         label={`${pocket.pocket_name}${!pocket.is_active ? " (Inactive)" : ""}`}
                         value={pocket.net}
-                        breakdown={[
-                          { label: "Big Book", value: pocket.big_book_net },
-                          {
-                            label: pocket.linked_brand_name
-                              ? `Web Spending (${pocket.linked_brand_name})`
-                              : "Web Spending",
-                            value: pocket.web_spending_net
-                          }
-                        ]}
                       />
                     ))}
                   </div>

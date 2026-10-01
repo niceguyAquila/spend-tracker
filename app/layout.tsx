@@ -13,8 +13,8 @@ const themeInitScript = `
 `;
 
 export const metadata: Metadata = {
-  title: "Brand Spend Tracker",
-  description: "Monthly operations spending tracker with Supabase",
+  title: "Accounting",
+  description: "Transaction Big Book and Credit Big Book",
   robots: {
     index: false,
     follow: false,

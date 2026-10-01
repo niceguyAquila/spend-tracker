@@ -10,8 +10,7 @@ import type {
   BigBookLedgerSubType,
   BigBookLedgerType,
   BigBookVendor,
-  BigBookVendorType,
-  Brand
+  BigBookVendorType
 } from "@/lib/types";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { ENTITY_CODE_HINT, ENTITY_CODE_MAX_LENGTH, normalizeEntityCode } from "@/lib/entity-code";
@@ -33,7 +32,6 @@ type Props = {
   initialActionBy: BigBookActionBy[];
   initialPockets: BigBookActorPocket[];
   initialActors: BigBookActor[];
-  initialBrands: Brand[];
   allowedUsers: BigBookAllowedUserOption[];
 };
 
@@ -70,7 +68,6 @@ export function BigBookSettingsPanel({
   initialActionBy,
   initialPockets,
   initialActors,
-  initialBrands,
   allowedUsers
 }: Props) {
   const router = useRouter();
@@ -130,8 +127,6 @@ export function BigBookSettingsPanel({
   const [pocketParentActorId, setPocketParentActorId] = useState<string>(() => initialActors[0]?.id ?? "");
   const [newPocketCode, setNewPocketCode] = useState("");
   const [newPocketName, setNewPocketName] = useState("");
-  const [newPocketLinkedBrandId, setNewPocketLinkedBrandId] = useState("");
-  const [pocketEditLinkedBrandId, setPocketEditLinkedBrandId] = useState("");
   const [pendingAddPocketConfirm, setPendingAddPocketConfirm] = useState(false);
   const [pocketSubmitting, setPocketSubmitting] = useState(false);
   const [pendingTogglePocket, setPendingTogglePocket] = useState<BigBookActorPocket | null>(null);
@@ -160,19 +155,6 @@ export function BigBookSettingsPanel({
     () => initialPockets.filter((row) => row.actor_id === pocketParentActorId),
     [initialPockets, pocketParentActorId]
   );
-
-  const brandNameById = useMemo(
-    () => new Map(initialBrands.map((brand) => [brand.id, brand.name])),
-    [initialBrands]
-  );
-
-  const pocketOwningBrand = useMemo(() => {
-    const map = new Map<string, BigBookActorPocket>();
-    for (const pocket of initialPockets) {
-      if (pocket.linked_brand_id) map.set(pocket.linked_brand_id, pocket);
-    }
-    return map;
-  }, [initialPockets]);
 
   const [typeQuery, setTypeQuery] = useState("");
   const [typeStatusFilter, setTypeStatusFilter] = useState<StatusFilter>("all");
@@ -778,8 +760,7 @@ export function BigBookSettingsPanel({
           actor_id: pocketParentActorId,
           code: normalizeEntityCode(newPocketCode),
           name: newPocketName.trim(),
-          currency_code: "IDR",
-          linked_brand_id: newPocketLinkedBrandId || null
+          currency_code: "IDR"
         })
       });
       if (handleUnauthorizedResponse(response)) return;
@@ -792,7 +773,6 @@ export function BigBookSettingsPanel({
       setPendingAddPocketConfirm(false);
       setNewPocketCode("");
       setNewPocketName("");
-      setNewPocketLinkedBrandId("");
       triggerRefresh();
     } catch {
       setError("Failed to add pocket due to a network error.");
@@ -814,8 +794,7 @@ export function BigBookSettingsPanel({
         body: JSON.stringify({
           id: target.id,
           code: normalizeEntityCode(pocketEditor.draft.code),
-          name: pocketEditor.draft.name.trim(),
-          linked_brand_id: pocketEditLinkedBrandId || null
+          name: pocketEditor.draft.name.trim()
         })
       });
       if (handleUnauthorizedResponse(response)) return;
@@ -826,31 +805,12 @@ export function BigBookSettingsPanel({
       }
       setMessage("Pocket updated.");
       pocketEditor.reset();
-      setPocketEditLinkedBrandId("");
       triggerRefresh();
     } catch {
       setError("Failed to update pocket due to a network error.");
     } finally {
       pocketEditor.setSubmitting(false);
     }
-  }
-
-  function renderLinkedBrandOptions(currentPocketId?: string) {
-    return (
-      <>
-        <option value="">No linked brand</option>
-        {initialBrands.map((brand) => {
-          const owner = pocketOwningBrand.get(brand.id);
-          const takenByOther = Boolean(owner && owner.id !== currentPocketId);
-          return (
-            <option key={brand.id} value={brand.id} disabled={takenByOther}>
-              {brand.name} ({brand.code})
-              {takenByOther && owner ? ` — linked to ${owner.name}` : ""}
-            </option>
-          );
-        })}
-      </>
-    );
   }
 
   async function togglePocket() {
@@ -1688,10 +1648,8 @@ export function BigBookSettingsPanel({
         <h2 className="text-lg font-semibold">Actor Pockets</h2>
         <p className="mt-1 text-sm text-muted">
           Manage spending pockets per actor. Pockets are always IDR and optional on ledger entries.
-          Optionally link a pocket to one brand so that brand&apos;s Web Spending net folds into the pocket
-          amount.
         </p>
-        <div className="mt-4 grid grid-cols-1 gap-2 lg:grid-cols-5">
+        <div className="mt-4 grid grid-cols-1 gap-2 lg:grid-cols-4">
           <select
             className="field"
             value={pocketParentActorId}
@@ -1721,14 +1679,6 @@ export function BigBookSettingsPanel({
             value={newPocketName}
             onChange={(event) => setNewPocketName(event.target.value)}
           />
-          <select
-            className="field"
-            value={newPocketLinkedBrandId}
-            onChange={(event) => setNewPocketLinkedBrandId(event.target.value)}
-            aria-label="Linked brand"
-          >
-            {renderLinkedBrandOptions()}
-          </select>
           <button
             className="btn"
             disabled={
@@ -1743,9 +1693,7 @@ export function BigBookSettingsPanel({
           </button>
         </div>
         <p className="mt-2 text-xs text-muted">{ENTITY_CODE_HINT}</p>
-        <p className="mt-2 text-xs text-muted">
-          Currency is fixed to IDR for all pockets. Each brand can be linked to at most one pocket.
-        </p>
+        <p className="mt-2 text-xs text-muted">Currency is fixed to IDR for all pockets.</p>
         <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <label className="text-sm text-muted sm:col-span-2">
             <span className="mb-1 block">Search</span>
@@ -1777,7 +1725,6 @@ export function BigBookSettingsPanel({
               <tr>
                 <th>Code</th>
                 <th>Name</th>
-                <th>Linked Brand</th>
                 <th>Currency</th>
                 <th>Sort</th>
                 <th>Status</th>
@@ -1786,17 +1733,12 @@ export function BigBookSettingsPanel({
             </thead>
             <tbody>
               {!pocketParentActorId ? (
-                <TableEmptyState colSpan={7} message="Select an actor to view their pockets." />
+                <TableEmptyState colSpan={6} message="Select an actor to view their pockets." />
               ) : pagedPockets.length ? (
                 pagedPockets.map((pocket) => (
                   <tr key={pocket.id} className="align-middle">
                     <td className="px-3 py-2 font-mono text-xs">{pocket.code}</td>
                     <td className="px-3 py-2 font-medium">{pocket.name}</td>
-                    <td className="px-3 py-2 text-xs text-[rgb(var(--text-muted))]">
-                      {pocket.linked_brand_id
-                        ? (brandNameById.get(pocket.linked_brand_id) ?? "Unknown brand")
-                        : "—"}
-                    </td>
                     <td className="px-3 py-2 text-xs">{pocket.currency_code}</td>
                     <td className="px-3 py-2 text-xs text-[rgb(var(--text-muted))]">{pocket.sort_order}</td>
                     <td className="px-3 py-2">
@@ -1814,10 +1756,7 @@ export function BigBookSettingsPanel({
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         <button
                           className="btn-secondary btn-sm"
-                          onClick={() => {
-                            setPocketEditLinkedBrandId(pocket.linked_brand_id ?? "");
-                            pocketEditor.start(pocket);
-                          }}
+                          onClick={() => pocketEditor.start(pocket)}
                           disabled={togglePocketSubmitting || pocketDeleting || pocketEditor.submitting}
                         >
                           Edit
@@ -1842,7 +1781,7 @@ export function BigBookSettingsPanel({
                 ))
               ) : (
                 <TableEmptyState
-                  colSpan={7}
+                  colSpan={6}
                   message={
                     pocketsForSelectedActor.length
                       ? "No pockets match the current filters."
@@ -2108,7 +2047,7 @@ export function BigBookSettingsPanel({
           if (!open && !actorSubmitting) setPendingActorId(null);
         }}
         title="Save actor mapping?"
-        description="This changes the global Actor A/B identity mapping used across all brands."
+        description="This changes the global Actor A/B identity mapping."
         confirmLabel="Save Mapping"
         confirming={actorSubmitting}
         closeOnBackdrop={false}
@@ -2153,28 +2092,7 @@ export function BigBookSettingsPanel({
       <EntityEditDialog
         editor={pocketEditor}
         entityLabel="Pocket"
-        description="Existing records keep pointing at this pocket; code, name, and linked brand can change."
-        confirmDisabled={
-          !pocketEditor.target ||
-          !(
-            pocketEditor.canSave ||
-            (pocketEditLinkedBrandId || null) !== (pocketEditor.target.linked_brand_id || null)
-          ) ||
-          pocketEditor.draft.code.trim().length < 2 ||
-          pocketEditor.draft.name.trim().length < 2
-        }
-        extraFields={
-          <label className="block text-sm">
-            <span className="mb-1 block text-muted">Linked Brand</span>
-            <select
-              className="field w-full"
-              value={pocketEditLinkedBrandId}
-              onChange={(event) => setPocketEditLinkedBrandId(event.target.value)}
-            >
-              {renderLinkedBrandOptions(pocketEditor.target?.id)}
-            </select>
-          </label>
-        }
+        description="Existing records keep pointing at this pocket; only its code and name change."
         onSave={() => void savePocketEdit()}
       />
     </div>

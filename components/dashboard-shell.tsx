@@ -9,9 +9,6 @@ type DashboardShellProps = {
   userEmail: string;
   role: AppRole;
   globalRole: AppRole;
-  activeBrandId: string;
-  activeBrandName: string;
-  brandOptions: Array<{ id: string; name: string }>;
   children: React.ReactNode;
 };
 
@@ -29,9 +26,6 @@ export function DashboardShell({
   userEmail,
   role,
   globalRole,
-  activeBrandId,
-  activeBrandName,
-  brandOptions,
   children
 }: DashboardShellProps) {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -100,9 +94,6 @@ export function DashboardShell({
       >
         <DashboardSidebar
           globalRole={globalRole}
-          role={role}
-          activeBrandId={activeBrandId}
-          brandOptions={brandOptions}
           collapsed={!isDesktopSidebarVisuallyExpanded}
           onToggleCollapsed={() => setIsDesktopSidebarCollapsed((value) => !value)}
         />
@@ -126,7 +117,7 @@ export function DashboardShell({
                   <HamburgerIcon />
                 </button>
                 <div className="max-w-3xl">
-                  <DashboardHeaderTitle activeBrandName={activeBrandName} />
+                  <DashboardHeaderTitle />
                 </div>
               </div>
               <div className="flex flex-col items-end text-right">
@@ -167,9 +158,6 @@ export function DashboardShell({
             </div>
             <DashboardSidebar
               globalRole={globalRole}
-              role={role}
-              activeBrandId={activeBrandId}
-              brandOptions={brandOptions}
               onNavigate={() => setIsMobileSidebarOpen(false)}
             />
           </aside>

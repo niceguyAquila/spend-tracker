@@ -7,8 +7,6 @@ import {
   SESSION_META_COOKIE,
   clearCookieOptions
 } from "@/lib/security/cookies";
-import { ACTIVE_BRAND_COOKIE } from "@/lib/auth";
-
 export async function POST(request: Request) {
   if (!(await assertCsrfAndOrigin(request))) {
     return NextResponse.json({ error: "Invalid request origin or CSRF token." }, { status: 403 });
@@ -25,6 +23,5 @@ export async function POST(request: Request) {
   const cleared = clearCookieOptions();
   response.cookies.set(SESSION_META_COOKIE, "", cleared);
   response.cookies.set(CSRF_COOKIE, "", cleared);
-  response.cookies.set(ACTIVE_BRAND_COOKIE, "", cleared);
   return response;
 }

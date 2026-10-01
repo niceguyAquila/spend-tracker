@@ -1,5 +1,4 @@
 import {
-  getAllBrands,
   getBigBookActionBy,
   getBigBookActors,
   getBigBookActorPockets,
@@ -15,7 +14,7 @@ import { SetupRequiredCard } from "@/components/ui/setup-required-card";
 
 export default async function BigBookSettingsPage() {
   try {
-    const [types, subTypes, vendorTypes, vendors, actionBy, pockets, actors, brands, allowedUsers] =
+    const [types, subTypes, vendorTypes, vendors, actionBy, pockets, actors, allowedUsers] =
       await Promise.all([
         getBigBookLedgerTypes({ includeInactive: true }),
         getBigBookLedgerSubTypes({ includeInactive: true }),
@@ -24,7 +23,6 @@ export default async function BigBookSettingsPage() {
         getBigBookActionBy({ includeInactive: true }),
         getBigBookActorPockets({ includeInactive: true }),
         getBigBookActors(),
-        getAllBrands({ includeInactive: true }),
         getBigBookAllowedUsers()
       ]);
 
@@ -32,7 +30,7 @@ export default async function BigBookSettingsPage() {
       <div className="space-y-6">
         <PageHeader
           title="Big Book Settings"
-          description="Manage types, sub-types, vendor types, vendor names, Action By, actor pockets, brand links, and global Actor A/B mapping."
+          description="Manage types, sub-types, vendor types, vendor names, Action By, actor pockets, and global Actor A/B mapping."
         />
         <BigBookSettingsPanel
           initialTypes={types}
@@ -42,7 +40,6 @@ export default async function BigBookSettingsPage() {
           initialActionBy={actionBy}
           initialPockets={pockets}
           initialActors={actors}
-          initialBrands={brands}
           allowedUsers={allowedUsers}
         />
       </div>

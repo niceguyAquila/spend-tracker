@@ -1,16 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
-import { cookies } from "next/headers";
-import { ACTIVE_BRAND_COOKIE } from "@/lib/auth";
 import type { AppRole } from "@/lib/auth";
-import { loadAccessResult, preferActiveBrands } from "@/lib/auth-access";
+import { loadAccessResult } from "@/lib/auth-access";
 import { perfStart } from "@/lib/perf";
 
 type ApiAccessContext = {
   user: { id: string; email?: string | null };
   allowedUserId: string;
   globalRole: AppRole;
-  activeBrandId: string;
-  activeBrandRole: AppRole;
 };
 
 type ClaimsCapableAuth = {
@@ -70,28 +66,13 @@ async function resolveApiAccess(): Promise<
     if (access.kind === "not-allowed") {
       return { ok: false as const, status: 403, message: "Access denied" };
     }
-    if (access.kind === "no-brand-access") {
-      return { ok: false as const, status: 403, message: "No brand access assigned" };
-    }
-
-    const memberships = preferActiveBrands(access.record.memberships);
-    if (!memberships.length) {
-      return { ok: false as const, status: 403, message: "No active brand access assigned" };
-    }
-
-    const cookieStore = await cookies();
-    const requestedBrandId = cookieStore.get(ACTIVE_BRAND_COOKIE)?.value ?? null;
-    const activeMembership =
-      memberships.find((row) => row.brand_id === requestedBrandId) ?? memberships[0];
 
     return {
       ok: true as const,
       context: {
         user,
         allowedUserId: access.record.allowedUserId,
-        globalRole: access.record.globalRole,
-        activeBrandId: activeMembership.brand_id,
-        activeBrandRole: activeMembership.role
+        globalRole: access.record.globalRole
       }
     };
   } finally {
@@ -126,7 +107,7 @@ export async function requireFinanceApi() {
     return access;
   }
 
-  if (!["admin", "finance"].includes(access.context.activeBrandRole)) {
+  if (!["admin", "finance"].includes(access.context.globalRole)) {
     return { ok: false as const, status: 403, message: "Finance or admin access required" };
   }
 

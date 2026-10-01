@@ -19,13 +19,7 @@ import { generateCsrfToken } from "@/lib/security/csrf";
 
 const PROTECTED_PREFIXES = [
   "/dashboard",
-  "/api/expenses",
-  "/api/categories",
-  "/api/expense-types",
-  "/api/expense-staff",
-  "/api/brands",
   "/api/admin",
-  "/api/web-transactions",
   "/api/big-book",
   "/api/credit-big-book",
   "/api/auth/debug"

@@ -153,7 +153,6 @@ export async function POST(request: Request) {
   const { error } = await supabase.from("credit_ledger_entries").insert(
     records.map((row) => ({
       ...row,
-      brand_id: authCheck.activeBrandId,
       remark: row.remark || null,
       created_by: authCheck.user.id,
       updated_by: authCheck.user.id

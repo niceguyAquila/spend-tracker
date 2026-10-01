@@ -228,7 +228,6 @@ export async function POST(request: Request) {
   }
 
   const mainRow = {
-    brand_id: authCheck.activeBrandId,
     group_id: groupId,
     entry_date: payload.entry_date,
     entry_direction: payload.entry_direction,
@@ -257,7 +256,6 @@ export async function POST(request: Request) {
   if (groupId && gasFeeAmount != null) {
     const gasEntry = buildGasFeeEntry(payload, gasFeeAmount);
     const gasRow = {
-      brand_id: authCheck.activeBrandId,
       group_id: groupId,
       entry_date: gasEntry.entry_date,
       entry_direction: gasEntry.entry_direction,

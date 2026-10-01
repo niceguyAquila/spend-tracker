@@ -48,7 +48,6 @@ describe("logout route", () => {
     const setCookies = response.headers.getSetCookie();
     expect(setCookies.some((c) => c.startsWith("session-meta=") || c.startsWith("__Host-session-meta="))).toBe(true);
     expect(setCookies.some((c) => c.startsWith("csrf=") || c.startsWith("__Host-csrf="))).toBe(true);
-    expect(setCookies.some((c) => c.startsWith("active_brand_id="))).toBe(true);
   });
 
   it("returns 403 when origin or CSRF check fails", async () => {

@@ -91,7 +91,6 @@ export const bigBookPocketCreateSchema = z.object({
   code: entityCodeSchema("Pocket code"),
   name: entityNameSchema("Pocket name"),
   currency_code: bigBookPocketCurrencySchema.default("IDR"),
-  linked_brand_id: z.string().uuid().nullable().optional(),
   sort_order: entitySortOrderSchema()
 });
 
@@ -99,7 +98,6 @@ export const bigBookPocketUpdateSchema = z.object({
   id: z.string().uuid(),
   code: entityCodeSchema("Pocket code").optional(),
   name: entityNameSchema("Pocket name").optional(),
-  linked_brand_id: z.string().uuid().nullable().optional(),
   is_active: z.boolean().optional(),
   sort_order: entitySortOrderSchema()
 });

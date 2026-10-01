@@ -4,22 +4,11 @@ const getUserMock = vi.fn();
 const getClaimsMock = vi.fn();
 const maybeSingleMock = vi.fn();
 
-const BRAND_ID = "11111111-1111-4111-8111-111111111111";
-
 function allowedUserRow(role: "admin" | "finance" | "viewer") {
   return {
     id: `au-${role}`,
     role,
-    is_active: true,
-    user_brand_roles: [
-      {
-        brand_id: BRAND_ID,
-        role,
-        is_active: true,
-        created_at: "2026-01-01T00:00:00.000Z",
-        brands: { id: BRAND_ID, code: "ZENPLAY", name: "ZenPlay", is_active: true }
-      }
-    ]
+    is_active: true
   };
 }
 
@@ -99,7 +88,7 @@ describe("auth api guards", () => {
 
     const result = await requireAdminApi();
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.activeBrandId).toBe(BRAND_ID);
+    if (result.ok) expect(result.globalRole).toBe("admin");
   });
 
   it("resolves the session from locally verified claims without calling getUser", async () => {

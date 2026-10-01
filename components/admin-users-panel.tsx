@@ -17,29 +17,15 @@ type AllowedUser = {
   is_active: boolean;
   invited_at: string;
   updated_at: string;
-  brand_roles: Array<{
-    brand_id: string;
-    role: "admin" | "finance" | "viewer";
-    is_active: boolean;
-  }>;
-};
-
-type Brand = {
-  id: string;
-  code: string;
-  name: string;
-  is_active: boolean;
 };
 
 export function AdminUsersPanel() {
   const [users, setUsers] = useState<AllowedUser[]>([]);
-  const [brands, setBrands] = useState<Brand[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<AllowedUser["role"]>("viewer");
-  const [selectedBrandIds, setSelectedBrandIds] = useState<string[]>([]);
   const [authMethod, setAuthMethod] = useState<"password" | "magic_link">("password");
   const [password, setPassword] = useState("");
   const [inviteConfirmOpen, setInviteConfirmOpen] = useState(false);
@@ -47,7 +33,6 @@ export function AdminUsersPanel() {
   const [editingUser, setEditingUser] = useState<AllowedUser | null>(null);
   const [editDisplayName, setEditDisplayName] = useState("");
   const [editRole, setEditRole] = useState<AllowedUser["role"]>("viewer");
-  const [editBrandRoles, setEditBrandRoles] = useState<Record<string, "admin" | "finance" | "viewer" | "none">>({});
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [statusSubmittingEmail, setStatusSubmittingEmail] = useState<string | null>(null);
   const [statusConfirmUser, setStatusConfirmUser] = useState<AllowedUser | null>(null);
@@ -72,21 +57,6 @@ export function AdminUsersPanel() {
     });
   }, [users, roleFilter, searchQuery, statusFilter]);
 
-  const activeBrands = useMemo(() => brands.filter((brand) => brand.is_active), [brands]);
-
-  /**
-   * Active brands, plus any deactivated brand this user still holds a row for
-   * so the grant stays visible and can be revoked deliberately rather than by
-   * omission — saving replaces the whole membership set.
-   */
-  const brandsForUser = useCallback(
-    (user: AllowedUser) =>
-      brands.filter(
-        (brand) => brand.is_active || user.brand_roles.some((item) => item.brand_id === brand.id)
-      ),
-    [brands]
-  );
-
   const userPagination = useTablePagination(filteredUsers.length);
   const pagedUsers = useMemo(
     () => sliceForPage(filteredUsers, userPagination.page, userPagination.pageSize),
@@ -103,14 +73,6 @@ export function AdminUsersPanel() {
     const data = await response.json();
     if (response.ok) {
       setUsers(data.users ?? []);
-      // Inactive brands are kept: dropping them here used to hide existing
-      // memberships from the edit dialog, and saving then revoked them.
-      setBrands(data.brands ?? []);
-      setSelectedBrandIds((current) => {
-        if (current.length) return current;
-        const firstActive = (data.brands ?? []).find((item: Brand) => item.is_active);
-        return firstActive ? [firstActive.id] : [];
-      });
     } else {
       setMessage(data.error ?? "Failed to load users.");
     }
@@ -137,19 +99,7 @@ export function AdminUsersPanel() {
     setInviteConfirmOpen(true);
   }
 
-  function toggleInviteBrand(brandId: string) {
-    setSelectedBrandIds((current) =>
-      current.includes(brandId) ? current.filter((item) => item !== brandId) : [...current, brandId]
-    );
-  }
-
   async function executeInvite() {
-    if (!selectedBrandIds.length) {
-      setMessage("Select at least one brand for this user.");
-      setInviteSubmitting(false);
-      setInviteConfirmOpen(false);
-      return;
-    }
     setInviteSubmitting(true);
     const response = await secureFetch("/api/admin/invite", {
       method: "POST",
@@ -158,10 +108,6 @@ export function AdminUsersPanel() {
         email,
         display_name: displayName.trim() || undefined,
         role,
-        brand_roles: selectedBrandIds.map((brandId) => ({
-          brand_id: brandId,
-          role
-        })),
         auth_method: authMethod,
         password: authMethod === "password" ? password : undefined
       })
@@ -183,7 +129,6 @@ export function AdminUsersPanel() {
     setEmail("");
     setDisplayName("");
     setRole("viewer");
-    setSelectedBrandIds(activeBrands.length > 0 ? [activeBrands[0].id] : []);
     setPassword("");
     setInviteSubmitting(false);
     setInviteConfirmOpen(false);
@@ -192,9 +137,7 @@ export function AdminUsersPanel() {
 
   async function updateUser(
     emailToUpdate: string,
-    payload: Partial<Pick<AllowedUser, "display_name" | "role" | "is_active">> & {
-      brand_roles?: Array<{ brand_id: string; role: "admin" | "finance" | "viewer"; is_active: boolean }>;
-    }
+    payload: Partial<Pick<AllowedUser, "display_name" | "role" | "is_active">>
   ) {
     const response = await secureFetch("/api/admin/users", {
       method: "PATCH",
@@ -209,11 +152,7 @@ export function AdminUsersPanel() {
       setMessage(data.error ?? "Failed to update user.");
       return;
     }
-    setMessage(
-      payload.brand_roles
-        ? "User updated. Brand access can take up to 30 seconds to appear in that user's session."
-        : "User updated."
-    );
+    setMessage("User updated.");
     await loadUsers();
   }
 
@@ -258,20 +197,10 @@ export function AdminUsersPanel() {
     setOpenActionsForUserId(null);
   }
 
-  function getUserBrandRole(user: AllowedUser, brandId: string): "admin" | "finance" | "viewer" | "none" {
-    const roleRow = user.brand_roles.find((item) => item.brand_id === brandId && item.is_active);
-    return roleRow?.role ?? "none";
-  }
-
   function startUserEdit(user: AllowedUser) {
-    const nextRoles: Record<string, "admin" | "finance" | "viewer" | "none"> = {};
-    for (const brand of brandsForUser(user)) {
-      nextRoles[brand.id] = getUserBrandRole(user, brand.id);
-    }
     setEditingUser(user);
     setEditDisplayName(user.display_name ?? "");
     setEditRole(user.role);
-    setEditBrandRoles(nextRoles);
   }
 
   function closeUserEditDialog() {
@@ -279,30 +208,15 @@ export function AdminUsersPanel() {
     setEditingUser(null);
     setEditDisplayName("");
     setEditRole("viewer");
-    setEditBrandRoles({});
   }
 
   async function saveUserEdit() {
     if (!editingUser) return;
 
-    const nextBrandRoles = Object.entries(editBrandRoles)
-      .filter(([, roleValue]) => roleValue !== "none")
-      .map(([brandId, roleValue]) => ({
-        brand_id: brandId,
-        role: roleValue as "admin" | "finance" | "viewer",
-        is_active: true
-      }));
-
-    if (!nextBrandRoles.length) {
-      setMessage("Give this user at least one brand, or deactivate the account instead.");
-      return;
-    }
-
     setEditSubmitting(true);
     await updateUser(editingUser.email, {
       role: editRole,
-      display_name: editDisplayName.trim() || null,
-      brand_roles: nextBrandRoles
+      display_name: editDisplayName.trim() || null
     });
 
     setEditSubmitting(false);
@@ -354,21 +268,6 @@ export function AdminUsersPanel() {
             onChange={(event) => setPassword(event.target.value)}
             required={authMethod === "password"}
           />
-          <div className="lg:col-span-2">
-            <p className="mb-1 text-xs font-medium text-muted">Brand access</p>
-            <div className="flex flex-wrap gap-2">
-              {activeBrands.map((brand) => (
-                <label key={brand.id} className="inline-flex items-center gap-2 rounded border px-2 py-1 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={selectedBrandIds.includes(brand.id)}
-                    onChange={() => toggleInviteBrand(brand.id)}
-                  />
-                  {brand.name}
-                </label>
-              ))}
-            </div>
-          </div>
           <button className="btn" type="submit">
             {authMethod === "password" ? "Create User" : "Send Invite"}
           </button>
@@ -425,13 +324,12 @@ export function AdminUsersPanel() {
                   <th>Display Name</th>
                   <th>Role</th>
                   <th>Status</th>
-                  <th>Brand Access</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {pagedUsers.length === 0 ? (
-                  <TableEmptyState colSpan={6} message="No users match the current search/filter." />
+                  <TableEmptyState colSpan={5} message="No users match the current search/filter." />
                 ) : null}
                 {pagedUsers.map((user) => (
                   <tr key={user.id}>
@@ -439,18 +337,6 @@ export function AdminUsersPanel() {
                     <td>{user.display_name ?? "-"}</td>
                     <td>{user.role}</td>
                     <td>{user.is_active ? "Active" : "Inactive"}</td>
-                    <td>
-                      <div className="grid gap-1 text-xs">
-                        {brandsForUser(user).map((brand) => (
-                          <div key={brand.id} className="flex items-center justify-between gap-2">
-                            <span>{brand.is_active ? brand.name : `${brand.name} (inactive)`}</span>
-                            <span className="rounded bg-[rgb(var(--surface-muted))] px-2 py-0.5 text-[rgb(var(--text))]">
-                              {getUserBrandRole(user, brand.id)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </td>
                     <td>
                       <div className="relative inline-block">
                         <button
@@ -537,7 +423,6 @@ export function AdminUsersPanel() {
           <ul className="list-inside list-disc space-y-1">
             <li className="break-all font-medium text-[rgb(var(--text))]">{email}</li>
             <li>Role: {role}</li>
-            <li>Brands: {selectedBrandIds.length}</li>
             <li>{authMethod === "password" ? "Sign-in: password (temporary password will be set)" : "Sign-in: magic link email"}</li>
             {displayName.trim() ? <li>Display name: {displayName.trim()}</li> : null}
           </ul>
@@ -618,32 +503,6 @@ export function AdminUsersPanel() {
                 <option value="admin">Admin</option>
               </select>
             </label>
-            <div>
-              <p className="mb-1 text-xs font-medium text-muted">Brand access</p>
-              <div className="space-y-2">
-                {brandsForUser(editingUser).map((brand) => (
-                  <label key={brand.id} className="flex items-center justify-between gap-2">
-                    <span className="text-xs">{brand.is_active ? brand.name : `${brand.name} (inactive)`}</span>
-                    <select
-                      className="field w-40"
-                      value={editBrandRoles[brand.id] ?? "none"}
-                      disabled={editSubmitting}
-                      onChange={(event) =>
-                        setEditBrandRoles((current) => ({
-                          ...current,
-                          [brand.id]: event.target.value as "admin" | "finance" | "viewer" | "none"
-                        }))
-                      }
-                    >
-                      <option value="none">No access</option>
-                      <option value="viewer">Viewer</option>
-                      <option value="finance">Finance</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </label>
-                ))}
-              </div>
-            </div>
           </div>
         ) : null}
       </Modal>

@@ -791,7 +791,7 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
           if (!open && !actorSubmitting) setPendingActorId(null);
         }}
         title="Save actor mapping?"
-        description="This changes the global Actor A/B identity mapping used across all brands."
+        description="This changes the global Actor A/B identity mapping."
         confirmLabel="Save Mapping"
         confirming={actorSubmitting}
         closeOnBackdrop={false}

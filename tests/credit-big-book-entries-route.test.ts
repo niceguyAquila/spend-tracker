@@ -4,8 +4,7 @@ const insertMock = vi.fn();
 const updateMock = vi.fn();
 const deleteMaybeSingleMock = vi.fn();
 const deleteSelectMock = vi.fn(() => ({ maybeSingle: deleteMaybeSingleMock }));
-const deleteEqBrandMock = vi.fn(() => ({ select: deleteSelectMock }));
-const deleteEqIdMock = vi.fn(() => ({ eq: deleteEqBrandMock }));
+const deleteEqIdMock = vi.fn(() => ({ select: deleteSelectMock }));
 const updateEqIdMock = vi.fn(() => ({ eq: vi.fn().mockResolvedValue({ error: null }) }));
 const insertSelectSingleMock = vi.fn();
 const requireAdminApiMock = vi.fn();
@@ -240,6 +239,5 @@ describe("credit big book entries route", () => {
     const response = await DELETE(request);
     expect(response.status).toBe(200);
     expect(deleteEqIdMock).toHaveBeenCalledWith("id", "entry-1");
-    expect(deleteEqBrandMock).toHaveBeenCalledWith("brand_id", "brand-1");
   });
 });

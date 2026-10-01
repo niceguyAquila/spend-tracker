@@ -179,18 +179,4 @@ describe("middleware auth gate", () => {
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toContain("/login");
   });
-
-  it("protects /api/web-transactions/* when unauthenticated", async () => {
-    updateSessionMock.mockResolvedValueOnce({
-      response: NextResponse.next(),
-      user: null
-    });
-
-    const { middleware } = await import("@/middleware");
-    const request = new NextRequest("https://example.com/api/web-transactions/import");
-    const response = await middleware(request);
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain("/login");
-  });
 });
