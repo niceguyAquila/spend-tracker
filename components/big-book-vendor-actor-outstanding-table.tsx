@@ -18,6 +18,11 @@ import {
   type BulkSettleEditDraft,
   type BulkSettleMode
 } from "@/components/big-book-bulk-settle-edit-modal";
+import {
+  BigBookInvoiceBuilderModal,
+  type InvoiceBuilderCreditDraft,
+  type InvoiceBuilderSeed
+} from "@/components/big-book-invoice-builder-modal";
 
 const COLUMN_COUNT = 9;
 const CURRENCY_ORDER = ["IDR", "MYR", "USDT", "TRX"] as const;
@@ -99,6 +104,9 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
   const [settleError, setSettleError] = useState<string | null>(null);
   const [settleMessage, setSettleMessage] = useState<string | null>(null);
   const [rowSettleLoadingKey, setRowSettleLoadingKey] = useState<string | null>(null);
+  const [invoiceSeed, setInvoiceSeed] = useState<InvoiceBuilderSeed | null>(null);
+  const [invoiceLoadingKey, setInvoiceLoadingKey] = useState<string | null>(null);
+  const [invoiceError, setInvoiceError] = useState<string | null>(null);
 
   const sortedRows = useMemo(
     () => [...rows].sort((a, b) => compareRows(a, b, sortKey, sortDir)),
@@ -333,6 +341,119 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
     }
   }
 
+  function toInvoiceCredits(
+    entries: Array<{
+      id: string;
+      amount: number;
+      currency_code: string;
+      explanation: string;
+      entry_date: string;
+      remark?: string | null;
+    }>
+  ): InvoiceBuilderCreditDraft[] {
+    return entries.map((entry) => ({
+      id: entry.id,
+      amount: entry.amount,
+      currency_code: entry.currency_code as InvoiceBuilderCreditDraft["currency_code"],
+      explanation: entry.explanation,
+      entry_date: entry.entry_date,
+      remark: entry.remark ?? null
+    }));
+  }
+
+  async function prepareInvoiceFromRow(row: BigBookVendorActorOutstandingRow) {
+    setInvoiceError(null);
+    setSettleError(null);
+    setInvoiceLoadingKey(row.row_key);
+    try {
+      const detailRows = await fetchDetailRows(row);
+      if (!detailRows.length) {
+        setInvoiceError("No open credits found for this vendor row.");
+        return;
+      }
+      setInvoiceSeed({
+        vendor_name: row.vendor_name,
+        actor_display_name: row.actor_display_name,
+        currency: row.currency,
+        credits: toInvoiceCredits(detailRows),
+        label: `${row.vendor_name} · ${row.actor_display_name} · ${row.currency}`
+      });
+    } catch (error) {
+      setInvoiceError(error instanceof Error ? error.message : "Failed to load credits for invoice.");
+    } finally {
+      setInvoiceLoadingKey(null);
+    }
+  }
+
+  async function prepareInvoiceFromSelection() {
+    setInvoiceError(null);
+    setSettleError(null);
+    try {
+      const creditIdSet = new Set(selectedCreditIds);
+      const creditsById = new Map<string, InvoiceBuilderCreditDraft>();
+      const rowByCreditId = new Map<string, BigBookVendorActorOutstandingRow>();
+
+      for (const row of rows) {
+        const cacheKey = detailCacheKey(row, detailFilters);
+        const details = detailsByKey[cacheKey];
+        if (details?.status !== "ok") continue;
+        for (const entry of details.rows) {
+          if (creditIdSet.has(entry.id)) {
+            creditsById.set(entry.id, toInvoiceCredits([entry])[0]);
+            rowByCreditId.set(entry.id, row);
+          }
+        }
+      }
+
+      const selectedRows = rows.filter((row) => selectedRowKeys.has(row.row_key));
+      for (const row of selectedRows) {
+        const detailRows = await fetchDetailRows(row);
+        for (const entry of detailRows) {
+          creditIdSet.add(entry.id);
+          creditsById.set(entry.id, toInvoiceCredits([entry])[0]);
+          rowByCreditId.set(entry.id, row);
+        }
+      }
+
+      const missing = [...creditIdSet].filter((id) => !creditsById.has(id));
+      if (missing.length) {
+        setInvoiceError(
+          "Expand the vendor rows for selected credits (or select the vendor row) so amounts can be confirmed."
+        );
+        return;
+      }
+
+      const credits = [...creditIdSet]
+        .map((id) => creditsById.get(id))
+        .filter((row): row is InvoiceBuilderCreditDraft => Boolean(row));
+      if (!credits.length) {
+        setInvoiceError("Select at least one vendor row or open credit to invoice.");
+        return;
+      }
+
+      const sourceRows = selectedRows.length
+        ? selectedRows
+        : [...new Set([...creditIdSet].map((id) => rowByCreditId.get(id)).filter(Boolean))] as BigBookVendorActorOutstandingRow[];
+
+      const primary = sourceRows[0] ?? rows.find((row) => row.currency === credits[0].currency_code);
+      const currencies = new Set(credits.map((row) => row.currency_code));
+      const vendors = new Set(sourceRows.map((row) => row.vendor_name));
+
+      setInvoiceSeed({
+        vendor_name: vendors.size === 1 ? [...vendors][0] : primary?.vendor_name || "",
+        actor_display_name: primary?.actor_display_name || "—",
+        currency:
+          currencies.size === 1
+            ? ([...currencies][0] as InvoiceBuilderSeed["currency"])
+            : primary?.currency || credits[0].currency_code,
+        credits,
+        label: `${credits.length} selected open credit${credits.length === 1 ? "" : "s"}`
+      });
+    } catch (error) {
+      setInvoiceError(error instanceof Error ? error.message : "Failed to prepare invoice.");
+    }
+  }
+
   function openEditDialogFromChooser() {
     if (!pendingSettle) return;
     setSettleError(null);
@@ -411,11 +532,22 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
         >
           Settle selected ({selectedCount || 0})
         </button>
+        <button
+          type="button"
+          className="btn-secondary btn-sm"
+          disabled={selectedCount === 0}
+          onClick={() => void prepareInvoiceFromSelection()}
+        >
+          Create invoice ({selectedCount || 0})
+        </button>
         {settleMessage ? (
           <p className="text-sm text-[rgb(var(--success))]">{settleMessage}</p>
         ) : null}
         {settleError && !pendingSettle && !editDraft ? (
           <p className="text-sm text-[rgb(var(--danger))]">{settleError}</p>
+        ) : null}
+        {invoiceError && !invoiceSeed ? (
+          <p className="text-sm text-[rgb(var(--danger))]">{invoiceError}</p>
         ) : null}
       </div>
 
@@ -469,10 +601,12 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
                   selected={selectedRowKeys.has(row.row_key)}
                   selectedCreditIds={selectedCreditIds}
                   settleLoading={rowSettleLoadingKey === row.row_key}
+                  invoiceLoading={invoiceLoadingKey === row.row_key}
                   onToggleExpand={() => toggleExpanded(row)}
                   onToggleSelected={() => toggleRowSelected(row.row_key)}
                   onToggleCredit={toggleCreditSelected}
                   onSettleRow={() => void prepareSettleFromRow(row)}
+                  onInvoiceRow={() => void prepareInvoiceFromRow(row)}
                 />
               );
             })}
@@ -595,6 +729,17 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
         }}
         onSubmit={submitBulkSettleEdit}
       />
+
+      <BigBookInvoiceBuilderModal
+        open={Boolean(invoiceSeed)}
+        seed={invoiceSeed}
+        onOpenChange={(open) => {
+          if (!open) {
+            setInvoiceSeed(null);
+            setInvoiceError(null);
+          }
+        }}
+      />
     </div>
   );
 }
@@ -607,10 +752,12 @@ function OutstandingSummaryRows({
   selected,
   selectedCreditIds,
   settleLoading,
+  invoiceLoading,
   onToggleExpand,
   onToggleSelected,
   onToggleCredit,
-  onSettleRow
+  onSettleRow,
+  onInvoiceRow
 }: {
   row: BigBookVendorActorOutstandingRow;
   index: number;
@@ -619,10 +766,12 @@ function OutstandingSummaryRows({
   selected: boolean;
   selectedCreditIds: Set<string>;
   settleLoading: boolean;
+  invoiceLoading: boolean;
   onToggleExpand: () => void;
   onToggleSelected: () => void;
   onToggleCredit: (creditId: string) => void;
   onSettleRow: () => void;
+  onInvoiceRow: () => void;
 }) {
   return (
     <>
@@ -667,17 +816,30 @@ function OutstandingSummaryRows({
         </td>
         <td className="px-3 py-2">{row.open_credit_count}</td>
         <td className="px-3 py-2 text-right">
-          <button
-            type="button"
-            className="btn-secondary btn-sm"
-            disabled={settleLoading || row.open_credit_count === 0}
-            onClick={(event) => {
-              event.stopPropagation();
-              onSettleRow();
-            }}
-          >
-            {settleLoading ? "Loading…" : "Settle"}
-          </button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              className="btn-secondary btn-sm"
+              disabled={settleLoading || invoiceLoading || row.open_credit_count === 0}
+              onClick={(event) => {
+                event.stopPropagation();
+                onSettleRow();
+              }}
+            >
+              {settleLoading ? "Loading…" : "Settle"}
+            </button>
+            <button
+              type="button"
+              className="btn-secondary btn-sm"
+              disabled={settleLoading || invoiceLoading || row.open_credit_count === 0}
+              onClick={(event) => {
+                event.stopPropagation();
+                onInvoiceRow();
+              }}
+            >
+              {invoiceLoading ? "Loading…" : "Create invoice"}
+            </button>
+          </div>
         </td>
       </tr>
       {expanded ? (

@@ -3,6 +3,7 @@ import {
   getBigBookActors,
   getBigBookActorPockets,
   getBigBookAllowedUsers,
+  getBigBookInvoiceWallets,
   getBigBookLedgerSubTypes,
   getBigBookLedgerTypes,
   getBigBookTypeVendorTypeMaps,
@@ -15,24 +16,35 @@ import { SetupRequiredCard } from "@/components/ui/setup-required-card";
 
 export default async function BigBookSettingsPage() {
   try {
-    const [types, subTypes, vendorTypes, vendors, actionBy, pockets, actors, allowedUsers, typeVendorTypeMaps] =
-      await Promise.all([
-        getBigBookLedgerTypes({ includeInactive: true }),
-        getBigBookLedgerSubTypes({ includeInactive: true }),
-        getBigBookVendorTypes({ includeInactive: true }),
-        getBigBookVendors({ includeInactive: true }),
-        getBigBookActionBy({ includeInactive: true }),
-        getBigBookActorPockets({ includeInactive: true }),
-        getBigBookActors(),
-        getBigBookAllowedUsers(),
-        getBigBookTypeVendorTypeMaps()
-      ]);
+    const [
+      types,
+      subTypes,
+      vendorTypes,
+      vendors,
+      actionBy,
+      pockets,
+      actors,
+      allowedUsers,
+      typeVendorTypeMaps,
+      wallets
+    ] = await Promise.all([
+      getBigBookLedgerTypes({ includeInactive: true }),
+      getBigBookLedgerSubTypes({ includeInactive: true }),
+      getBigBookVendorTypes({ includeInactive: true }),
+      getBigBookVendors({ includeInactive: true }),
+      getBigBookActionBy({ includeInactive: true }),
+      getBigBookActorPockets({ includeInactive: true }),
+      getBigBookActors(),
+      getBigBookAllowedUsers(),
+      getBigBookTypeVendorTypeMaps(),
+      getBigBookInvoiceWallets({ includeInactive: true })
+    ]);
 
     return (
       <div className="space-y-6">
         <PageHeader
           title="Big Book Settings"
-          description="Manage types, type→vendor type mappings, sub-types, vendor types, vendor names, Action By, actor pockets, and global Actor A/B mapping."
+          description="Manage types, type→vendor type mappings, sub-types, vendor types, vendor names, Action By, actor pockets, invoice wallets, and global Actor A/B mapping."
         />
         <BigBookSettingsPanel
           initialTypes={types}
@@ -44,6 +56,7 @@ export default async function BigBookSettingsPage() {
           initialActors={actors}
           allowedUsers={allowedUsers}
           initialTypeVendorTypeMaps={typeVendorTypeMaps}
+          initialWallets={wallets}
         />
       </div>
     );
