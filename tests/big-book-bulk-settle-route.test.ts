@@ -130,6 +130,77 @@ describe("big book bulk settle route", () => {
     );
   });
 
+  it("applies USDT conversion rate for a single combined settlement", async () => {
+    selectInMock.mockResolvedValue({
+      data: [
+        {
+          id: CREDIT_A,
+          entry_date: "2026-09-01",
+          entry_direction: "spending",
+          entry_type_id: "type-1",
+          entry_sub_type_id: null,
+          vendor_type_id: "vt-1",
+          vendor_id: "v-1",
+          action_by_id: null,
+          explanation: "Credit A",
+          amount: 420,
+          currency_code: "MYR",
+          responsible_actor_id: "actor-1",
+          is_credit: true,
+          settles_entry_id: null,
+          credit_settled_at: null
+        },
+        {
+          id: CREDIT_B,
+          entry_date: "2026-09-02",
+          entry_direction: "spending",
+          entry_type_id: "type-1",
+          entry_sub_type_id: null,
+          vendor_type_id: "vt-1",
+          vendor_id: "v-1",
+          action_by_id: null,
+          explanation: "Credit B",
+          amount: 210,
+          currency_code: "MYR",
+          responsible_actor_id: "actor-1",
+          is_credit: true,
+          settles_entry_id: null,
+          credit_settled_at: null
+        }
+      ],
+      error: null
+    });
+
+    const { POST } = await import("@/app/api/big-book/entries/bulk-settle/route");
+    const request = new Request("https://app.localhost/api/big-book/entries/bulk-settle", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        credit_entry_ids: [CREDIT_A, CREDIT_B],
+        mode: "single",
+        entry_date: "2026-10-01",
+        currency_code: "USDT",
+        // 1 USDT = 4.2 MYR → usdt = 630 / 4.2 = 150
+        settlement_conversion_rate: 4.2,
+        amount: 150
+      })
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+    expect(response.status).toBe(200);
+    expect(data.mode).toBe("single");
+    expect(insertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 150,
+        currency_code: "USDT",
+        settlement_conversion_rate: 4.2,
+        settlement_amount_in_credit_currency: 630,
+        settles_entry_id: CREDIT_A
+      })
+    );
+  });
+
   it("creates one settlement per credit when mode is per_credit", async () => {
     insertMock.mockReturnValue({
       select: vi.fn().mockResolvedValue({
