@@ -11,7 +11,7 @@ describe("formatInvoiceMoney", () => {
 });
 
 describe("renderInvoicePdf", () => {
-  it("produces a PDF buffer with sample-equivalent fields", async () => {
+  it("produces a PDF buffer with Bill To / Period / Notes layout fields", async () => {
     const pdf = await renderInvoicePdf({
       title: "OCTOBER RENT 2026 INVOICE",
       invoice_no: "250926-6",
@@ -20,10 +20,11 @@ describe("renderInvoicePdf", () => {
       terms: "Due on receipt",
       currency: "USDT",
       bill_to_company: "HCM",
+      bill_to_name: "John Doe",
       bill_to_passport: "A1234567",
       bill_to_address: "Jakarta, Indonesia",
       bill_to_phone: "+62 812 0000 0000",
-      subject: "October 2026 rent",
+      subject: "October 2026 rent · Visa · Kompi 7891",
       lines: [
         {
           unit_name: "Kompi",

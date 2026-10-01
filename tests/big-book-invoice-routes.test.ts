@@ -117,6 +117,7 @@ describe("big book invoice routes", () => {
         terms: "Due on receipt",
         currency: "USDT",
         bill_to_company: "HCM",
+        bill_to_name: "John Doe",
         bill_to_passport: "P123",
         bill_to_address: "Jakarta",
         bill_to_phone: "+62",
@@ -142,6 +143,7 @@ describe("big book invoice routes", () => {
     expect(renderInvoicePdfMock).toHaveBeenCalledTimes(1);
     const pdfArgs = renderInvoicePdfMock.mock.calls[0][0];
     expect(pdfArgs.invoice_no).toBe("011026-1");
+    expect(pdfArgs.bill_to_name).toBe("John Doe");
     expect(pdfArgs.wallets).toEqual([
       { name: "Binance", network: "TRC20", address: "TAddress123" }
     ]);

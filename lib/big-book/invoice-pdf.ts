@@ -23,6 +23,7 @@ export type InvoicePdfPayload = {
   terms: string;
   currency: string;
   bill_to_company: string;
+  bill_to_name: string;
   bill_to_passport: string;
   bill_to_address: string;
   bill_to_phone: string;
@@ -47,22 +48,37 @@ function drawWrappedText(
   text: string,
   x: number,
   y: number,
-  options: { width: number; fontSize?: number; lineGap?: number }
+  options: { width: number; fontSize?: number; lineGap?: number; align?: "left" | "center" | "right" }
 ) {
   const fontSize = options.fontSize ?? 10;
   doc.fontSize(fontSize);
   doc.text(text, x, y, {
     width: options.width,
     lineGap: options.lineGap ?? 2,
-    align: "left"
+    align: options.align ?? "left"
   });
   return doc.y;
 }
 
+function drawRule(
+  doc: PDFKit.PDFDocument,
+  left: number,
+  y: number,
+  width: number,
+  options?: { color?: string; lineWidth?: number }
+) {
+  doc
+    .moveTo(left, y)
+    .lineTo(left + width, y)
+    .strokeColor(options?.color ?? "#333333")
+    .lineWidth(options?.lineWidth ?? 0.8)
+    .stroke();
+}
+
 /**
- * Clean invoice PDF layout with the same fields as the sample HCM rent invoice.
- * Sample PDF was unavailable in the build environment, so this is a field-matched
- * clean layout rather than a pixel-perfect Skia clone.
+ * Invoice PDF layout aligned to the sample structure:
+ * Bill To + separator + PIC fields, centered Period/Subject with double rules,
+ * then Notes section ordered Wallets → FX note → manual note.
  */
 export async function renderInvoicePdf(payload: InvoicePdfPayload): Promise<Buffer> {
   const doc = new PDFDocument({
@@ -120,41 +136,63 @@ export async function renderInvoicePdf(payload: InvoicePdfPayload): Promise<Buff
     y = Math.max(doc.y, y + 14);
   }
 
-  y += 10;
-  doc
-    .moveTo(left, y)
-    .lineTo(left + pageWidth, y)
-    .strokeColor("#333333")
-    .lineWidth(0.8)
-    .stroke();
   y += 14;
 
-  // Bill To
-  doc.font("Helvetica-Bold").fontSize(11).text("Bill To", left, y);
-  y = doc.y + 6;
-  doc.font("Helvetica-Bold").fontSize(10).text(payload.bill_to_company || "—", left, y);
-  y = doc.y + 4;
-  doc.font("Helvetica").fontSize(10);
-  if (payload.bill_to_passport.trim()) {
-    y = drawWrappedText(doc, `Passport: ${payload.bill_to_passport}`, left, y, { width: pageWidth });
-    y += 2;
-  }
-  if (payload.bill_to_address.trim()) {
-    y = drawWrappedText(doc, payload.bill_to_address, left, y, { width: pageWidth });
-    y += 2;
-  }
-  if (payload.bill_to_phone.trim()) {
-    y = drawWrappedText(doc, `Phone: ${payload.bill_to_phone}`, left, y, { width: pageWidth });
-    y += 2;
+  // Bill To: Company
+  // Bill To: [Company Name]
+  // ------------------------------
+  // Name: ...
+  doc.font("Helvetica-Bold").fontSize(11);
+  doc.text("Bill To: ", left, y, { continued: true });
+  doc.font("Helvetica").fontSize(11).text(payload.bill_to_company.trim() || "—");
+  y = doc.y + 8;
+
+  drawRule(doc, left, y, Math.min(pageWidth, 280), { lineWidth: 0.9 });
+  y += 12;
+
+  const billRows: Array<[string, string]> = [
+    ["Name", payload.bill_to_name.trim()],
+    ["Passport No", payload.bill_to_passport.trim()],
+    ["Address", payload.bill_to_address.trim()],
+    ["Phone", payload.bill_to_phone.trim()]
+  ];
+
+  for (const [label, value] of billRows) {
+    doc.font("Helvetica-Bold").fontSize(10).text(`${label}: `, left, y, { continued: true });
+    doc.font("Helvetica").fontSize(10);
+    // Keep label+value on one flow; wrap long address under the same left margin.
+    if (label === "Address" && value.length > 60) {
+      doc.text("");
+      y = doc.y + 2;
+      y = drawWrappedText(doc, value || "—", left, y, { width: pageWidth, fontSize: 10 });
+      y += 4;
+    } else {
+      doc.text(value || "—");
+      y = Math.max(doc.y + 2, y + 14);
+    }
   }
 
+  // Period / Subject — centered, larger, with double rules before & after
   y += 10;
   if (payload.subject.trim()) {
-    doc.font("Helvetica-Bold").fontSize(10).text("Period / Subject", left, y);
-    y = doc.y + 4;
-    doc.font("Helvetica").fontSize(10);
-    y = drawWrappedText(doc, payload.subject, left, y, { width: pageWidth });
-    y += 8;
+    drawRule(doc, left, y, pageWidth, { lineWidth: 1 });
+    y += 3;
+    drawRule(doc, left, y, pageWidth, { lineWidth: 0.6 });
+    y += 12;
+
+    doc.font("Helvetica-Bold").fontSize(13);
+    y = drawWrappedText(doc, payload.subject.trim(), left, y, {
+      width: pageWidth,
+      fontSize: 13,
+      align: "center",
+      lineGap: 3
+    });
+    y += 10;
+
+    drawRule(doc, left, y, pageWidth, { lineWidth: 0.6 });
+    y += 3;
+    drawRule(doc, left, y, pageWidth, { lineWidth: 1 });
+    y += 14;
   }
 
   // Line table
@@ -239,47 +277,35 @@ export async function renderInvoicePdf(payload: InvoicePdfPayload): Promise<Buff
   });
   y = doc.y + 16;
 
-  // Notes / wallets / FX
+  // Notes / Terms — continuous block: wallets → FX note → manual note (no sub-labels)
   ensureSpace(80);
-  doc
-    .moveTo(left, y)
-    .lineTo(left + pageWidth, y)
-    .strokeColor("#333333")
-    .lineWidth(0.8)
-    .stroke();
+  drawRule(doc, left, y, pageWidth);
   y += 12;
 
   doc.font("Helvetica-Bold").fontSize(11).text("Notes / Terms", left, y);
-  y = doc.y + 6;
-  doc.font("Helvetica").fontSize(10);
-  if (payload.notes.trim()) {
-    y = drawWrappedText(doc, payload.notes, left, y, { width: pageWidth });
-    y += 8;
-  } else {
-    doc.text("—", left, y);
-    y = doc.y + 8;
-  }
+  y = doc.y + 8;
+  doc.font("Helvetica").fontSize(9);
 
-  if (payload.wallets.length) {
-    ensureSpace(40);
-    doc.font("Helvetica-Bold").fontSize(10).text("Payment wallets", left, y);
-    y = doc.y + 4;
-    doc.font("Helvetica").fontSize(9);
-    for (const wallet of payload.wallets) {
-      ensureSpace(28);
-      const label = `${wallet.name} (${wallet.network})`;
-      y = drawWrappedText(doc, label, left, y, { width: pageWidth, fontSize: 9 });
-      y = drawWrappedText(doc, wallet.address, left, y, { width: pageWidth, fontSize: 9 });
-      y += 6;
-    }
+  const noteBlocks: string[] = [];
+  for (const wallet of payload.wallets) {
+    noteBlocks.push(`${wallet.name} (${wallet.network})`);
+    noteBlocks.push(wallet.address);
   }
-
   if (payload.fx_note.trim()) {
-    ensureSpace(36);
-    doc.font("Helvetica-Bold").fontSize(10).text("FX note", left, y);
-    y = doc.y + 4;
-    doc.font("Helvetica").fontSize(9);
-    drawWrappedText(doc, payload.fx_note, left, y, { width: pageWidth, fontSize: 9 });
+    noteBlocks.push(payload.fx_note.trim());
+  }
+  if (payload.notes.trim()) {
+    noteBlocks.push(payload.notes.trim());
+  }
+
+  if (!noteBlocks.length) {
+    doc.text("—", left, y);
+  } else {
+    for (const block of noteBlocks) {
+      ensureSpace(24);
+      y = drawWrappedText(doc, block, left, y, { width: pageWidth, fontSize: 9 });
+      y += 4;
+    }
   }
 
   doc.end();
