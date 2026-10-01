@@ -85,6 +85,18 @@ export type BigBookActorPocket = {
   updated_at: string;
 };
 
+/** Payment wallet printed on invoice PDF notes (Settings CRUD). */
+export type BigBookInvoiceWallet = {
+  id: string;
+  name: string;
+  network: string;
+  address: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type BigBookAttachment = {
   id: string;
   ledger_entry_id: string;

@@ -22,6 +22,7 @@ import {
 import {
   BigBookActor,
   BigBookActorPocket,
+  BigBookInvoiceWallet,
   BigBookActorPocketMetrics,
   BigBookAllowedUserOption,
   BigBookActorCurrencyMetrics,
@@ -286,6 +287,29 @@ export async function getBigBookActorPockets(options?: {
   return (data ?? []).map((row) => ({
     ...row,
     currency_code: row.currency_code as "IDR",
+    sort_order: Number(row.sort_order)
+  }));
+}
+
+export async function getBigBookInvoiceWallets(options?: {
+  includeInactive?: boolean;
+}): Promise<BigBookInvoiceWallet[]> {
+  const supabase = await createClient();
+  let query = supabase
+    .from("big_book_invoice_wallets")
+    .select("id, name, network, address, is_active, sort_order, created_at, updated_at")
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+
+  if (!options?.includeInactive) {
+    query = query.eq("is_active", true);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    ...row,
     sort_order: Number(row.sort_order)
   }));
 }

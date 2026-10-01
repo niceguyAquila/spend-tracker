@@ -7,6 +7,7 @@ import type {
   BigBookActor,
   BigBookActorPocket,
   BigBookAllowedUserOption,
+  BigBookInvoiceWallet,
   BigBookLedgerSubType,
   BigBookLedgerType,
   BigBookTypeVendorTypeMap,
@@ -23,6 +24,7 @@ import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { TableEmptyState } from "@/components/ui/table-empty-state";
 import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
 import { BigBookTypeVendorTypeMapSection } from "@/components/big-book-type-vendor-type-map-section";
+import { BigBookWalletsSettingsSection } from "@/components/big-book-wallets-settings-section";
 
 type StatusFilter = "all" | "active" | "inactive";
 
@@ -36,6 +38,7 @@ type Props = {
   initialActors: BigBookActor[];
   allowedUsers: BigBookAllowedUserOption[];
   initialTypeVendorTypeMaps?: BigBookTypeVendorTypeMap[];
+  initialWallets?: BigBookInvoiceWallet[];
 };
 
 type ApiErrorShape = {
@@ -72,7 +75,8 @@ export function BigBookSettingsPanel({
   initialPockets,
   initialActors,
   allowedUsers,
-  initialTypeVendorTypeMaps = []
+  initialTypeVendorTypeMaps = [],
+  initialWallets = []
 }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -1813,6 +1817,8 @@ export function BigBookSettingsPanel({
           show={Boolean(pocketParentActorId)}
         />
       </section>
+
+      <BigBookWalletsSettingsSection initialWallets={initialWallets} />
 
       <section className="card">
         <h2 className="text-lg font-semibold">Actor A/B Mapping</h2>
