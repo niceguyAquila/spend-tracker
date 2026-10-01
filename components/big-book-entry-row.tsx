@@ -88,12 +88,6 @@ function BigBookEntryRowInner({
           <div className="mt-0.5 text-xs text-muted">-</div>
         )}
       </td>
-      <td className="overflow-hidden break-words px-3 py-2">
-        {entry.sub_type_name ? entry.sub_type_name : <span className="text-xs text-muted">-</span>}
-      </td>
-      <td className="overflow-hidden break-words px-3 py-2">
-        {entry.vendor_name ? entry.vendor_name : <span className="text-xs text-muted">-</span>}
-      </td>
       <td className="overflow-hidden break-words px-3 py-2">{entry.actor_display_name}</td>
       <td className="overflow-hidden break-words px-3 py-2">
         {entry.action_by_name ? entry.action_by_name : <span className="text-xs text-muted">-</span>}
