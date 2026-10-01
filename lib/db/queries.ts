@@ -40,6 +40,7 @@ import {
   BigBookVendorActorOutstandingEntriesResult,
   BigBookVendorActorOutstandingRow,
   BigBookVendorType,
+  BigBookTypeVendorTypeMap,
   BigBookTypeCashflowByCurrency,
   BigBookTypeCashflowRow,
   BigBookMonthlyCurrencyRow,
@@ -158,6 +159,42 @@ export async function getBigBookVendorTypes(options?: {
     ...row,
     sort_order: Number(row.sort_order)
   }));
+}
+
+export async function getBigBookTypeVendorTypeMaps(): Promise<BigBookTypeVendorTypeMap[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("business_ledger_type_vendor_type_maps")
+    .select(
+      `
+      id, entry_type_id, vendor_type_id, created_at, updated_at,
+      business_ledger_types(code, name),
+      business_ledger_vendor_types(code, name)
+    `
+    )
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+
+  return (data ?? []).map((row) => {
+    const type = Array.isArray(row.business_ledger_types)
+      ? row.business_ledger_types[0]
+      : row.business_ledger_types;
+    const vendorType = Array.isArray(row.business_ledger_vendor_types)
+      ? row.business_ledger_vendor_types[0]
+      : row.business_ledger_vendor_types;
+    return {
+      id: row.id,
+      entry_type_id: row.entry_type_id,
+      vendor_type_id: row.vendor_type_id,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      type_code: type?.code,
+      type_name: type?.name,
+      vendor_type_code: vendorType?.code,
+      vendor_type_name: vendorType?.name
+    };
+  });
 }
 
 export async function getBigBookActionBy(options?: {

@@ -32,6 +32,19 @@ export type BigBookVendorType = {
   updated_at: string;
 };
 
+/** 1:1 Type → Vendor Type mapping used to auto-fill Vendor Type on ledger create/edit. */
+export type BigBookTypeVendorTypeMap = {
+  id: string;
+  entry_type_id: string;
+  vendor_type_id: string;
+  created_at: string;
+  updated_at: string;
+  type_name?: string;
+  type_code?: string;
+  vendor_type_name?: string;
+  vendor_type_code?: string;
+};
+
 export type BigBookActionBy = {
   id: string;
   code: string;

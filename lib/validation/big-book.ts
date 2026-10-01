@@ -209,6 +209,36 @@ export const bigBookCreditSettleSchema = z.object({
   note: optionalNoteSchema
 });
 
+export const bigBookTypeVendorTypeMapCreateSchema = z.object({
+  entry_type_id: z.string().uuid("Select a type."),
+  vendor_type_id: z.string().uuid("Select a vendor type.")
+});
+
+export const bigBookTypeVendorTypeMapUpdateSchema = z.object({
+  id: z.string().uuid(),
+  entry_type_id: z.string().uuid("Select a type.").optional(),
+  vendor_type_id: z.string().uuid("Select a vendor type.").optional()
+});
+
+export const bigBookTypeVendorTypeMapDeleteSchema = z.object({
+  id: z.string().uuid()
+});
+
+export const bigBookBulkSettleModeSchema = z.enum(["single", "per_credit"]);
+
+export const bigBookBulkSettleSchema = z.object({
+  credit_entry_ids: z
+    .array(z.string().uuid())
+    .min(1, "Select at least one open credit to settle.")
+    .max(100)
+    .refine((ids) => new Set(ids).size === ids.length, "Duplicate credit ids"),
+  mode: bigBookBulkSettleModeSchema.default("single"),
+  entry_date: z.string().min(1, "Date is required"),
+  close_credits: z.boolean().optional().default(true),
+  settlement_note: optionalNoteSchema,
+  explanation: z.string().trim().min(2).max(500).optional()
+});
+
 const bigBookGroupEntryInputSchema = bigBookEntryBaseSchema.omit({
   is_credit: true,
   settles_entry_id: true,

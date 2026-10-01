@@ -16,6 +16,7 @@ import type {
   BigBookLedgerSubType,
   BigBookLedgerType,
   BigBookSettlementTargetRef,
+  BigBookTypeVendorTypeMap,
   BigBookVendor,
   BigBookVendorActorOutstandingRow,
   BigBookVendorType
@@ -75,6 +76,7 @@ type Props = {
   initialActionBy: BigBookActionBy[];
   initialPockets: BigBookActorPocket[];
   initialActors: BigBookActor[];
+  initialTypeVendorTypeMaps?: BigBookTypeVendorTypeMap[];
   initialLedgerRows: BigBookLedgerRow[];
   initialTotalCount: number;
   initialTotals: BigBookLedgerTotals;
@@ -124,21 +126,17 @@ function arraysEqual(left: string[], right: string[]) {
 const SUPPORTED_CURRENCIES: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR", "USDT", "TRX"];
 
 const LEDGER_SKELETON_ROW_COUNT = 6;
-const LEDGER_COLUMN_COUNT = 16;
+const LEDGER_COLUMN_COUNT = 12;
 const LEDGER_COLUMN_WIDTH_DEFAULTS: Record<string, number> = {
   select: 44,
   entry_date: 110,
   entry_direction: 90,
-  type_name: 130,
-  sub_type_name: 120,
-  vendor_type_name: 120,
-  vendor_name: 140,
+  type_name: 150,
   actor_display_name: 110,
   action_by_name: 120,
   explanation: 220,
   amount: 150,
   credit: 160,
-  pocket_name: 120,
   remark: 180,
   attachments: 140,
   actions: 100
@@ -305,6 +303,7 @@ export function BigBookPanel({
   initialActionBy,
   initialPockets,
   initialActors,
+  initialTypeVendorTypeMaps = [],
   initialLedgerRows,
   initialTotalCount,
   initialTotals,
@@ -510,41 +509,43 @@ export function BigBookPanel({
   );
   const today = new Date().toISOString().slice(0, 10);
 
-  const [entryForm, setEntryForm] = useState<EntryFormState>({
-    entry_date: today,
-    entry_direction: "spending",
-    entry_type_id: activeTypes[0]?.id ?? initialTypes[0]?.id ?? "",
-    entry_sub_type_id: "",
-    vendor_type_id: "",
-    vendor_id: "",
-    pocket_id: "",
-    action_by_id: "",
-    explanation: "",
-    amount: "",
-    currency_code: "IDR",
-    gas_fee_amount: "",
-    remark: "",
-    responsible_actor_id: initialActors[0]?.id ?? "",
-    is_credit: false,
-    settles_entry_id: "",
-    settlement_conversion_rate: "",
-    settlement_note: "",
-    close_credit: false,
-    credit_settlement_note: ""
-  });
-
   const defaultTypeId = activeTypes[0]?.id ?? initialTypes[0]?.id ?? "";
   const defaultActorId = initialActors[0]?.id ?? "";
   const newEntryForm = useCallback(
-    () => createEmptyEntryForm({ today, defaultTypeId, defaultActorId }),
-    [today, defaultTypeId, defaultActorId]
+    () =>
+      createEmptyEntryForm({
+        today,
+        defaultTypeId,
+        defaultActorId,
+        typeVendorTypeMaps: initialTypeVendorTypeMaps
+      }),
+    [today, defaultTypeId, defaultActorId, initialTypeVendorTypeMaps]
+  );
+
+  const [entryForm, setEntryForm] = useState<EntryFormState>(() =>
+    createEmptyEntryForm({
+      today,
+      defaultTypeId,
+      defaultActorId,
+      typeVendorTypeMaps: initialTypeVendorTypeMaps
+    })
   );
 
   const [groupLabel, setGroupLabel] = useState("");
   const [groupRemark, setGroupRemark] = useState("");
   const [groupEntryForms, setGroupEntryForms] = useState<EntryFormState[]>(() => [
-    createEmptyEntryForm({ today, defaultTypeId, defaultActorId }),
-    createEmptyEntryForm({ today, defaultTypeId, defaultActorId })
+    createEmptyEntryForm({
+      today,
+      defaultTypeId,
+      defaultActorId,
+      typeVendorTypeMaps: initialTypeVendorTypeMaps
+    }),
+    createEmptyEntryForm({
+      today,
+      defaultTypeId,
+      defaultActorId,
+      typeVendorTypeMaps: initialTypeVendorTypeMaps
+    })
   ]);
   // Which transaction cards are expanded in create/edit grouped mode.
   const [expandedCreateTxnIndexes, setExpandedCreateTxnIndexes] = useState<Set<number>>(
@@ -1229,29 +1230,18 @@ export function BigBookPanel({
           null
         );
       }
-      setEntryForm((prev) => ({
-        ...prev,
-        explanation: "",
-        amount: "",
-        remark: "",
-        gas_fee_amount: "",
-        ...(keepModalOpen
-          ? {}
-          : {
-              currency_code: "IDR" as const,
-              entry_sub_type_id: "",
-              vendor_type_id: "",
-              vendor_id: "",
-              pocket_id: "",
-              action_by_id: "",
-              is_credit: false,
-              settles_entry_id: "",
-              settlement_conversion_rate: "",
-              settlement_note: "",
-              close_credit: false,
-              credit_settlement_note: ""
-            })
-      }));
+      if (keepModalOpen) {
+        setEntryForm((prev) => ({
+          ...prev,
+          explanation: "",
+          amount: "",
+          remark: "",
+          gas_fee_amount: ""
+        }));
+      } else {
+        // Full reset reapplies Type → Vendor Type mapping for the default type.
+        setEntryForm(newEntryForm());
+      }
       triggerRefresh();
     } catch {
       setError("Failed to create ledger entry due to a network error.");
@@ -1943,6 +1933,17 @@ export function BigBookPanel({
   }
 
 
+  function openCreateModal() {
+    setEntryForm(newEntryForm());
+    setGroupEntryForms([newEntryForm(), newEntryForm()]);
+    setGroupLabel("");
+    setGroupRemark("");
+    setCreateAttachmentFiles([]);
+    setCreateMode("single");
+    setExpandedCreateTxnIndexes(new Set([0]));
+    setCreateModalOpen(true);
+  }
+
   const handleCreateModalOpenChange = useCallback(
     (open: boolean) => {
       if (!entrySubmitting && !groupSubmitting) {
@@ -2001,7 +2002,11 @@ export function BigBookPanel({
 
   return (
     <div className="space-y-6">
-      <BigBookMetricsSection promise={metricsPromise} override={metricsOverride} />
+      <BigBookMetricsSection
+        promise={metricsPromise}
+        override={metricsOverride}
+        onOutstandingSettled={triggerRefresh}
+      />
 
       <section id="ledger-records" className="card" aria-busy={criticalPending}>
         {/* Sticky so the create/import actions stay reachable while scanning rows.
@@ -2042,7 +2047,7 @@ export function BigBookPanel({
               <button className="btn-secondary" onClick={() => setImportModalOpen(true)} disabled={criticalPending}>
                 Import CSV
               </button>
-              <button className="btn" onClick={() => setCreateModalOpen(true)} disabled={criticalPending}>
+              <button className="btn" onClick={openCreateModal} disabled={criticalPending}>
                 New Ledger Entry
               </button>
             </div>
@@ -2310,9 +2315,6 @@ export function BigBookPanel({
                     ["entry_date", "Date"],
                     ["entry_direction", "Cash Flow"],
                     ["type_name", "Type"],
-                    ["sub_type_name", "Sub-Type"],
-                    ["vendor_type_name", "Vendor Type"],
-                    ["vendor_name", "Vendor Name"],
                     ["actor_display_name", "Actor"],
                     ["action_by_name", "Action By"],
                     ["explanation", "Explanation"]
@@ -2355,19 +2357,6 @@ export function BigBookPanel({
                     {...getResizeHandleProps("credit")}
                   />
                 </th>
-                <th className="relative px-3 py-2" aria-sort={ariaSortFor("pocket_name")}>
-                  <button type="button" className="font-semibold" onClick={() => toggleSort("pocket_name")}>
-                    Pocket
-                    {sortMarker("pocket_name")}
-                  </button>
-                  <span
-                    role="separator"
-                    aria-orientation="vertical"
-                    aria-label="Resize Pocket column"
-                    className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize touch-none select-none hover:bg-[rgb(var(--primary)/0.35)]"
-                    {...getResizeHandleProps("pocket_name")}
-                  />
-                </th>
                 {(
                   [
                     ["remark", "Remark"],
@@ -2400,15 +2389,11 @@ export function BigBookPanel({
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-5 w-14 rounded-full bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-28 rounded bg-[rgb(var(--surface-muted))]" /></td>
-                      <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
-                      <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
-                      <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-28 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-56 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-5 w-16 rounded-full bg-[rgb(var(--surface-muted))]" /></td>
-                      <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-20 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-16 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-8 w-20 rounded bg-[rgb(var(--surface-muted))]" /></td>
@@ -2751,6 +2736,7 @@ export function BigBookPanel({
               actionByOptions={initialActionBy}
               pockets={initialPockets}
               actors={initialActors}
+              typeVendorTypeMaps={initialTypeVendorTypeMaps}
               currencies={currencies}
               showAttachments
               showGasFee
@@ -2848,6 +2834,7 @@ export function BigBookPanel({
                           actionByOptions={initialActionBy}
                           pockets={initialPockets}
                           actors={initialActors}
+                          typeVendorTypeMaps={initialTypeVendorTypeMaps}
                           currencies={currencies}
                           layout="nested"
                           showGasFee
@@ -3093,6 +3080,7 @@ export function BigBookPanel({
                         actionByOptions={initialActionBy}
                         pockets={initialPockets}
                         actors={initialActors}
+                        typeVendorTypeMaps={initialTypeVendorTypeMaps}
                         currencies={currencies}
                         layout="nested"
                       />
@@ -3128,6 +3116,7 @@ export function BigBookPanel({
             actionByOptions={initialActionBy}
             pockets={initialPockets}
             actors={initialActors}
+            typeVendorTypeMaps={initialTypeVendorTypeMaps}
             currencies={currencies}
             settlesEntry={editSettlesEntry}
             fetchingConversionRate={fetchingConversionRate}
@@ -3353,6 +3342,7 @@ export function BigBookPanel({
             actionByOptions={initialActionBy}
             pockets={initialPockets}
             actors={initialActors}
+            typeVendorTypeMaps={initialTypeVendorTypeMaps}
             currencies={currencies}
             showAttachments
             attachmentFiles={settlementAttachmentFiles}
