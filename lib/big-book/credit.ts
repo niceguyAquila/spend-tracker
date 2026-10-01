@@ -13,11 +13,31 @@ export function roundSettlementAmount(value: number): number {
   return Math.round(value * 10000) / 10000;
 }
 
+/**
+ * Settlement conversion convention (matches Record Settlement / entries API):
+ *   conversion_rate = credit_currency units per 1 settlement_currency unit
+ *   e.g. settle MYR credit in USDT at "1 USDT = 4.20 MYR" → rate = 4.20
+ *
+ * credit_equiv = settlement_amount * conversion_rate
+ */
 export function computeSettlementAmountInCreditCurrency(
   amount: number,
   conversionRate: number
 ): number {
   return roundSettlementAmount(amount * conversionRate);
+}
+
+/**
+ * Inverse of {@link computeSettlementAmountInCreditCurrency}:
+ *   settlement_amount = credit_amount / conversion_rate
+ * Used when admin enters the day's USDT rate and we populate Amount in USDT.
+ */
+export function computeSettlementAmountFromCredit(
+  creditAmount: number,
+  conversionRate: number
+): number {
+  if (!(conversionRate > 0)) return 0;
+  return roundSettlementAmount(creditAmount / conversionRate);
 }
 
 export type VendorActorOutstandingCreditInput = {

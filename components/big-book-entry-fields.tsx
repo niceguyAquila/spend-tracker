@@ -14,6 +14,10 @@ import type {
 } from "@/lib/types";
 import { formatAmount } from "@/lib/display-format";
 import { FormSection } from "@/components/ui/form-section";
+import {
+  computeSettlementAmountFromCredit,
+  computeSettlementAmountInCreditCurrency
+} from "@/lib/big-book/credit";
 import { mappedVendorTypeIdForType } from "@/lib/big-book/type-vendor-type-map";
 
 export { mappedVendorTypeIdForType } from "@/lib/big-book/type-vendor-type-map";
@@ -194,10 +198,13 @@ export function BigBookEntryFields({
         ? "No pockets for this actor yet"
         : null;
   const isSettlementMode = Boolean(settlesEntry || value.settles_entry_id);
-  const settlementCurrencyDiffers =
+  // Conversion UI is USDT-settlement only (plan): admin enters company rate under Amount.
+  // Convention: rate = credit_currency per 1 USDT; amount_usdt = credit_amount / rate.
+  const showUsdtConversionRate =
     isSettlementMode &&
     settlesEntry != null &&
-    value.currency_code !== settlesEntry.currency_code;
+    value.currency_code === "USDT" &&
+    settlesEntry.currency_code !== "USDT";
 
   const moreDetailsFilled =
     Boolean(value.remark.trim()) || (showAttachments && attachmentFiles.length > 0);
@@ -258,6 +265,33 @@ export function BigBookEntryFields({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value.entry_type_id, typeVendorTypeMaps]);
 
+  // When USDT conversion rate changes (typed or fetched), populate Amount in USDT.
+  // Formula: usdt_amount = credit_amount / rate  (rate = credit units per 1 USDT).
+  const prevUsdtRateRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!showUsdtConversionRate || !settlesEntry) {
+      prevUsdtRateRef.current = null;
+      return;
+    }
+    const rateRaw = value.settlement_conversion_rate;
+    if (prevUsdtRateRef.current === rateRaw) return;
+    prevUsdtRateRef.current = rateRaw;
+    const rate = Number(rateRaw);
+    if (!Number.isFinite(rate) || rate <= 0) return;
+    const nextAmount = formatAmountInput(
+      String(computeSettlementAmountFromCredit(Math.abs(settlesEntry.amount), rate))
+    );
+    if (nextAmount !== value.amount) {
+      onChange({ ...value, amount: nextAmount });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    showUsdtConversionRate,
+    value.settlement_conversion_rate,
+    settlesEntry?.id,
+    settlesEntry?.amount
+  ]);
+
   const moneyFields = (
     <>
       <label className="text-sm">
@@ -299,13 +333,21 @@ export function BigBookEntryFields({
             value={value.currency_code}
             onChange={(event) => {
               const nextCurrency = event.target.value as EntryFormState["currency_code"];
+              const sameAsCredit = Boolean(
+                settlesEntry && nextCurrency === settlesEntry.currency_code
+              );
+              const needsUsdtRate =
+                Boolean(settlesEntry) &&
+                nextCurrency === "USDT" &&
+                settlesEntry!.currency_code !== "USDT";
               patch({
                 currency_code: nextCurrency,
                 pocket_id: "",
                 gas_fee_amount: nextCurrency === "USDT" ? value.gas_fee_amount : "",
-                settlement_conversion_rate:
-                  settlesEntry && nextCurrency === settlesEntry.currency_code
-                    ? "1"
+                settlement_conversion_rate: sameAsCredit
+                  ? "1"
+                  : needsUsdtRate
+                    ? ""
                     : value.settlement_conversion_rate
               });
             }}
@@ -319,6 +361,44 @@ export function BigBookEntryFields({
           </select>
         </div>
       </label>
+      {showUsdtConversionRate && settlesEntry ? (
+        <label className={`text-sm ${spanClass}`}>
+          Conversion Rate * (1 USDT = ? {settlesEntry.currency_code})
+          <div className="mt-1 flex gap-2">
+            <input
+              className="field flex-1"
+              inputMode="decimal"
+              placeholder="Enter today's company rate"
+              value={value.settlement_conversion_rate}
+              onChange={(event) =>
+                patch({ settlement_conversion_rate: formatRateInput(event.target.value) })
+              }
+            />
+            {onFetchConversionRate ? (
+              <button
+                type="button"
+                className="btn-secondary whitespace-nowrap"
+                onClick={onFetchConversionRate}
+                disabled={fetchingConversionRate}
+              >
+                {fetchingConversionRate ? "Fetching..." : "Fetch rate"}
+              </button>
+            ) : null}
+          </div>
+          <span className="mt-1 block text-xs text-muted">
+            Amount in USDT = credit amount ÷ rate. Equivalent in {settlesEntry.currency_code}:{" "}
+            {(() => {
+              const rate = Number(value.settlement_conversion_rate);
+              const usdt = Number(parseAmountInput(value.amount));
+              if (!(rate > 0) || !(usdt > 0)) return "--";
+              return formatAmount(computeSettlementAmountInCreditCurrency(usdt, rate), {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 4
+              });
+            })()}
+          </span>
+        </label>
+      ) : null}
       {showGasFee && value.currency_code === "USDT" ? (
         <label className="text-sm">
           Gas fee
@@ -586,35 +666,6 @@ export function BigBookEntryFields({
 
       {isSettlementMode ? (
         <div className="space-y-3">
-          {settlementCurrencyDiffers ? (
-            <label className="block text-sm">
-              Conversion Rate * ({value.currency_code} → {settlesEntry?.currency_code})
-              <div className="mt-1 flex gap-2">
-                <input
-                  className="field flex-1"
-                  inputMode="decimal"
-                  placeholder="0"
-                  value={value.settlement_conversion_rate}
-                  onChange={(event) =>
-                    patch({ settlement_conversion_rate: formatRateInput(event.target.value) })
-                  }
-                />
-                {onFetchConversionRate ? (
-                  <button
-                    type="button"
-                    className="btn-secondary whitespace-nowrap"
-                    onClick={onFetchConversionRate}
-                    disabled={fetchingConversionRate}
-                  >
-                    {fetchingConversionRate ? "Fetching..." : "Fetch rate"}
-                  </button>
-                ) : null}
-              </div>
-              <span className="mt-1 block text-xs text-muted">
-                Multiply settlement amount by this rate to get the credit-currency equivalent.
-              </span>
-            </label>
-          ) : null}
           <label className="block text-sm">
             Settlement Note
             <input

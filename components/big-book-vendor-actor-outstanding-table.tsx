@@ -11,12 +11,18 @@ import { TableEmptyState } from "@/components/ui/table-empty-state";
 import { rowStripeClass } from "@/lib/ui/table";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import {
+  BigBookBulkSettleEditModal,
+  type BulkSettleCreditDraft,
+  type BulkSettleCurrency,
+  type BulkSettleEditDraft,
+  type BulkSettleMode
+} from "@/components/big-book-bulk-settle-edit-modal";
 
 const COLUMN_COUNT = 9;
 const CURRENCY_ORDER = ["IDR", "MYR", "USDT", "TRX"] as const;
 
 type SortKey = "vendor_name" | "actor_display_name" | "currency" | "outstanding";
-type BulkSettleMode = "single" | "per_credit";
 
 export type OutstandingDetailFilters = {
   dateFrom?: string;
@@ -36,7 +42,7 @@ type DetailState =
   | { status: "ok"; rows: BigBookVendorActorOutstandingEntry[]; totalCount: number };
 
 type PendingBulkSettle = {
-  creditIds: string[];
+  credits: BulkSettleCreditDraft[];
   totalAmount: number;
   currency: string;
   label: string;
@@ -74,10 +80,6 @@ function signedAmount(entry: BigBookVendorActorOutstandingEntry) {
   return entry.entry_direction === "spending" ? -entry.amount : entry.amount;
 }
 
-function todayIsoDate() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function extractApiError(error: unknown, fallback: string) {
   if (typeof error === "string" && error.trim()) return error;
   return fallback;
@@ -92,6 +94,7 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
   const [selectedCreditIds, setSelectedCreditIds] = useState<Set<string>>(() => new Set());
   const [pendingSettle, setPendingSettle] = useState<PendingBulkSettle | null>(null);
   const [settleMode, setSettleMode] = useState<BulkSettleMode>("single");
+  const [editDraft, setEditDraft] = useState<BulkSettleEditDraft | null>(null);
   const [settleSubmitting, setSettleSubmitting] = useState(false);
   const [settleError, setSettleError] = useState<string | null>(null);
   const [settleMessage, setSettleMessage] = useState<string | null>(null);
@@ -235,8 +238,15 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
       }
       const totalAmount = detailRows.reduce((sum, entry) => sum + entry.amount, 0);
       setSettleMode("single");
+      setEditDraft(null);
       setPendingSettle({
-        creditIds: detailRows.map((entry) => entry.id),
+        credits: detailRows.map((entry) => ({
+          id: entry.id,
+          amount: entry.amount,
+          currency_code: entry.currency_code as BulkSettleCurrency,
+          explanation: entry.explanation,
+          entry_date: entry.entry_date
+        })),
         totalAmount,
         currency: row.currency,
         label: `${row.vendor_name} · Actor ${row.actor_display_name}`
@@ -253,16 +263,19 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
     setSettleMessage(null);
     try {
       const creditIdSet = new Set(selectedCreditIds);
-      const amountsById = new Map<string, { amount: number; currency: string }>();
+      const creditsById = new Map<string, BulkSettleCreditDraft>();
 
       // Collect credits already loaded from expanded detail.
       for (const details of Object.values(detailsByKey)) {
         if (details.status !== "ok") continue;
         for (const entry of details.rows) {
           if (creditIdSet.has(entry.id)) {
-            amountsById.set(entry.id, {
+            creditsById.set(entry.id, {
+              id: entry.id,
               amount: entry.amount,
-              currency: entry.currency_code
+              currency_code: entry.currency_code as BulkSettleCurrency,
+              explanation: entry.explanation,
+              entry_date: entry.entry_date
             });
           }
         }
@@ -274,16 +287,19 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
         const detailRows = await fetchDetailRows(row);
         for (const entry of detailRows) {
           creditIdSet.add(entry.id);
-          amountsById.set(entry.id, {
+          creditsById.set(entry.id, {
+            id: entry.id,
             amount: entry.amount,
-            currency: entry.currency_code
+            currency_code: entry.currency_code as BulkSettleCurrency,
+            explanation: entry.explanation,
+            entry_date: entry.entry_date
           });
         }
       }
 
       // For credit-only selections that were not in loaded details, we still need
-      // amounts — they should already be in amountsById if their parent was expanded.
-      const missing = [...creditIdSet].filter((id) => !amountsById.has(id));
+      // amounts — they should already be in creditsById if their parent was expanded.
+      const missing = [...creditIdSet].filter((id) => !creditsById.has(id));
       if (missing.length) {
         setSettleError(
           "Expand the vendor rows for selected credits (or select the vendor row) so amounts can be confirmed."
@@ -291,52 +307,72 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
         return;
       }
 
-      const creditIds = [...creditIdSet];
-      if (!creditIds.length) {
+      const credits = [...creditIdSet]
+        .map((id) => creditsById.get(id))
+        .filter((row): row is BulkSettleCreditDraft => Boolean(row));
+      if (!credits.length) {
         setSettleError("Select at least one vendor row or open credit to settle.");
         return;
       }
 
-      const currencies = new Set(
-        creditIds.map((id) => amountsById.get(id)?.currency).filter(Boolean) as string[]
-      );
-      if (currencies.size > 1 && settleMode === "single") {
-        // Still open the dialog; API will reject single mode for mixed currency.
-      }
-
-      const totalAmount = creditIds.reduce(
-        (sum, id) => sum + (amountsById.get(id)?.amount ?? 0),
-        0
-      );
+      const currencies = new Set(credits.map((row) => row.currency_code));
+      const totalAmount = credits.reduce((sum, row) => sum + row.amount, 0);
       const currencyLabel =
         currencies.size === 1 ? [...currencies][0] : `${currencies.size} currencies`;
 
       setSettleMode("single");
+      setEditDraft(null);
       setPendingSettle({
-        creditIds,
+        credits,
         totalAmount,
         currency: currencyLabel,
-        label: `${creditIds.length} selected open credit${creditIds.length === 1 ? "" : "s"}`
+        label: `${credits.length} selected open credit${credits.length === 1 ? "" : "s"}`
       });
     } catch (error) {
       setSettleError(error instanceof Error ? error.message : "Failed to prepare settlement.");
     }
   }
 
-  async function confirmBulkSettle() {
+  function openEditDialogFromChooser() {
     if (!pendingSettle) return;
+    setSettleError(null);
+    setEditDraft({
+      mode: settleMode,
+      credits: pendingSettle.credits,
+      label: pendingSettle.label
+    });
+    setPendingSettle(null);
+  }
+
+  async function submitBulkSettleEdit(payload: {
+    entry_date: string;
+    currency_code: BulkSettleCurrency;
+    amount: number;
+    settlement_conversion_rate: number;
+    settlement_note: string;
+    close_credits: boolean;
+    explanation: string;
+  }) {
+    if (!editDraft) return;
     setSettleSubmitting(true);
     setSettleError(null);
     try {
+      const body: Record<string, unknown> = {
+        credit_entry_ids: editDraft.credits.map((row) => row.id),
+        mode: editDraft.mode,
+        entry_date: payload.entry_date,
+        close_credits: payload.close_credits,
+        currency_code: payload.currency_code,
+        settlement_conversion_rate: payload.settlement_conversion_rate
+      };
+      if (payload.settlement_note) body.settlement_note = payload.settlement_note;
+      if (payload.explanation) body.explanation = payload.explanation;
+      if (editDraft.mode === "single") body.amount = payload.amount;
+
       const response = await secureFetch("/api/big-book/entries/bulk-settle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          credit_entry_ids: pendingSettle.creditIds,
-          mode: settleMode,
-          entry_date: todayIsoDate(),
-          close_credits: true
-        })
+        body: JSON.stringify(body)
       });
       if (handleUnauthorizedResponse(response)) return;
       const data = await response.json();
@@ -345,11 +381,11 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
         return;
       }
       setSettleMessage(
-        settleMode === "single"
-          ? `Created 1 settlement covering ${pendingSettle.creditIds.length} credit(s).`
-          : `Created ${pendingSettle.creditIds.length} settlement record(s).`
+        editDraft.mode === "single"
+          ? `Created 1 settlement covering ${editDraft.credits.length} credit(s).`
+          : `Created ${editDraft.credits.length} settlement record(s).`
       );
-      setPendingSettle(null);
+      setEditDraft(null);
       setSelectedRowKeys(new Set());
       setSelectedCreditIds(new Set());
       setDetailsByKey({});
@@ -378,7 +414,7 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
         {settleMessage ? (
           <p className="text-sm text-[rgb(var(--success))]">{settleMessage}</p>
         ) : null}
-        {settleError && !pendingSettle ? (
+        {settleError && !pendingSettle && !editDraft ? (
           <p className="text-sm text-[rgb(var(--danger))]">{settleError}</p>
         ) : null}
       </div>
@@ -478,17 +514,17 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
           }
         }}
         title="Settle open credits?"
-        confirmLabel={settleMode === "single" ? "Create one settlement" : "Create settlement per credit"}
-        confirming={settleSubmitting}
+        confirmLabel="Continue to edit settlement"
+        confirming={false}
         closeOnBackdrop={false}
         confirmDisabled={!pendingSettle}
-        onConfirm={confirmBulkSettle}
+        onConfirm={openEditDialogFromChooser}
         description={
           pendingSettle ? (
             <div className="space-y-3 text-sm">
               <p>
-                Settling <span className="font-medium">{pendingSettle.creditIds.length}</span> open
-                credit{pendingSettle.creditIds.length === 1 ? "" : "s"} for{" "}
+                Settling <span className="font-medium">{pendingSettle.credits.length}</span> open
+                credit{pendingSettle.credits.length === 1 ? "" : "s"} for{" "}
                 <span className="font-medium">{pendingSettle.label}</span>.
               </p>
               <p>
@@ -500,6 +536,10 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
                   })}{" "}
                   {pendingSettle.currency}
                 </span>
+              </p>
+              <p className="text-xs text-muted">
+                Next you&apos;ll review and edit the settlement (currency, USDT rate, amount, note)
+                before it is saved.
               </p>
               <fieldset className="space-y-2 rounded-md border border-[rgb(var(--border))] p-3">
                 <legend className="px-1 text-xs font-medium uppercase text-muted">
@@ -516,7 +556,7 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
                   <span>
                     <span className="font-medium">One settlement for all</span>
                     <span className="mt-0.5 block text-xs text-muted">
-                      Default. Creates a single settlement payment covering the selected credits.
+                      Default. Opens one settlement editor covering the selected credits.
                     </span>
                   </span>
                 </label>
@@ -531,7 +571,7 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
                   <span>
                     <span className="font-medium">One settlement per credit</span>
                     <span className="mt-0.5 block text-xs text-muted">
-                      Creates a separate settlement payment for each selected credit.
+                      Opens the settlement editor, then creates one payment per selected credit.
                     </span>
                   </span>
                 </label>
@@ -540,6 +580,20 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
             </div>
           ) : null
         }
+      />
+
+      <BigBookBulkSettleEditModal
+        draft={editDraft}
+        open={Boolean(editDraft)}
+        submitting={settleSubmitting}
+        error={settleError}
+        onOpenChange={(open) => {
+          if (!open && !settleSubmitting) {
+            setEditDraft(null);
+            setSettleError(null);
+          }
+        }}
+        onSubmit={submitBulkSettleEdit}
       />
     </div>
   );

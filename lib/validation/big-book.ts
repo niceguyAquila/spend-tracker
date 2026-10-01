@@ -236,7 +236,20 @@ export const bigBookBulkSettleSchema = z.object({
   entry_date: z.string().min(1, "Date is required"),
   close_credits: z.boolean().optional().default(true),
   settlement_note: optionalNoteSchema,
-  explanation: z.string().trim().min(2).max(500).optional()
+  explanation: z.string().trim().min(2).max(500).optional(),
+  /** Override settlement payment currency (defaults to each credit's currency). */
+  currency_code: bigBookCurrencySchema.optional(),
+  /**
+   * Settlement amount in `currency_code`.
+   * - single mode: one combined payment amount (defaults to sum of credit amounts when same currency / rate 1)
+   * - per_credit mode: ignored; each settlement uses that credit's converted amount
+   */
+  amount: z.coerce.number().positive("Amount must be greater than 0").optional(),
+  /**
+   * credit_currency units per 1 settlement_currency unit.
+   * Required when settlement currency differs from credit currency; forced to 1 when same.
+   */
+  settlement_conversion_rate: z.coerce.number().positive().optional()
 });
 
 const bigBookGroupEntryInputSchema = bigBookEntryBaseSchema.omit({
