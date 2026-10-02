@@ -17,6 +17,7 @@ import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { TableEmptyState } from "@/components/ui/table-empty-state";
 import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
+import { sortByDisplayLabel } from "@/lib/ui/sort-by-display-label";
 
 type StatusFilter = "all" | "active" | "inactive";
 
@@ -56,6 +57,14 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
+  const typesForSelect = useMemo(
+    () => sortByDisplayLabel(initialTypes, (row) => row.name),
+    [initialTypes]
+  );
+  const usersForSelect = useMemo(
+    () => sortByDisplayLabel(allowedUsers, (row) => row.display_name || row.email),
+    [allowedUsers]
+  );
   const [error, setError] = useState<string | null>(null);
   const [newTypeCode, setNewTypeCode] = useState("");
   const [newTypeName, setNewTypeName] = useState("");
@@ -530,7 +539,7 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
             <option value="" disabled>
               Select parent type
             </option>
-            {initialTypes.map((type) => (
+            {typesForSelect.map((type) => (
               <option key={type.id} value={type.id}>
                 {type.name} {type.is_active ? "" : "(inactive)"}
               </option>
@@ -705,7 +714,7 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialSubTypes, init
                   }
                 >
                   <option value="">Unassigned</option>
-                  {allowedUsers.map((user) => (
+                  {usersForSelect.map((user) => (
                     <option key={user.id} value={user.id}>
                       {user.display_name} ({user.email})
                     </option>

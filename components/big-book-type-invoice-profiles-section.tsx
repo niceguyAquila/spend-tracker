@@ -6,6 +6,7 @@ import type { BigBookLedgerType, BigBookLedgerTypeInvoiceProfile } from "@/lib/t
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { Modal } from "@/components/ui/modal";
+import { sortByDisplayLabel } from "@/lib/ui/sort-by-display-label";
 
 type Props = {
   types: BigBookLedgerType[];
@@ -61,13 +62,7 @@ export function BigBookTypeInvoiceProfilesSection({ types, initialProfiles }: Pr
     return map;
   }, [initialProfiles]);
 
-  const sortedTypes = useMemo(() => {
-    return [...types].sort((a, b) => {
-      if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
-      if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order;
-      return a.name.localeCompare(b.name);
-    });
-  }, [types]);
+  const sortedTypes = useMemo(() => sortByDisplayLabel(types, (row) => row.name), [types]);
 
   const filteredTypes = useMemo(() => {
     const needle = query.trim().toLowerCase();

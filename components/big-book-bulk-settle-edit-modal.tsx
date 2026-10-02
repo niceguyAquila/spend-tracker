@@ -12,6 +12,7 @@ import {
   formatRateInput,
   parseAmountInput
 } from "@/components/big-book-entry-fields";
+import { sortByDisplayLabel } from "@/lib/ui/sort-by-display-label";
 
 export type BulkSettleMode = "single" | "per_credit";
 export type BulkSettleCurrency = "IDR" | "MYR" | "USDT" | "TRX";
@@ -47,7 +48,10 @@ type Props = {
   }) => void;
 };
 
-const CURRENCY_OPTIONS: BulkSettleCurrency[] = ["IDR", "MYR", "USDT", "TRX"];
+const CURRENCY_OPTIONS: BulkSettleCurrency[] = sortByDisplayLabel(
+  ["IDR", "MYR", "USDT", "TRX"] as BulkSettleCurrency[],
+  (currency) => currency
+);
 
 function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);

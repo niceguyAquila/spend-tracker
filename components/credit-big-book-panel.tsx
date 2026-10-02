@@ -27,6 +27,7 @@ import {
   missingEntryFields
 } from "@/lib/big-book/entry-form-validation";
 import { rowStripeClass } from "@/lib/ui/table";
+import { sortByDisplayLabel } from "@/lib/ui/sort-by-display-label";
 import { TableEmptyState } from "@/components/ui/table-empty-state";
 
 type Props = {
@@ -203,8 +204,18 @@ export function CreditBigBookPanel({
   const [totalCount, setTotalCount] = useState<number>(initialTotalCount);
   const [entriesLoading, setEntriesLoading] = useState(false);
 
-  const activeTypes = useMemo(() => initialTypes.filter((item) => item.is_active), [initialTypes]);
-  const currencies = SUPPORTED_CURRENCIES;
+  const activeTypes = useMemo(
+    () => sortByDisplayLabel(initialTypes.filter((item) => item.is_active), (item) => item.name),
+    [initialTypes]
+  );
+  const currencies = useMemo(
+    () => sortByDisplayLabel([...SUPPORTED_CURRENCIES], (currency) => currency),
+    []
+  );
+  const sortedActors = useMemo(
+    () => sortByDisplayLabel(initialActors, (actor) => actor.display_name),
+    [initialActors]
+  );
   const typeOptions = useMemo(
     () => initialTypes.map((type) => ({ value: type.id, label: type.name })),
     [initialTypes]
@@ -243,16 +254,24 @@ export function CreditBigBookPanel({
     amount: "",
     currency_code: "IDR",
     remark: "",
-    responsible_actor_id: initialActors[0]?.id ?? ""
+    responsible_actor_id: sortedActors[0]?.id ?? initialActors[0]?.id ?? ""
   });
 
   const activeSubTypes = useMemo(() => initialSubTypes.filter((row) => row.is_active), [initialSubTypes]);
   const subTypesForCreateForm = useMemo(
-    () => activeSubTypes.filter((row) => row.entry_type_id === entryForm.entry_type_id),
+    () =>
+      sortByDisplayLabel(
+        activeSubTypes.filter((row) => row.entry_type_id === entryForm.entry_type_id),
+        (row) => row.name
+      ),
     [activeSubTypes, entryForm.entry_type_id]
   );
   const subTypesForEditForm = useMemo(
-    () => activeSubTypes.filter((row) => row.entry_type_id === editForm.entry_type_id),
+    () =>
+      sortByDisplayLabel(
+        activeSubTypes.filter((row) => row.entry_type_id === editForm.entry_type_id),
+        (row) => row.name
+      ),
     [activeSubTypes, editForm.entry_type_id]
   );
 
@@ -1740,7 +1759,7 @@ export function CreditBigBookPanel({
                   setEntryForm((prev) => ({ ...prev, responsible_actor_id: event.target.value }))
                 }
               >
-                {initialActors.map((actor) => (
+                {sortedActors.map((actor) => (
                   <option key={actor.id} value={actor.id}>
                     {actor.display_name}
                   </option>
@@ -1982,7 +2001,7 @@ export function CreditBigBookPanel({
                   setEditForm((prev) => ({ ...prev, responsible_actor_id: event.target.value }))
                 }
               >
-                {initialActors.map((actor) => (
+                {sortedActors.map((actor) => (
                   <option key={actor.id} value={actor.id}>
                     {actor.display_name}
                   </option>
