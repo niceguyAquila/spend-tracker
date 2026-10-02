@@ -148,12 +148,10 @@ const LEDGER_COLUMN_WIDTH_DEFAULTS: Record<string, number> = {
   actions: 100
 };
 const LEDGER_COLUMN_KEYS = Object.keys(LEDGER_COLUMN_WIDTH_DEFAULTS);
-// Group header rows mirror the ledger layout so their totals land in the Amount
-// column and the group label lines up with Explanation on single-entry rows:
-// select/expand, empty leading cols (Date…Action By), label, amount, filler, actions.
-const LEDGER_EXPLANATION_COLUMN_INDEX = LEDGER_COLUMN_KEYS.indexOf("explanation");
+// Group header rows mirror the ledger layout so totals land in Amount and the
+// group label lines up with Explanation. Date is filled; Cash Flow…Action By
+// show "-" because members may differ.
 const LEDGER_AMOUNT_COLUMN_INDEX = LEDGER_COLUMN_KEYS.indexOf("amount");
-const GROUP_ROW_LEADING_COLSPAN = LEDGER_EXPLANATION_COLUMN_INDEX - 1;
 const GROUP_ROW_TRAILING_COLSPAN = LEDGER_COLUMN_COUNT - LEDGER_AMOUNT_COLUMN_INDEX - 2;
 const DESC_DEFAULT_SORT_KEYS = new Set<BigBookLedgerSortKey>(["entry_date", "amount"]);
 const EMPTY_LEDGER_TOTALS: BigBookLedgerTotals = {
@@ -2491,7 +2489,6 @@ export function BigBookPanel({
                         entries={row.entries}
                         expanded={expandedGroupIds.has(row.group.id)}
                         onToggle={() => toggleGroupExpanded(row.group.id)}
-                        leadingColSpan={GROUP_ROW_LEADING_COLSPAN}
                         trailingColSpan={GROUP_ROW_TRAILING_COLSPAN}
                         openActionMenu={openActionMenu}
                         actionMenuRef={actionMenuRef}
