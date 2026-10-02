@@ -349,6 +349,8 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
       explanation: string;
       entry_date: string;
       remark?: string | null;
+      entry_type_id?: string | null;
+      type_name?: string;
     }>
   ): InvoiceBuilderCreditDraft[] {
     return entries.map((entry) => ({
@@ -357,7 +359,9 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
       currency_code: entry.currency_code as InvoiceBuilderCreditDraft["currency_code"],
       explanation: entry.explanation,
       entry_date: entry.entry_date,
-      remark: entry.remark ?? null
+      remark: entry.remark ?? null,
+      entry_type_id: entry.entry_type_id ?? null,
+      type_name: entry.type_name
     }));
   }
 

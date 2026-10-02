@@ -1,5 +1,6 @@
 import PDFDocument from "pdfkit";
 import { formatInvoiceMoney } from "@/lib/big-book/invoice-money";
+import { lightenInvoiceBackgroundHex } from "@/lib/big-book/invoice-background";
 
 export type InvoicePdfWallet = {
   name: string;
@@ -32,6 +33,8 @@ export type InvoicePdfPayload = {
   notes: string;
   fx_note: string;
   wallets: InvoicePdfWallet[];
+  /** Optional group tint (#RRGGBB); rendered as a light full-page fill. */
+  background_color?: string | null;
 };
 
 export { formatInvoiceMoney } from "@/lib/big-book/invoice-money";
@@ -101,6 +104,20 @@ export async function renderInvoicePdf(payload: InvoicePdfPayload): Promise<Buff
   const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const left = doc.page.margins.left;
   let y = doc.page.margins.top;
+
+  const backgroundFill =
+    payload.background_color && /^#[0-9A-Fa-f]{6}$/.test(payload.background_color.trim())
+      ? lightenInvoiceBackgroundHex(payload.background_color.trim())
+      : null;
+
+  function paintPageBackground() {
+    if (!backgroundFill) return;
+    doc.save();
+    doc.rect(0, 0, doc.page.width, doc.page.height).fill(backgroundFill);
+    doc.restore();
+  }
+
+  paintPageBackground();
 
   // Title
   doc.font("Helvetica-Bold").fontSize(16);
@@ -209,6 +226,7 @@ export async function renderInvoicePdf(payload: InvoicePdfPayload): Promise<Buff
   function ensureSpace(needed: number) {
     if (y + needed > doc.page.height - doc.page.margins.bottom) {
       doc.addPage();
+      paintPageBackground();
       y = doc.page.margins.top;
     }
   }

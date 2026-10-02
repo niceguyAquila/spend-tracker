@@ -87,7 +87,8 @@ export async function POST(request: Request) {
       })),
       notes: parsed.data.notes,
       fx_note: parsed.data.fx_note,
-      wallets
+      wallets,
+      background_color: parsed.data.background_color ?? null
     });
 
     const filename = `${safeFilenamePart(parsed.data.invoice_no) || "invoice"}.pdf`;

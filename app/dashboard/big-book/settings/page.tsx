@@ -4,6 +4,7 @@ import {
   getBigBookActorPockets,
   getBigBookAllowedUsers,
   getBigBookInvoiceWallets,
+  getBigBookLedgerTypeInvoiceProfiles,
   getBigBookLedgerSubTypes,
   getBigBookLedgerTypes,
   getBigBookTypeVendorTypeMaps,
@@ -26,7 +27,8 @@ export default async function BigBookSettingsPage() {
       actors,
       allowedUsers,
       typeVendorTypeMaps,
-      wallets
+      wallets,
+      typeInvoiceProfiles
     ] = await Promise.all([
       getBigBookLedgerTypes({ includeInactive: true }),
       getBigBookLedgerSubTypes({ includeInactive: true }),
@@ -37,14 +39,15 @@ export default async function BigBookSettingsPage() {
       getBigBookActors(),
       getBigBookAllowedUsers(),
       getBigBookTypeVendorTypeMaps(),
-      getBigBookInvoiceWallets({ includeInactive: true })
+      getBigBookInvoiceWallets({ includeInactive: true }),
+      getBigBookLedgerTypeInvoiceProfiles()
     ]);
 
     return (
       <div className="space-y-6">
         <PageHeader
           title="Big Book Settings"
-          description="Manage types, type→vendor type mappings, sub-types, vendor types, vendor names, Action By, actor pockets, invoice wallets, and global Actor A/B mapping."
+          description="Manage types, invoice group PIC presets, type→vendor type mappings, sub-types, vendor types, vendor names, Action By, actor pockets, invoice wallets, and global Actor A/B mapping."
         />
         <BigBookSettingsPanel
           initialTypes={types}
@@ -57,6 +60,7 @@ export default async function BigBookSettingsPage() {
           allowedUsers={allowedUsers}
           initialTypeVendorTypeMaps={typeVendorTypeMaps}
           initialWallets={wallets}
+          initialTypeInvoiceProfiles={typeInvoiceProfiles}
         />
       </div>
     );

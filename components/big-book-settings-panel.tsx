@@ -10,6 +10,7 @@ import type {
   BigBookInvoiceWallet,
   BigBookLedgerSubType,
   BigBookLedgerType,
+  BigBookLedgerTypeInvoiceProfile,
   BigBookTypeVendorTypeMap,
   BigBookVendor,
   BigBookVendorType
@@ -25,6 +26,7 @@ import { TableEmptyState } from "@/components/ui/table-empty-state";
 import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
 import { BigBookTypeVendorTypeMapSection } from "@/components/big-book-type-vendor-type-map-section";
 import { BigBookWalletsSettingsSection } from "@/components/big-book-wallets-settings-section";
+import { BigBookTypeInvoiceProfilesSection } from "@/components/big-book-type-invoice-profiles-section";
 
 type StatusFilter = "all" | "active" | "inactive";
 
@@ -39,6 +41,7 @@ type Props = {
   allowedUsers: BigBookAllowedUserOption[];
   initialTypeVendorTypeMaps?: BigBookTypeVendorTypeMap[];
   initialWallets?: BigBookInvoiceWallet[];
+  initialTypeInvoiceProfiles?: BigBookLedgerTypeInvoiceProfile[];
 };
 
 type ApiErrorShape = {
@@ -76,7 +79,8 @@ export function BigBookSettingsPanel({
   initialActors,
   allowedUsers,
   initialTypeVendorTypeMaps = [],
-  initialWallets = []
+  initialWallets = [],
+  initialTypeInvoiceProfiles = []
 }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -1040,6 +1044,8 @@ export function BigBookSettingsPanel({
         types={initialTypes}
         vendorTypes={initialVendorTypes}
       />
+
+      <BigBookTypeInvoiceProfilesSection types={initialTypes} initialProfiles={initialTypeInvoiceProfiles} />
 
       <section
         className="card relative"
