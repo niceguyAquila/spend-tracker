@@ -284,27 +284,37 @@ export async function renderInvoicePdf(payload: InvoicePdfPayload): Promise<Buff
 
   doc.font("Helvetica-Bold").fontSize(11).text("Notes / Terms", left, y);
   y = doc.y + 8;
-  doc.font("Helvetica").fontSize(9);
 
-  const noteBlocks: string[] = [];
-  for (const wallet of payload.wallets) {
-    noteBlocks.push(`${wallet.name} (${wallet.network})`);
-    noteBlocks.push(wallet.address);
-  }
-  if (payload.fx_note.trim()) {
-    noteBlocks.push(payload.fx_note.trim());
-  }
-  if (payload.notes.trim()) {
-    noteBlocks.push(payload.notes.trim());
-  }
+  const hasNotesContent =
+    payload.wallets.length > 0 || Boolean(payload.fx_note.trim()) || Boolean(payload.notes.trim());
 
-  if (!noteBlocks.length) {
-    doc.text("—", left, y);
+  if (!hasNotesContent) {
+    doc.font("Helvetica").fontSize(9).text("—", left, y);
   } else {
-    for (const block of noteBlocks) {
+    // One wallet per line: "Wallet: NETWORK - ADDRESS" (full line bold; no wallet name)
+    for (const wallet of payload.wallets) {
       ensureSpace(24);
-      y = drawWrappedText(doc, block, left, y, { width: pageWidth, fontSize: 9 });
+      const network = wallet.network.trim() || "—";
+      const address = wallet.address.trim() || "—";
+      doc.font("Helvetica-Bold").fontSize(9);
+      y = drawWrappedText(doc, `Wallet: ${network} - ${address}`, left, y, {
+        width: pageWidth,
+        fontSize: 9
+      });
       y += 4;
+    }
+
+    if (payload.fx_note.trim()) {
+      ensureSpace(24);
+      doc.font("Helvetica").fontSize(9);
+      y = drawWrappedText(doc, payload.fx_note.trim(), left, y, { width: pageWidth, fontSize: 9 });
+      y += 4;
+    }
+
+    if (payload.notes.trim()) {
+      ensureSpace(24);
+      doc.font("Helvetica").fontSize(9);
+      y = drawWrappedText(doc, payload.notes.trim(), left, y, { width: pageWidth, fontSize: 9 });
     }
   }
 
