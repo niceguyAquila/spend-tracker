@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { sortSelectOptions } from "@/lib/ui/sort-by-display-label";
 
 export type SearchableMultiSelectOption = {
   value: string;
@@ -28,11 +29,13 @@ export function SearchableMultiSelect({
   const [isOpen, setIsOpen] = useState(false);
   const rootRef = useRef<HTMLDetailsElement | null>(null);
 
+  const sortedOptions = useMemo(() => sortSelectOptions(options), [options]);
+
   const filteredOptions = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    if (!normalized) return options;
-    return options.filter((item) => item.label.toLowerCase().includes(normalized));
-  }, [options, query]);
+    if (!normalized) return sortedOptions;
+    return sortedOptions.filter((item) => item.label.toLowerCase().includes(normalized));
+  }, [sortedOptions, query]);
 
   const selectedLabel = `${label} (${selectedValues.length || "All"})`;
 
@@ -45,7 +48,7 @@ export function SearchableMultiSelect({
   }
 
   function selectAll() {
-    onChange(options.map((item) => item.value));
+    onChange(sortedOptions.map((item) => item.value));
   }
 
   function clearAll() {

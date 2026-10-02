@@ -7,6 +7,7 @@ import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { TableEmptyState } from "@/components/ui/table-empty-state";
+import { sortByDisplayLabel } from "@/lib/ui/sort-by-display-label";
 
 type Props = {
   initialMaps: BigBookTypeVendorTypeMap[];
@@ -49,8 +50,14 @@ export function BigBookTypeVendorTypeMapSection({ initialMaps, types, vendorType
   const [editVendorTypeId, setEditVendorTypeId] = useState("");
   const [editSubmitting, setEditSubmitting] = useState(false);
 
-  const activeTypes = useMemo(() => types.filter((row) => row.is_active), [types]);
-  const activeVendorTypes = useMemo(() => vendorTypes.filter((row) => row.is_active), [vendorTypes]);
+  const activeTypes = useMemo(
+    () => sortByDisplayLabel(types.filter((row) => row.is_active), (row) => row.name),
+    [types]
+  );
+  const activeVendorTypes = useMemo(
+    () => sortByDisplayLabel(vendorTypes.filter((row) => row.is_active), (row) => row.name),
+    [vendorTypes]
+  );
   const mappedTypeIds = useMemo(
     () => new Set(initialMaps.map((row) => row.entry_type_id)),
     [initialMaps]

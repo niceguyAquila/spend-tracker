@@ -6,9 +6,13 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { CreditBookEntry } from "@/lib/types";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
+import { sortByDisplayLabel } from "@/lib/ui/sort-by-display-label";
 
 type CreditCurrency = "IDR" | "MYR" | "USDT" | "TRX";
-const CURRENCY_OPTIONS: CreditCurrency[] = ["IDR", "MYR", "USDT", "TRX"];
+const CURRENCY_OPTIONS: CreditCurrency[] = sortByDisplayLabel(
+  ["IDR", "MYR", "USDT", "TRX"] as CreditCurrency[],
+  (currency) => currency
+);
 
 type Props = {
   entry: CreditBookEntry | null;

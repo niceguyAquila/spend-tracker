@@ -19,6 +19,7 @@ import {
   computeSettlementAmountInCreditCurrency
 } from "@/lib/big-book/credit";
 import { mappedVendorTypeIdForType } from "@/lib/big-book/type-vendor-type-map";
+import { sortByDisplayLabel } from "@/lib/ui/sort-by-display-label";
 
 export { mappedVendorTypeIdForType } from "@/lib/big-book/type-vendor-type-map";
 
@@ -170,7 +171,10 @@ export function BigBookEntryFields({
   showGasFee = false,
   layout = "full"
 }: Props) {
-  const activeTypes = types.filter((row) => row.is_active);
+  const activeTypes = sortByDisplayLabel(
+    types.filter((row) => row.is_active),
+    (row) => row.name
+  );
   const activeVendorTypes = vendorTypes.filter((row) => row.is_active);
   const mappedVendorTypeId = mappedVendorTypeIdForType(value.entry_type_id, typeVendorTypeMaps);
   const mappedVendorType =
@@ -187,14 +191,22 @@ export function BigBookEntryFields({
       const selected = vendorTypes.find((row) => row.id === value.vendor_type_id);
       if (selected) byId.set(selected.id, selected);
     }
-    return [...byId.values()];
+    return sortByDisplayLabel([...byId.values()], (row) => row.name);
   })();
-  const activeActionBy = actionByOptions.filter((row) => row.is_active);
-  const pocketsForForm = pockets.filter(
-    (row) =>
-      row.is_active &&
-      row.actor_id === value.responsible_actor_id &&
-      row.currency_code === value.currency_code
+  const activeActionBy = sortByDisplayLabel(
+    actionByOptions.filter((row) => row.is_active),
+    (row) => row.name
+  );
+  const sortedActors = sortByDisplayLabel(actors, (row) => row.display_name);
+  const sortedCurrencies = sortByDisplayLabel(currencies, (row) => row);
+  const pocketsForForm = sortByDisplayLabel(
+    pockets.filter(
+      (row) =>
+        row.is_active &&
+        row.actor_id === value.responsible_actor_id &&
+        row.currency_code === value.currency_code
+    ),
+    (row) => row.name
   );
   const pocketDisabled = value.currency_code !== "IDR" || !pocketsForForm.length;
   const pocketHint =
@@ -401,7 +413,7 @@ export function BigBookEntryFields({
             }}
             aria-label="Currency"
           >
-            {currencies.map((currency) => (
+            {sortedCurrencies.map((currency) => (
               <option key={currency} value={currency}>
                 {currency}
               </option>
@@ -613,7 +625,7 @@ export function BigBookEntryFields({
             })
           }
         >
-          {actors.map((actor) => (
+          {sortedActors.map((actor) => (
             <option key={actor.id} value={actor.id}>
               {actor.display_name}
             </option>

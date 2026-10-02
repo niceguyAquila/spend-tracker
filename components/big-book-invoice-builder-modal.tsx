@@ -11,6 +11,7 @@ import type {
   BigBookInvoiceWallet,
   BigBookLedgerTypeInvoiceProfile
 } from "@/lib/types";
+import { sortByDisplayLabel } from "@/lib/ui/sort-by-display-label";
 
 export type InvoiceBuilderCreditDraft = {
   id: string;
@@ -49,7 +50,10 @@ type Props = {
   onOpenChange: (open: boolean) => void;
 };
 
-const CURRENCIES: BigBookCashflowCurrency[] = ["IDR", "MYR", "USDT", "TRX"];
+const CURRENCIES: BigBookCashflowCurrency[] = sortByDisplayLabel(
+  ["IDR", "MYR", "USDT", "TRX"] as BigBookCashflowCurrency[],
+  (currency) => currency
+);
 
 function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
@@ -163,7 +167,11 @@ function applyGroupProfile(
 export function BigBookInvoiceBuilderModal({ open, seed, wallets: walletsProp, onOpenChange }: Props) {
   const [loadedWallets, setLoadedWallets] = useState<BigBookInvoiceWallet[]>(walletsProp ?? []);
   const activeWallets = useMemo(
-    () => (walletsProp ?? loadedWallets).filter((row) => row.is_active),
+    () =>
+      sortByDisplayLabel(
+        (walletsProp ?? loadedWallets).filter((row) => row.is_active),
+        (row) => row.name
+      ),
     [walletsProp, loadedWallets]
   );
   const [title, setTitle] = useState("INVOICE");
@@ -323,12 +331,7 @@ export function BigBookInvoiceBuilderModal({ open, seed, wallets: walletsProp, o
             });
           }
         }
-        setGroupTypeOptions(
-          [...optionsMap.values()].sort((a, b) => {
-            if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
-            return a.name.localeCompare(b.name);
-          })
-        );
+        setGroupTypeOptions(sortByDisplayLabel([...optionsMap.values()], (row) => row.name));
 
         const profile = defaultGroupId
           ? rows.find((row) => row.type_id === defaultGroupId)

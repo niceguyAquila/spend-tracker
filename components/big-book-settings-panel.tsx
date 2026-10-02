@@ -27,6 +27,7 @@ import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
 import { BigBookTypeVendorTypeMapSection } from "@/components/big-book-type-vendor-type-map-section";
 import { BigBookWalletsSettingsSection } from "@/components/big-book-wallets-settings-section";
 import { BigBookTypeInvoiceProfilesSection } from "@/components/big-book-type-invoice-profiles-section";
+import { sortByDisplayLabel } from "@/lib/ui/sort-by-display-label";
 
 type StatusFilter = "all" | "active" | "inactive";
 
@@ -166,6 +167,23 @@ export function BigBookSettingsPanel({
   const pocketsForSelectedActor = useMemo(
     () => initialPockets.filter((row) => row.actor_id === pocketParentActorId),
     [initialPockets, pocketParentActorId]
+  );
+
+  const typesForSelect = useMemo(
+    () => sortByDisplayLabel(initialTypes, (row) => row.name),
+    [initialTypes]
+  );
+  const vendorTypesForSelect = useMemo(
+    () => sortByDisplayLabel(initialVendorTypes, (row) => row.name),
+    [initialVendorTypes]
+  );
+  const actorsForSelect = useMemo(
+    () => sortByDisplayLabel(initialActors, (row) => row.display_name),
+    [initialActors]
+  );
+  const usersForSelect = useMemo(
+    () => sortByDisplayLabel(allowedUsers, (row) => row.display_name || row.email),
+    [allowedUsers]
   );
 
   const [typeQuery, setTypeQuery] = useState("");
@@ -1069,7 +1087,7 @@ export function BigBookSettingsPanel({
             <option value="" disabled>
               Select parent type
             </option>
-            {initialTypes.map((type) => (
+            {typesForSelect.map((type) => (
               <option key={type.id} value={type.id}>
                 {type.name} {type.is_active ? "" : "(inactive)"}
               </option>
@@ -1369,7 +1387,7 @@ export function BigBookSettingsPanel({
             <option value="" disabled>
               Select vendor type
             </option>
-            {initialVendorTypes.map((vendorType) => (
+            {vendorTypesForSelect.map((vendorType) => (
               <option key={vendorType.id} value={vendorType.id}>
                 {vendorType.name} {vendorType.is_active ? "" : "(inactive)"}
               </option>
@@ -1679,7 +1697,7 @@ export function BigBookSettingsPanel({
             <option value="" disabled>
               Select actor
             </option>
-            {initialActors.map((actor) => (
+            {actorsForSelect.map((actor) => (
               <option key={actor.id} value={actor.id}>
                 {actor.display_name} (Actor {actor.actor_code})
               </option>
@@ -1859,7 +1877,7 @@ export function BigBookSettingsPanel({
                   }
                 >
                   <option value="">Unassigned</option>
-                  {allowedUsers.map((user) => (
+                  {usersForSelect.map((user) => (
                     <option key={user.id} value={user.id}>
                       {user.display_name} ({user.email})
                     </option>

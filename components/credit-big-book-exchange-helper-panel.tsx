@@ -4,8 +4,12 @@ import { useState } from "react";
 import { handleUnauthorizedResponse } from "@/lib/client/auth-fetch";
 import type { CreditBookCurrencyCode } from "@/lib/validation/credit-big-book";
 import { formatAmount, formatDateTimeDisplay } from "@/lib/display-format";
+import { sortByDisplayLabel } from "@/lib/ui/sort-by-display-label";
 
-const CURRENCIES: CreditBookCurrencyCode[] = ["IDR", "MYR", "USDT", "TRX"];
+const CURRENCIES: CreditBookCurrencyCode[] = sortByDisplayLabel(
+  ["IDR", "MYR", "USDT", "TRX"] as CreditBookCurrencyCode[],
+  (currency) => currency
+);
 
 type ExchangeQuoteResult = {
   source: string;

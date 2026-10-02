@@ -12,11 +12,6 @@ type Props = {
   entries: BigBookEntry[];
   expanded: boolean;
   onToggle: () => void;
-  /**
-   * Empty columns after the expand/select cell and before the group label
-   * (Date … Action By), so the label lines up with Explanation on single rows.
-   */
-  leadingColSpan: number;
   /** Columns between the amount column and the actions column. */
   trailingColSpan: number;
   openActionMenu: { id: string; top: number; left: number } | null;
@@ -34,7 +29,6 @@ function BigBookGroupHeaderRowInner({
   entries,
   expanded,
   onToggle,
-  leadingColSpan,
   trailingColSpan,
   openActionMenu,
   actionMenuRef,
@@ -75,14 +69,24 @@ function BigBookGroupHeaderRowInner({
             {expanded ? "▾" : "▸"}
           </button>
         </td>
-        {leadingColSpan > 0 ? (
-          <td className="px-3 py-2" colSpan={leadingColSpan} aria-hidden="true" />
-        ) : null}
+        <td className="overflow-hidden break-words px-3 py-2">{dateLabel}</td>
+        <td className="px-3 py-2">
+          <span className="text-xs text-muted">-</span>
+        </td>
+        <td className="px-3 py-2">
+          <span className="text-xs text-muted">-</span>
+        </td>
+        <td className="px-3 py-2">
+          <span className="text-xs text-muted">-</span>
+        </td>
+        <td className="px-3 py-2">
+          <span className="text-xs text-muted">-</span>
+        </td>
         <td className="px-3 py-2">
           <div className="min-w-0">
             <p className="font-medium text-[rgb(var(--text))]">{group.label}</p>
             <p className="text-xs text-muted">
-              Group · {entries.length} transaction{entries.length === 1 ? "" : "s"} · {dateLabel}
+              Group · {entries.length} transaction{entries.length === 1 ? "" : "s"}
             </p>
             {group.remark ? <p className="mt-1 truncate text-xs text-muted">{group.remark}</p> : null}
           </div>
