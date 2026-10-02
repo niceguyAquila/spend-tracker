@@ -10,6 +10,13 @@ import {
 } from "@/lib/validation/big-book";
 import { buildGasFeeEntry, buildGasFeeGroupLabel } from "@/lib/big-book/gas-fee-entry";
 import {
+  buildKursEntry,
+  findKursTypeId,
+  KURS_TYPE_MISSING_ERROR,
+  KURS_TYPE_NAME,
+  resolveKursCompanionAmount
+} from "@/lib/big-book/kurs-usdt-entry";
+import {
   getBigBookActorCurrencyMetrics,
   getBigBookActorPocketMetrics,
   getBigBookEntriesPaged,
@@ -193,7 +200,12 @@ export async function POST(request: Request) {
 
   const supabase = await createClient();
   const actorId = authCheck.user.id;
-  const { gas_fee_amount: gasFeeAmount, ...payload } = parsed.data;
+  const {
+    gas_fee_amount: gasFeeAmount,
+    kurs_rate: kursRate,
+    kurs_amount: kursAmountInput,
+    ...payload
+  } = parsed.data;
 
   const settlement = await resolveSettlementFields(supabase, {
     settles_entry_id: payload.settles_entry_id ?? null,
@@ -205,8 +217,32 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: settlement.error }, { status: settlement.status });
   }
 
+  const kursAmount = resolveKursCompanionAmount({
+    currencyCode: payload.currency_code,
+    entryDirection: payload.entry_direction,
+    mainAmount: payload.amount,
+    kursRate,
+    kursAmount: kursAmountInput
+  });
+
+  let kursTypeId: string | null = null;
+  if (kursAmount != null) {
+    const { data: kursTypes, error: kursTypeError } = await supabase
+      .from("business_ledger_types")
+      .select("id, name, is_active")
+      .ilike("name", KURS_TYPE_NAME);
+
+    if (kursTypeError) {
+      return NextResponse.json({ error: kursTypeError.message }, { status: 400 });
+    }
+    kursTypeId = findKursTypeId(kursTypes ?? []);
+    if (!kursTypeId) {
+      return NextResponse.json({ error: KURS_TYPE_MISSING_ERROR }, { status: 400 });
+    }
+  }
+
   let groupId: string | null = null;
-  if (gasFeeAmount != null) {
+  if (gasFeeAmount != null || kursAmount != null) {
     const { data: group, error: groupError } = await supabase
       .from("business_ledger_entry_groups")
       .insert({
@@ -220,7 +256,7 @@ export async function POST(request: Request) {
 
     if (groupError || !group) {
       return NextResponse.json(
-        { error: groupError?.message ?? "Failed to create gas fee group." },
+        { error: groupError?.message ?? "Failed to create companion entry group." },
         { status: 400 }
       );
     }
@@ -253,31 +289,58 @@ export async function POST(request: Request) {
 
   let createdEntryId: string;
 
-  if (groupId && gasFeeAmount != null) {
-    const gasEntry = buildGasFeeEntry(payload, gasFeeAmount);
-    const gasRow = {
-      group_id: groupId,
-      entry_date: gasEntry.entry_date,
-      entry_direction: gasEntry.entry_direction,
-      entry_type_id: gasEntry.entry_type_id,
-      entry_sub_type_id: gasEntry.entry_sub_type_id,
-      vendor_type_id: gasEntry.vendor_type_id,
-      vendor_id: gasEntry.vendor_id,
-      pocket_id: gasEntry.pocket_id,
-      action_by_id: gasEntry.action_by_id,
-      explanation: gasEntry.explanation,
-      amount: gasEntry.amount,
-      currency_code: gasEntry.currency_code,
-      remark: gasEntry.remark || null,
-      responsible_actor_id: gasEntry.responsible_actor_id,
-      is_credit: false,
-      created_by: actorId,
-      updated_by: actorId
-    };
+  if (groupId && (gasFeeAmount != null || kursAmount != null)) {
+    const companionRows: Array<Record<string, unknown>> = [];
+
+    if (kursAmount != null && kursTypeId) {
+      const kursEntry = buildKursEntry(payload, kursTypeId, kursAmount);
+      companionRows.push({
+        group_id: groupId,
+        entry_date: kursEntry.entry_date,
+        entry_direction: kursEntry.entry_direction,
+        entry_type_id: kursEntry.entry_type_id,
+        entry_sub_type_id: kursEntry.entry_sub_type_id,
+        vendor_type_id: kursEntry.vendor_type_id,
+        vendor_id: kursEntry.vendor_id,
+        pocket_id: kursEntry.pocket_id,
+        action_by_id: kursEntry.action_by_id,
+        explanation: kursEntry.explanation,
+        amount: kursEntry.amount,
+        currency_code: kursEntry.currency_code,
+        remark: kursEntry.remark || null,
+        responsible_actor_id: kursEntry.responsible_actor_id,
+        is_credit: false,
+        created_by: actorId,
+        updated_by: actorId
+      });
+    }
+
+    if (gasFeeAmount != null) {
+      const gasEntry = buildGasFeeEntry(payload, gasFeeAmount);
+      companionRows.push({
+        group_id: groupId,
+        entry_date: gasEntry.entry_date,
+        entry_direction: gasEntry.entry_direction,
+        entry_type_id: gasEntry.entry_type_id,
+        entry_sub_type_id: gasEntry.entry_sub_type_id,
+        vendor_type_id: gasEntry.vendor_type_id,
+        vendor_id: gasEntry.vendor_id,
+        pocket_id: gasEntry.pocket_id,
+        action_by_id: gasEntry.action_by_id,
+        explanation: gasEntry.explanation,
+        amount: gasEntry.amount,
+        currency_code: gasEntry.currency_code,
+        remark: gasEntry.remark || null,
+        responsible_actor_id: gasEntry.responsible_actor_id,
+        is_credit: false,
+        created_by: actorId,
+        updated_by: actorId
+      });
+    }
 
     const { data: inserted, error } = await supabase
       .from("business_ledger_entries")
-      .insert([mainRow, gasRow])
+      .insert([mainRow, ...companionRows])
       .select("id");
 
     if (error || !inserted?.[0]) {

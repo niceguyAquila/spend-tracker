@@ -141,6 +141,81 @@ describe("big book entry schema", () => {
     if (parsed.success) expect("gas_fee_amount" in parsed.data).toBe(false);
   });
 
+  it("accepts USDT inflow with kurs_rate and kurs_amount", () => {
+    const parsed = bigBookEntryInputSchema.safeParse({
+      ...clientPayload,
+      entry_direction: "profit",
+      currency_code: "USDT",
+      kurs_rate: 0.999423,
+      kurs_amount: 0.577
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.kurs_rate).toBe(0.999423);
+      expect(parsed.data.kurs_amount).toBe(0.577);
+    }
+  });
+
+  it("treats omitted or empty KURS fields as skipped", () => {
+    const omitted = bigBookEntryInputSchema.safeParse({
+      ...clientPayload,
+      entry_direction: "profit",
+      currency_code: "USDT"
+    });
+    expect(omitted.success).toBe(true);
+    if (omitted.success) {
+      expect(omitted.data.kurs_rate).toBeUndefined();
+      expect(omitted.data.kurs_amount).toBeUndefined();
+    }
+
+    const empty = bigBookEntryInputSchema.safeParse({
+      ...clientPayload,
+      entry_direction: "profit",
+      currency_code: "USDT",
+      kurs_rate: "",
+      kurs_amount: ""
+    });
+    expect(empty.success).toBe(true);
+    if (empty.success) {
+      expect(empty.data.kurs_rate).toBeUndefined();
+      expect(empty.data.kurs_amount).toBeUndefined();
+    }
+  });
+
+  it("rejects KURS fields when not a USDT inflow", () => {
+    const spending = bigBookEntryInputSchema.safeParse({
+      ...clientPayload,
+      entry_direction: "spending",
+      currency_code: "USDT",
+      kurs_rate: 0.999423
+    });
+    expect(spending.success).toBe(false);
+
+    const idr = bigBookEntryInputSchema.safeParse({
+      ...clientPayload,
+      entry_direction: "profit",
+      currency_code: "IDR",
+      kurs_amount: 1.5
+    });
+    expect(idr.success).toBe(false);
+  });
+
+  it("strips kurs fields from update payloads", () => {
+    const parsed = bigBookEntryUpdateSchema.safeParse({
+      ...clientPayload,
+      id: ENTRY_ID,
+      entry_direction: "profit",
+      currency_code: "USDT",
+      kurs_rate: 0.999423,
+      kurs_amount: 0.577
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect("kurs_rate" in parsed.data).toBe(false);
+      expect("kurs_amount" in parsed.data).toBe(false);
+    }
+  });
+
   it("accepts a credit settle payload with a null note", () => {
     const parsed = bigBookCreditSettleSchema.safeParse({
       id: CREDIT_ID,

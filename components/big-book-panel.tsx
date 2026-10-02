@@ -60,10 +60,16 @@ import {
 } from "@/lib/big-book/entry-form-validation";
 import {
   BIG_BOOK_GROUP_ENTRY_MAX,
-  expandGroupPayloadsWithGasFees,
   parseOptionalGasFeeAmount,
   willCreateGasFeeEntry
 } from "@/lib/big-book/gas-fee-entry";
+import {
+  expandGroupPayloadsWithKursAndGasFees,
+  findKursTypeId,
+  KURS_TYPE_MISSING_ERROR,
+  resolveKursCompanionAmount,
+  willCreateKursEntry
+} from "@/lib/big-book/kurs-usdt-entry";
 import { rowStripeClass } from "@/lib/ui/table";
 import { useColumnWidths } from "@/lib/ui/use-column-widths";
 import { TableEmptyState } from "@/components/ui/table-empty-state";
@@ -262,6 +268,8 @@ function entryFormFromEntry(entry: BigBookEntry): GroupEntryFormState {
     amount: formatAmountInput(String(entry.amount)),
     currency_code: entry.currency_code,
     gas_fee_amount: "",
+    kurs_rate: "",
+    kurs_amount: "",
     remark: entry.remark ?? "",
     responsible_actor_id: entry.responsible_actor_id,
     is_credit: entry.is_credit,
@@ -388,6 +396,8 @@ export function BigBookPanel({
     amount: "",
     currency_code: "IDR",
     gas_fee_amount: "",
+    kurs_rate: "",
+    kurs_amount: "",
     remark: "",
     responsible_actor_id: "",
     is_credit: false,
@@ -1066,16 +1076,29 @@ export function BigBookPanel({
       return;
     }
     const completeForms = groupEntryForms.filter(isEntryFormComplete);
-    const payloadEntries = expandGroupPayloadsWithGasFees(
-      completeForms.map((form) => ({ entry: toEntryPayload(form), gasFeeAmount: form.gas_fee_amount }))
-    );
+    const kursTypeId = findKursTypeId(initialTypes);
+    let payloadEntries;
+    try {
+      payloadEntries = expandGroupPayloadsWithKursAndGasFees(
+        completeForms.map((form) => ({
+          entry: toEntryPayload(form),
+          gasFeeAmount: form.gas_fee_amount,
+          kursRate: form.kurs_rate,
+          kursAmount: form.kurs_amount
+        })),
+        kursTypeId
+      );
+    } catch (expandError) {
+      setError(expandError instanceof Error ? expandError.message : KURS_TYPE_MISSING_ERROR);
+      return;
+    }
     if (payloadEntries.length < 2) {
       setError("A grouped transaction needs at least 2 entries with an explanation and amount.");
       return;
     }
     if (payloadEntries.length > BIG_BOOK_GROUP_ENTRY_MAX) {
       setError(
-        `A grouped transaction can have at most ${BIG_BOOK_GROUP_ENTRY_MAX} entries, including gas fees.`
+        `A grouped transaction can have at most ${BIG_BOOK_GROUP_ENTRY_MAX} entries, including gas fees and KURS.`
       );
       return;
     }
@@ -1136,6 +1159,13 @@ export function BigBookPanel({
     }
     const gasFeeAmount =
       entryForm.currency_code === "USDT" ? parseOptionalGasFeeAmount(entryForm.gas_fee_amount) : null;
+    const kursCompanionAmount = resolveKursCompanionAmount({
+      currencyCode: entryForm.currency_code,
+      entryDirection: entryForm.entry_direction,
+      mainAmount: amountValue,
+      kursRate: entryForm.kurs_rate,
+      kursAmount: entryForm.kurs_amount
+    });
 
     setEntrySubmitting(true);
     setError(null);
@@ -1153,6 +1183,8 @@ export function BigBookPanel({
           action_by_id: entryForm.action_by_id || null,
           amount: amountValue,
           gas_fee_amount: gasFeeAmount,
+          kurs_rate: entryForm.kurs_rate.trim() ? Number(parseAmountInput(entryForm.kurs_rate)) : null,
+          kurs_amount: kursCompanionAmount,
           ...toCreditPayload(entryForm, null)
         })
       });
@@ -1230,13 +1262,24 @@ export function BigBookPanel({
           null
         );
       }
+      if (kursCompanionAmount != null) {
+        applyMetricDelta(
+          entryForm.responsible_actor_id,
+          createdActor?.display_name ?? "Unknown Actor",
+          "USDT",
+          -kursCompanionAmount,
+          null
+        );
+      }
       if (keepModalOpen) {
         setEntryForm((prev) => ({
           ...prev,
           explanation: "",
           amount: "",
           remark: "",
-          gas_fee_amount: ""
+          gas_fee_amount: "",
+          kurs_rate: "",
+          kurs_amount: ""
         }));
       } else {
         // Full reset reapplies Type → Vendor Type mapping for the default type.
@@ -1717,6 +1760,8 @@ export function BigBookPanel({
       amount: formatAmountInput(String(row.amount)),
       currency_code: row.currency_code,
       gas_fee_amount: "",
+      kurs_rate: "",
+      kurs_amount: "",
       remark: "",
       responsible_actor_id: row.responsible_actor_id,
       is_credit: false,
@@ -1961,13 +2006,34 @@ export function BigBookPanel({
   const createValid = createMissingHint == null;
   const createHasGasFee =
     createMode === "single" && willCreateGasFeeEntry(entryForm.currency_code, entryForm.gas_fee_amount);
+  const createHasKurs =
+    createMode === "single" &&
+    willCreateKursEntry({
+      currencyCode: entryForm.currency_code,
+      entryDirection: entryForm.entry_direction,
+      mainAmount: Number(parseAmountInput(entryForm.amount)),
+      kursRate: entryForm.kurs_rate,
+      kursAmount: entryForm.kurs_amount
+    });
   const groupedCreateEntryCount =
     createMode === "group"
-      ? expandGroupPayloadsWithGasFees(
-          groupEntryForms
-            .filter(isEntryFormComplete)
-            .map((form) => ({ entry: toEntryPayload(form), gasFeeAmount: form.gas_fee_amount }))
-        ).length
+      ? (() => {
+          try {
+            return expandGroupPayloadsWithKursAndGasFees(
+              groupEntryForms
+                .filter(isEntryFormComplete)
+                .map((form) => ({
+                  entry: toEntryPayload(form),
+                  gasFeeAmount: form.gas_fee_amount,
+                  kursRate: form.kurs_rate,
+                  kursAmount: form.kurs_amount
+                })),
+              findKursTypeId(initialTypes)
+            ).length;
+          } catch {
+            return groupEntryForms.filter(isEntryFormComplete).length;
+          }
+        })()
       : 0;
   const editMissingHint = editingGroupId
     ? describeGroupedMissingFields(editGroupForms, { groupLabel: editGroupLabel })
@@ -2873,10 +2939,19 @@ export function BigBookPanel({
             ? `This will create a group with ${groupedCreateEntryCount} transaction${
                 groupedCreateEntryCount === 1 ? "" : "s"
               } in the Big Book.`
-            : createHasGasFee
-              ? createAttachmentFiles.length
-                ? `This will create a USDT entry and a grouped TRX gas-fee entry, then upload ${createAttachmentFiles.length} attachment(s) to the USDT record.`
-                : "This will create a USDT entry and a grouped TRX gas-fee entry in the Big Book."
+            : createHasGasFee || createHasKurs
+              ? (() => {
+                  const parts = ["a USDT entry"];
+                  if (createHasKurs) parts.push("a grouped USDT KURS spending entry");
+                  if (createHasGasFee) parts.push("a grouped TRX gas-fee entry");
+                  const companions =
+                    parts.length === 2
+                      ? `${parts[0]} and ${parts[1]}`
+                      : `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+                  return createAttachmentFiles.length
+                    ? `This will create ${companions}, then upload ${createAttachmentFiles.length} attachment(s) to the main USDT record.`
+                    : `This will create ${companions} in the Big Book.`;
+                })()
               : createAttachmentFiles.length
                 ? `This will create a new record and upload ${createAttachmentFiles.length} attachment(s).`
                 : "This will create a new operational/profit record in the Big Book."

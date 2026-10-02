@@ -149,6 +149,16 @@ const optionalGasFeeAmountSchema = z.preprocess((value) => {
   return value;
 }, z.coerce.number().positive("Gas fee must be greater than 0").optional());
 
+const optionalKursRateSchema = z.preprocess((value) => {
+  if (value === "" || value == null) return undefined;
+  return value;
+}, z.coerce.number().finite("KURS rate must be a number").optional());
+
+const optionalKursAmountSchema = z.preprocess((value) => {
+  if (value === "" || value == null) return undefined;
+  return value;
+}, z.coerce.number().positive("KURS amount must be greater than 0").optional());
+
 function refineBigBookEntryCreditFields<
   T extends {
     is_credit?: boolean;
@@ -182,9 +192,35 @@ function refineBigBookEntryCreditFields<
   }
 }
 
+function isUsdtInflow(value: { currency_code: string; entry_direction: string }) {
+  return value.currency_code === "USDT" && value.entry_direction === "profit";
+}
+
+function refineKursFields<
+  T extends {
+    currency_code: string;
+    entry_direction: string;
+    kurs_rate?: number;
+    kurs_amount?: number;
+  }
+>(value: T, ctx: z.RefinementCtx) {
+  const hasKurs = value.kurs_rate != null || value.kurs_amount != null;
+  if (!hasKurs) return;
+  if (!isUsdtInflow(value)) {
+    const path = value.kurs_amount != null ? ["kurs_amount"] : ["kurs_rate"];
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "KURS is only allowed for USDT inflow (In) entries.",
+      path
+    });
+  }
+}
+
 export const bigBookEntryInputSchema = bigBookEntryBaseSchema
   .extend({
-    gas_fee_amount: optionalGasFeeAmountSchema
+    gas_fee_amount: optionalGasFeeAmountSchema,
+    kurs_rate: optionalKursRateSchema,
+    kurs_amount: optionalKursAmountSchema
   })
   .superRefine((value, ctx) => {
     refineBigBookEntryCreditFields(value, ctx);
@@ -195,6 +231,7 @@ export const bigBookEntryInputSchema = bigBookEntryBaseSchema
         path: ["gas_fee_amount"]
       });
     }
+    refineKursFields(value, ctx);
   });
 
 export const bigBookEntryUpdateSchema = bigBookEntryBaseSchema
@@ -260,6 +297,8 @@ const bigBookGroupEntryInputSchema = bigBookEntryBaseSchema.omit({
   close_credit: true,
   credit_settlement_note: true
 });
+// Group create expands companions client-side (gas fee / KURS) into plain entry rows,
+// so group entry schema stays without kurs_rate / gas_fee_amount fields.
 
 export const bigBookGroupCreateSchema = z.object({
   label: z.string().trim().min(2).max(200),
