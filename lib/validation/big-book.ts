@@ -165,6 +165,7 @@ function refineBigBookEntryCreditFields<
     settles_entry_id?: string | null;
     settlement_conversion_rate?: number | null;
     close_credit?: boolean;
+    currency_code?: string;
   }
 >(value: T, ctx: z.RefinementCtx) {
   if (value.is_credit && value.settles_entry_id) {
@@ -174,9 +175,13 @@ function refineBigBookEntryCreditFields<
       path: ["is_credit"]
     });
   }
-  if (value.settles_entry_id && value.settlement_conversion_rate == null) {
-    // Conversion rate is required when linking a settlement; same-currency
-    // settlements force rate = 1 in the API before insert.
+  // USDT settlements may omit FX rate (optional calc/note). Same-currency non-USDT
+  // settlements force rate = 1 in the API; other cross-currency settles still need it.
+  if (
+    value.settles_entry_id &&
+    value.settlement_conversion_rate == null &&
+    value.currency_code !== "USDT"
+  ) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: "Conversion rate is required when settling a credit.",

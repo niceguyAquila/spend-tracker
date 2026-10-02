@@ -552,7 +552,7 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
     entry_date: string;
     currency_code: BulkSettleCurrency;
     amount: number;
-    settlement_conversion_rate: number;
+    settlement_conversion_rate?: number;
     settlement_note: string;
     close_credits: boolean;
     explanation: string;
@@ -566,9 +566,15 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
         mode: editDraft.mode,
         entry_date: payload.entry_date,
         close_credits: payload.close_credits,
-        currency_code: payload.currency_code,
-        settlement_conversion_rate: payload.settlement_conversion_rate
+        currency_code: payload.currency_code
       };
+      if (
+        payload.settlement_conversion_rate != null &&
+        Number.isFinite(payload.settlement_conversion_rate) &&
+        payload.settlement_conversion_rate > 0
+      ) {
+        body.settlement_conversion_rate = payload.settlement_conversion_rate;
+      }
       if (payload.settlement_note) body.settlement_note = payload.settlement_note;
       if (payload.explanation) body.explanation = payload.explanation;
       if (editDraft.mode === "single") body.amount = payload.amount;

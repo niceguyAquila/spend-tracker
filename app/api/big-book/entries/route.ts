@@ -85,21 +85,41 @@ async function resolveSettlementFields(
   }
 
   const creditCurrency = creditEntry.currency_code as BigBookCurrency;
-  const conversionRate =
-    payload.currency_code === creditCurrency
-      ? 1
-      : Number(payload.settlement_conversion_rate);
-  if (!Number.isFinite(conversionRate) || conversionRate <= 0) {
+  if (payload.currency_code === creditCurrency) {
+    return {
+      ok: true,
+      settles_entry_id: payload.settles_entry_id,
+      settlement_conversion_rate: 1,
+      settlement_amount_in_credit_currency: computeSettlementAmountInCreditCurrency(
+        payload.amount,
+        1
+      )
+    };
+  }
+
+  const typedRate = Number(payload.settlement_conversion_rate);
+  const hasRate = Number.isFinite(typedRate) && typedRate > 0;
+
+  // USDT settlements may omit FX rate; other cross-currency settles still require it.
+  if (!hasRate) {
+    if (payload.currency_code === "USDT") {
+      return {
+        ok: true,
+        settles_entry_id: payload.settles_entry_id,
+        settlement_conversion_rate: null,
+        settlement_amount_in_credit_currency: null
+      };
+    }
     return { ok: false, status: 400, error: "Conversion rate must be greater than 0." };
   }
 
   return {
     ok: true,
     settles_entry_id: payload.settles_entry_id,
-    settlement_conversion_rate: conversionRate,
+    settlement_conversion_rate: typedRate,
     settlement_amount_in_credit_currency: computeSettlementAmountInCreditCurrency(
       payload.amount,
-      conversionRate
+      typedRate
     )
   };
 }

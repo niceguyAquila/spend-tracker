@@ -59,6 +59,28 @@ describe("big book entry schema", () => {
     expect(parsed.success).toBe(true);
   });
 
+  it("accepts a USDT settlement without a conversion rate", () => {
+    const parsed = bigBookEntryInputSchema.safeParse({
+      ...clientPayload,
+      currency_code: "USDT",
+      settles_entry_id: CREDIT_ID,
+      settlement_conversion_rate: null,
+      close_credit: false
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects a non-USDT settlement without a conversion rate", () => {
+    const parsed = bigBookEntryInputSchema.safeParse({
+      ...clientPayload,
+      currency_code: "IDR",
+      settles_entry_id: CREDIT_ID,
+      settlement_conversion_rate: null,
+      close_credit: false
+    });
+    expect(parsed.success).toBe(false);
+  });
+
   it("accepts a settlement that closes the credit", () => {
     const parsed = bigBookEntryInputSchema.safeParse({
       ...clientPayload,

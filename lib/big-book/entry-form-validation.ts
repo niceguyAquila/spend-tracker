@@ -61,14 +61,16 @@ export type SettlementFormValidationInput = {
 };
 
 /**
- * True when settlement currency differs from the credit and a positive conversion
- * rate is required (same-currency settlements force rate = 1).
+ * True when a positive conversion rate is required to submit.
+ * Same-currency settlements force rate = 1 (no typed rate needed).
+ * USDT settlements never require a rate (optional FX note / calc only).
  */
 export function settlementNeedsConversionRate(
   settlementCurrencyCode: string,
   creditCurrencyCode: string | null | undefined
 ): boolean {
   if (!creditCurrencyCode) return false;
+  if (settlementCurrencyCode === "USDT") return false;
   return settlementCurrencyCode !== creditCurrencyCode;
 }
 
@@ -82,8 +84,9 @@ export function parsePositiveConversionRate(
 }
 
 /**
- * Blocking hint for Record Settlement. Prefer conversion-rate guidance over generic
- * amount/explanation hints when both are missing so cross-currency no-ops are visible.
+ * Blocking hint for Record Settlement. For non-USDT cross-currency settles, prefer
+ * conversion-rate guidance over generic amount/explanation hints when both are missing.
+ * USDT settlements never require a rate.
  */
 export function describeSettlementMissingFields(
   fields: SettlementFormValidationInput

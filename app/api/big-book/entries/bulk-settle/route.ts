@@ -36,19 +36,23 @@ function resolveConversionRate(
   settlementCurrency: CreditCurrency,
   creditCurrency: CreditCurrency,
   requestedRate: number | undefined
-): { ok: true; rate: number } | { ok: false; error: string } {
+): { ok: true; rate: number | null } | { ok: false; error: string } {
   if (settlementCurrency === creditCurrency) {
     return { ok: true, rate: 1 };
   }
   const rate = Number(requestedRate);
-  if (!Number.isFinite(rate) || rate <= 0) {
-    return {
-      ok: false,
-      error:
-        "Conversion rate is required when settlement currency differs from the credit currency."
-    };
+  if (Number.isFinite(rate) && rate > 0) {
+    return { ok: true, rate };
   }
-  return { ok: true, rate };
+  // USDT settlements may omit FX rate; other cross-currency settles still require it.
+  if (settlementCurrency === "USDT") {
+    return { ok: true, rate: null };
+  }
+  return {
+    ok: false,
+    error:
+      "Conversion rate is required when settlement currency differs from the credit currency."
+  };
 }
 
 export async function POST(request: Request) {
@@ -154,8 +158,9 @@ export async function POST(request: Request) {
       }
       const creditAmount = Math.abs(Number(credit.amount));
       // App convention: settlement_amount = credit_amount / rate when currencies differ.
+      // Without a rate (USDT optional FX), keep the credit's numeric amount as the settle amount.
       const settlementAmount =
-        settlementCurrency === credit.currency_code
+        settlementCurrency === credit.currency_code || rateResult.rate == null
           ? creditAmount
           : computeSettlementAmountFromCredit(creditAmount, rateResult.rate);
 
@@ -178,10 +183,10 @@ export async function POST(request: Request) {
         is_credit: false,
         settles_entry_id: credit.id,
         settlement_conversion_rate: rateResult.rate,
-        settlement_amount_in_credit_currency: computeSettlementAmountInCreditCurrency(
-          settlementAmount,
-          rateResult.rate
-        ),
+        settlement_amount_in_credit_currency:
+          rateResult.rate == null
+            ? null
+            : computeSettlementAmountInCreditCurrency(settlementAmount, rateResult.rate),
         settlement_note: settlementNote ?? null,
         created_by: actorId,
         updated_by: actorId
@@ -215,7 +220,7 @@ export async function POST(request: Request) {
       0
     );
     const defaultSettlementAmount =
-      settlementCurrency === creditCurrency
+      settlementCurrency === creditCurrency || rateResult.rate == null
         ? totalCreditAmount
         : computeSettlementAmountFromCredit(totalCreditAmount, rateResult.rate);
     const settlementAmount =
@@ -248,10 +253,10 @@ export async function POST(request: Request) {
         is_credit: false,
         settles_entry_id: primary.id,
         settlement_conversion_rate: rateResult.rate,
-        settlement_amount_in_credit_currency: computeSettlementAmountInCreditCurrency(
-          settlementAmount,
-          rateResult.rate
-        ),
+        settlement_amount_in_credit_currency:
+          rateResult.rate == null
+            ? null
+            : computeSettlementAmountInCreditCurrency(settlementAmount, rateResult.rate),
         settlement_note: settlementNote ?? null,
         created_by: actorId,
         updated_by: actorId
