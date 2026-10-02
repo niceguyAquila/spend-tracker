@@ -802,6 +802,98 @@ describe("big book entries route", () => {
     });
   });
 
+  it("rejects cross-currency settlement without a positive conversion rate", async () => {
+    const { POST } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_date: "2026-05-01",
+        entry_direction: "profit",
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        explanation: "Settlement in USDT",
+        amount: 100,
+        currency_code: "USDT",
+        remark: "",
+        responsible_actor_id: "22222222-2222-4222-8222-222222222222",
+        settles_entry_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        settlement_conversion_rate: null
+      })
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+    expect(response.status).toBe(400);
+    // Schema refine catches null rate before the settlement resolver runs.
+    expect(data.error).toBeTruthy();
+    expect(insertMock).not.toHaveBeenCalled();
+    expect(creditLookupMaybeSingleMock).not.toHaveBeenCalled();
+  });
+
+  it("creates a USDT settlement with KURS companion against a MYR credit", async () => {
+    creditLookupMaybeSingleMock.mockResolvedValueOnce({
+      data: {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        is_credit: true,
+        settles_entry_id: null,
+        currency_code: "MYR"
+      },
+      error: null
+    });
+    insertManyResponse = {
+      data: [{ id: "settle-1" }, { id: "kurs-1" }],
+      error: null
+    };
+
+    const { POST } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_date: "2026-05-01",
+        entry_direction: "profit",
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        explanation: "Settlement for: Vendor invoice",
+        amount: 100,
+        currency_code: "USDT",
+        remark: "",
+        responsible_actor_id: "22222222-2222-4222-8222-222222222222",
+        settles_entry_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        settlement_conversion_rate: 4.2,
+        settlement_note: "",
+        kurs_rate: 0.999423
+      })
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+    expect(response.status).toBe(200);
+    expect(data.id).toBe("settle-1");
+    expect(data.settlement_conversion_rate).toBe(4.2);
+    expect(data.settlement_amount_in_credit_currency).toBe(420);
+    expect(groupInsertMock).toHaveBeenCalled();
+    const inserted = insertMock.mock.calls[0][0] as unknown[];
+    expect(inserted).toHaveLength(2);
+    expect(inserted[0]).toMatchObject({
+      group_id: "group-1",
+      currency_code: "USDT",
+      amount: 100,
+      entry_direction: "profit",
+      settles_entry_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      settlement_conversion_rate: 4.2,
+      is_credit: false
+    });
+    expect(inserted[1]).toMatchObject({
+      group_id: "group-1",
+      currency_code: "USDT",
+      amount: 0.0577,
+      entry_direction: "spending",
+      entry_type_id: "kurs-type-1",
+      explanation: "KURS — Settlement for: Vendor invoice",
+      is_credit: false
+    });
+  });
+
   it("rejects settling a non-credit entry", async () => {
     creditLookupMaybeSingleMock.mockResolvedValueOnce({
       data: {
