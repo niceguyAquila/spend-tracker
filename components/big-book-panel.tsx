@@ -1885,7 +1885,13 @@ export function BigBookPanel({
     }
     const creditPayload = toCreditPayload(settlementForm, settlementTargetRef);
     const conversionRate = creditPayload.settlement_conversion_rate;
-    if (conversionRate == null) {
+    // USDT settlements may omit FX rate; other cross-currency settles still need it.
+    if (
+      conversionRate == null &&
+      settlementForm.currency_code !== "USDT" &&
+      settlementTargetRef &&
+      settlementForm.currency_code !== settlementTargetRef.currency_code
+    ) {
       setPendingSettlementConfirm(false);
       setSettlementFormError("Enter a conversion rate greater than 0 to save.");
       return;
@@ -3671,19 +3677,24 @@ export function BigBookPanel({
                           {settlement.currency_code}
                         </p>
                         <p className="mt-1 text-xs text-muted">{settlement.explanation}</p>
-                        <p className="mt-1 text-xs text-muted">
-                          Rate:{" "}
-                          {formatAmount(settlement.settlement_conversion_rate, {
-                            minimumFractionDigits: 0,
-                            maximumFractionDigits: 8
-                          })}{" "}
-                          · Equivalent:{" "}
-                          {formatAmount(settlement.settlement_amount_in_credit_currency, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 4
-                          })}{" "}
-                          {settlementHistoryEntry.currency_code}
-                        </p>
+                        {settlement.settlement_conversion_rate != null &&
+                        settlement.settlement_amount_in_credit_currency != null ? (
+                          <p className="mt-1 text-xs text-muted">
+                            Rate:{" "}
+                            {formatAmount(settlement.settlement_conversion_rate, {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 8
+                            })}{" "}
+                            · Equivalent:{" "}
+                            {formatAmount(settlement.settlement_amount_in_credit_currency, {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 4
+                            })}{" "}
+                            {settlementHistoryEntry.currency_code}
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-xs text-muted">No conversion rate recorded</p>
+                        )}
                         {settlement.settlement_note ? (
                           <p className="mt-1 text-xs text-muted">Note: {settlement.settlement_note}</p>
                         ) : null}

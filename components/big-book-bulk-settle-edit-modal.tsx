@@ -41,7 +41,8 @@ type Props = {
     entry_date: string;
     currency_code: BulkSettleCurrency;
     amount: number;
-    settlement_conversion_rate: number;
+    /** Omitted when USDT settle has no optional FX rate. */
+    settlement_conversion_rate?: number;
     settlement_note: string;
     close_credits: boolean;
     explanation: string;
@@ -110,9 +111,11 @@ export function BigBookBulkSettleEditModal({
 
   const sameCurrency = currencyCode === creditCurrency && !mixedCreditCurrency;
   const showConversionRate = !sameCurrency && !mixedCreditCurrency;
+  const rateOptional = currencyCode === "USDT";
   const rateValue = sameCurrency ? 1 : Number(conversionRate);
   const amountValue = Number(parseAmountInput(amount));
-  const isRateValid = sameCurrency || (Number.isFinite(rateValue) && rateValue > 0);
+  const hasPositiveRate = Number.isFinite(rateValue) && rateValue > 0;
+  const isRateValid = sameCurrency || hasPositiveRate || rateOptional;
   const isAmountValid =
     draft.mode === "per_credit"
       ? true
@@ -120,8 +123,8 @@ export function BigBookBulkSettleEditModal({
   const blockedReason =
     draft.mode === "single" && mixedCreditCurrency
       ? "One settlement for all requires the same credit currency. Switch to one settlement per credit, or select a single-currency set."
-      : currencyCode === "USDT" && mixedCreditCurrency
-        ? "USDT conversion needs a single credit currency so one company rate applies. Settle same-currency credits together, or settle in each credit's own currency."
+      : currencyCode === "USDT" && mixedCreditCurrency && hasPositiveRate
+        ? "USDT conversion needs a single credit currency so one company rate applies. Clear the rate, settle same-currency credits together, or settle in each credit's own currency."
         : showConversionRate && !isRateValid
           ? "Enter a conversion rate greater than 0 to record the settlement."
           : draft.mode === "single" && !isAmountValid
@@ -132,7 +135,7 @@ export function BigBookBulkSettleEditModal({
   const canSubmit = !submitting && blockedReason == null;
 
   const equivalentCredit =
-    showConversionRate && isRateValid && Number.isFinite(amountValue) && amountValue > 0
+    showConversionRate && hasPositiveRate && Number.isFinite(amountValue) && amountValue > 0
       ? computeSettlementAmountInCreditCurrency(amountValue, rateValue)
       : null;
 
@@ -202,7 +205,11 @@ export function BigBookBulkSettleEditModal({
                 entry_date: entryDate,
                 currency_code: currencyCode,
                 amount: resolvedAmount,
-                settlement_conversion_rate: sameCurrency ? 1 : rateValue,
+                ...(sameCurrency
+                  ? { settlement_conversion_rate: 1 }
+                  : hasPositiveRate
+                    ? { settlement_conversion_rate: rateValue }
+                    : {}),
                 settlement_note: note.trim(),
                 close_credits: closeCredits,
                 explanation: explanation.trim()
@@ -308,16 +315,20 @@ export function BigBookBulkSettleEditModal({
             </label>
             {showConversionRate ? (
               <label className="block text-sm">
-                Conversion Rate * (1 {currencyCode} = ? {creditCurrency})
+                Conversion Rate{rateOptional ? "" : " *"} (1 {currencyCode} = ? {creditCurrency})
                 <input
                   className="field mt-1 w-full"
                   inputMode="decimal"
-                  placeholder="Enter today's company rate"
+                  placeholder={
+                    rateOptional ? "Optional — today’s company rate" : "Enter today's company rate"
+                  }
                   value={conversionRate}
                   onChange={(event) => applyConversionRate(formatRateInput(event.target.value))}
                 />
                 <span className="mt-1 block text-xs text-muted">
-                  Amount in {currencyCode} = credit amount ÷ rate.
+                  {rateOptional
+                    ? "Optional. When set, amount in USDT = credit amount ÷ rate."
+                    : `Amount in ${currencyCode} = credit amount ÷ rate.`}
                   {equivalentCredit != null
                     ? ` Equivalent: ${formatAmount(equivalentCredit, {
                         minimumFractionDigits: 0,
@@ -332,22 +343,26 @@ export function BigBookBulkSettleEditModal({
           <div className="space-y-3">
             <p className="text-xs text-muted">
               Each credit gets its own settlement amount
-              {showConversionRate
+              {showConversionRate && hasPositiveRate
                 ? " (credit amount ÷ conversion rate)"
                 : " (matching that credit’s outstanding)"}.
             </p>
             {showConversionRate ? (
               <label className="block text-sm">
-                Conversion Rate * (1 {currencyCode} = ? {creditCurrency})
+                Conversion Rate{rateOptional ? "" : " *"} (1 {currencyCode} = ? {creditCurrency})
                 <input
                   className="field mt-1 w-full"
                   inputMode="decimal"
-                  placeholder="Enter today's company rate"
+                  placeholder={
+                    rateOptional ? "Optional — today’s company rate" : "Enter today's company rate"
+                  }
                   value={conversionRate}
                   onChange={(event) => applyConversionRate(formatRateInput(event.target.value))}
                 />
                 <span className="mt-1 block text-xs text-muted">
-                  Amount in {currencyCode} = credit amount ÷ rate for each credit.
+                  {rateOptional
+                    ? "Optional. When set, amount in USDT = credit amount ÷ rate for each credit."
+                    : `Amount in ${currencyCode} = credit amount ÷ rate for each credit.`}
                 </span>
               </label>
             ) : null}

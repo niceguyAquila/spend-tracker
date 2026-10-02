@@ -141,8 +141,9 @@ export type BigBookSettlementRef = {
   entry_date: string;
   amount: number;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
-  settlement_conversion_rate: number;
-  settlement_amount_in_credit_currency: number;
+  /** Null when USDT settle omitted optional FX rate. */
+  settlement_conversion_rate: number | null;
+  settlement_amount_in_credit_currency: number | null;
   settlement_note: string | null;
   explanation: string;
 };

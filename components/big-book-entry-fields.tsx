@@ -417,12 +417,17 @@ export function BigBookEntryFields({
       </label>
       {showConversionRate && settlesEntry ? (
         <label className={`text-sm ${spanClass}`}>
-          Conversion Rate * (1 {value.currency_code} = ? {settlesEntry.currency_code})
+          Conversion Rate{value.currency_code === "USDT" ? "" : " *"} (1 {value.currency_code} = ?{" "}
+          {settlesEntry.currency_code})
           <div className="mt-1 flex gap-2">
             <input
               className="field flex-1"
               inputMode="decimal"
-              placeholder="Enter today's company rate"
+              placeholder={
+                value.currency_code === "USDT"
+                  ? "Optional — today’s company rate"
+                  : "Enter today's company rate"
+              }
               value={value.settlement_conversion_rate}
               onChange={(event) =>
                 patch({ settlement_conversion_rate: formatRateInput(event.target.value) })
@@ -440,7 +445,9 @@ export function BigBookEntryFields({
             ) : null}
           </div>
           <span className="mt-1 block text-xs text-muted">
-            Amount in {value.currency_code} = credit amount ÷ rate. Equivalent in{" "}
+            {value.currency_code === "USDT"
+              ? "Optional. When set, amount in USDT = credit amount ÷ rate. Equivalent in "
+              : `Amount in ${value.currency_code} = credit amount ÷ rate. Equivalent in `}
             {settlesEntry.currency_code}:{" "}
             {(() => {
               const rate = Number(value.settlement_conversion_rate);

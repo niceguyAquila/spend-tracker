@@ -779,8 +779,10 @@ async function attachBigBookCreditSummaries(
       entry_date: row.entry_date,
       amount: Number(row.amount),
       currency_code: row.currency_code,
-      settlement_conversion_rate: Number(row.settlement_conversion_rate ?? 1),
-      settlement_amount_in_credit_currency: amountInCredit,
+      settlement_conversion_rate:
+        row.settlement_conversion_rate == null ? null : Number(row.settlement_conversion_rate),
+      settlement_amount_in_credit_currency:
+        row.settlement_amount_in_credit_currency == null ? null : amountInCredit,
       settlement_note: row.settlement_note ?? null,
       explanation: row.explanation
     });

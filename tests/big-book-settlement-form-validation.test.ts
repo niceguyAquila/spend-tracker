@@ -11,14 +11,19 @@ describe("settlementNeedsConversionRate", () => {
     expect(settlementNeedsConversionRate("USDT", "USDT")).toBe(false);
   });
 
-  it("is true when settle currency differs from credit currency", () => {
-    expect(settlementNeedsConversionRate("USDT", "MYR")).toBe(true);
+  it("is false for USDT settlements even when credit currency differs", () => {
+    expect(settlementNeedsConversionRate("USDT", "MYR")).toBe(false);
+    expect(settlementNeedsConversionRate("USDT", "IDR")).toBe(false);
+  });
+
+  it("is true for non-USDT settle when currency differs from credit", () => {
     expect(settlementNeedsConversionRate("IDR", "USDT")).toBe(true);
+    expect(settlementNeedsConversionRate("MYR", "IDR")).toBe(true);
   });
 
   it("is false when credit currency is missing", () => {
     expect(settlementNeedsConversionRate("USDT", null)).toBe(false);
-    expect(settlementNeedsConversionRate("USDT", undefined)).toBe(false);
+    expect(settlementNeedsConversionRate("IDR", undefined)).toBe(false);
   });
 });
 
@@ -34,7 +39,7 @@ describe("parsePositiveConversionRate", () => {
 });
 
 describe("describeSettlementMissingFields", () => {
-  const base = {
+  const usdtBase = {
     explanation: "Settlement for: Vendor invoice",
     amount: "100",
     currencyCode: "USDT",
@@ -42,25 +47,49 @@ describe("describeSettlementMissingFields", () => {
     settlementConversionRate: "4.2"
   };
 
-  it("allows a complete cross-currency settlement", () => {
-    expect(describeSettlementMissingFields(base)).toBeNull();
+  it("allows a complete USDT cross-currency settlement with a rate", () => {
+    expect(describeSettlementMissingFields(usdtBase)).toBeNull();
   });
 
-  it("blocks cross-currency submit when conversion rate is missing", () => {
+  it("allows USDT settle without a conversion rate", () => {
     expect(
       describeSettlementMissingFields({
-        ...base,
+        ...usdtBase,
+        settlementConversionRate: ""
+      })
+    ).toBeNull();
+  });
+
+  it("still requires explanation/amount for USDT settle without a rate", () => {
+    expect(
+      describeSettlementMissingFields({
+        ...usdtBase,
+        explanation: "",
+        amount: "",
+        settlementConversionRate: ""
+      })
+    ).toBe("Add an explanation and amount to save.");
+  });
+
+  it("blocks non-USDT cross-currency submit when conversion rate is missing", () => {
+    expect(
+      describeSettlementMissingFields({
+        explanation: "Settlement for: Vendor invoice",
+        amount: "100",
+        currencyCode: "IDR",
+        creditCurrencyCode: "MYR",
         settlementConversionRate: ""
       })
     ).toBe("Enter a conversion rate greater than 0 to save.");
   });
 
-  it("prefers conversion-rate hint over amount/explanation when rate is missing", () => {
+  it("prefers conversion-rate hint for non-USDT when rate and other fields are missing", () => {
     expect(
       describeSettlementMissingFields({
-        ...base,
         explanation: "",
         amount: "",
+        currencyCode: "IDR",
+        creditCurrencyCode: "MYR",
         settlementConversionRate: ""
       })
     ).toBe("Enter a conversion rate greater than 0 to save.");
@@ -69,7 +98,7 @@ describe("describeSettlementMissingFields", () => {
   it("does not require a typed rate for same-currency settlements", () => {
     expect(
       describeSettlementMissingFields({
-        ...base,
+        ...usdtBase,
         currencyCode: "MYR",
         creditCurrencyCode: "MYR",
         settlementConversionRate: ""
@@ -80,7 +109,7 @@ describe("describeSettlementMissingFields", () => {
   it("still requires explanation/amount for same-currency", () => {
     expect(
       describeSettlementMissingFields({
-        ...base,
+        ...usdtBase,
         currencyCode: "MYR",
         creditCurrencyCode: "MYR",
         settlementConversionRate: "1",
