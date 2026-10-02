@@ -100,17 +100,15 @@ async function resolveSettlementFields(
   const typedRate = Number(payload.settlement_conversion_rate);
   const hasRate = Number.isFinite(typedRate) && typedRate > 0;
 
-  // USDT settlements may omit FX rate; other cross-currency settles still require it.
+  // Cross-currency: FX rate and credit-currency equivalent are optional.
+  // When omitted, store nulls — settlement stands in settle currency only.
   if (!hasRate) {
-    if (payload.currency_code === "USDT") {
-      return {
-        ok: true,
-        settles_entry_id: payload.settles_entry_id,
-        settlement_conversion_rate: null,
-        settlement_amount_in_credit_currency: null
-      };
-    }
-    return { ok: false, status: 400, error: "Conversion rate must be greater than 0." };
+    return {
+      ok: true,
+      settles_entry_id: payload.settles_entry_id,
+      settlement_conversion_rate: null,
+      settlement_amount_in_credit_currency: null
+    };
   }
 
   return {

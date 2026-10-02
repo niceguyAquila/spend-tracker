@@ -130,6 +130,56 @@ describe("big book bulk settle route", () => {
     );
   });
 
+  it("allows IDR settle against MYR credits without credit-currency amount", async () => {
+    selectInMock.mockResolvedValue({
+      data: [
+        {
+          id: CREDIT_A,
+          entry_date: "2026-09-01",
+          entry_direction: "spending",
+          entry_type_id: "type-1",
+          entry_sub_type_id: null,
+          vendor_type_id: "vt-1",
+          vendor_id: "v-1",
+          action_by_id: null,
+          explanation: "Credit A",
+          amount: 420,
+          currency_code: "MYR",
+          responsible_actor_id: "actor-1",
+          is_credit: true,
+          settles_entry_id: null,
+          credit_settled_at: null
+        }
+      ],
+      error: null
+    });
+
+    const { POST } = await import("@/app/api/big-book/entries/bulk-settle/route");
+    const request = new Request("https://app.localhost/api/big-book/entries/bulk-settle", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        credit_entry_ids: [CREDIT_A],
+        mode: "single",
+        entry_date: "2026-10-01",
+        currency_code: "IDR",
+        amount: 1500000
+      })
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    expect(insertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 1500000,
+        currency_code: "IDR",
+        settlement_conversion_rate: null,
+        settlement_amount_in_credit_currency: null,
+        settles_entry_id: CREDIT_A
+      })
+    );
+  });
+
   it("allows USDT settle against MYR credits without a conversion rate", async () => {
     selectInMock.mockResolvedValue({
       data: [

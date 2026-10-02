@@ -36,7 +36,7 @@ function resolveConversionRate(
   settlementCurrency: CreditCurrency,
   creditCurrency: CreditCurrency,
   requestedRate: number | undefined
-): { ok: true; rate: number | null } | { ok: false; error: string } {
+): { ok: true; rate: number | null } {
   if (settlementCurrency === creditCurrency) {
     return { ok: true, rate: 1 };
   }
@@ -44,15 +44,8 @@ function resolveConversionRate(
   if (Number.isFinite(rate) && rate > 0) {
     return { ok: true, rate };
   }
-  // USDT settlements may omit FX rate; other cross-currency settles still require it.
-  if (settlementCurrency === "USDT") {
-    return { ok: true, rate: null };
-  }
-  return {
-    ok: false,
-    error:
-      "Conversion rate is required when settlement currency differs from the credit currency."
-  };
+  // Cross-currency FX rate / credit-currency equivalent are optional.
+  return { ok: true, rate: null };
 }
 
 export async function POST(request: Request) {
@@ -153,12 +146,9 @@ export async function POST(request: Request) {
         credit.currency_code,
         requestedRate
       );
-      if (!rateResult.ok) {
-        return NextResponse.json({ error: rateResult.error }, { status: 400 });
-      }
       const creditAmount = Math.abs(Number(credit.amount));
       // App convention: settlement_amount = credit_amount / rate when currencies differ.
-      // Without a rate (USDT optional FX), keep the credit's numeric amount as the settle amount.
+      // Without an optional FX rate, keep the credit's numeric amount as the settle amount.
       const settlementAmount =
         settlementCurrency === credit.currency_code || rateResult.rate == null
           ? creditAmount
@@ -211,9 +201,6 @@ export async function POST(request: Request) {
     const creditCurrency = primary.currency_code;
     const settlementCurrency = requestedCurrency ?? creditCurrency;
     const rateResult = resolveConversionRate(settlementCurrency, creditCurrency, requestedRate);
-    if (!rateResult.ok) {
-      return NextResponse.json({ error: rateResult.error }, { status: 400 });
-    }
 
     const totalCreditAmount = credits.reduce(
       (sum, row) => sum + Math.abs(Number(row.amount)),

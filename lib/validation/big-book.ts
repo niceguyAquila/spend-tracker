@@ -175,19 +175,9 @@ function refineBigBookEntryCreditFields<
       path: ["is_credit"]
     });
   }
-  // USDT settlements may omit FX rate (optional calc/note). Same-currency non-USDT
-  // settlements force rate = 1 in the API; other cross-currency settles still need it.
-  if (
-    value.settles_entry_id &&
-    value.settlement_conversion_rate == null &&
-    value.currency_code !== "USDT"
-  ) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Conversion rate is required when settling a credit.",
-      path: ["settlement_conversion_rate"]
-    });
-  }
+  // Conversion rate / settlement_amount_in_credit_currency are optional on input.
+  // Same-currency settles derive rate = 1 + credit-currency amount in the API;
+  // cross-currency FX fields stay null unless a positive rate is provided.
   if (value.close_credit && !value.settles_entry_id) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
