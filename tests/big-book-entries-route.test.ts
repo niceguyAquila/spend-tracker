@@ -802,7 +802,17 @@ describe("big book entries route", () => {
     });
   });
 
-  it("rejects non-USDT cross-currency settlement without a positive conversion rate", async () => {
+  it("creates a cross-currency IDR settlement without credit-currency amount", async () => {
+    creditLookupMaybeSingleMock.mockResolvedValueOnce({
+      data: {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        is_credit: true,
+        settles_entry_id: null,
+        currency_code: "MYR"
+      },
+      error: null
+    });
+
     const { POST } = await import("@/app/api/big-book/entries/route");
     const request = new Request("https://app.localhost/api/big-book/entries", {
       method: "POST",
@@ -812,7 +822,7 @@ describe("big book entries route", () => {
         entry_direction: "profit",
         entry_type_id: "11111111-1111-4111-8111-111111111111",
         explanation: "Settlement in IDR",
-        amount: 100,
+        amount: 100000,
         currency_code: "IDR",
         remark: "",
         responsible_actor_id: "22222222-2222-4222-8222-222222222222",
@@ -823,11 +833,17 @@ describe("big book entries route", () => {
 
     const response = await POST(request);
     const data = await response.json();
-    expect(response.status).toBe(400);
-    // Schema refine catches null rate before the settlement resolver runs.
-    expect(data.error).toBeTruthy();
-    expect(insertMock).not.toHaveBeenCalled();
-    expect(creditLookupMaybeSingleMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(data.settlement_conversion_rate).toBeNull();
+    expect(data.settlement_amount_in_credit_currency).toBeNull();
+    expect(insertMock.mock.calls[0][0]).toMatchObject({
+      currency_code: "IDR",
+      amount: 100000,
+      settles_entry_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      settlement_conversion_rate: null,
+      settlement_amount_in_credit_currency: null,
+      is_credit: false
+    });
   });
 
   it("creates a USDT settlement against a MYR credit without a conversion rate", async () => {

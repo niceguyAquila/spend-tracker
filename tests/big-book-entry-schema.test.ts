@@ -70,7 +70,7 @@ describe("big book entry schema", () => {
     expect(parsed.success).toBe(true);
   });
 
-  it("rejects a non-USDT settlement without a conversion rate", () => {
+  it("accepts any cross-currency settlement without a conversion rate", () => {
     const parsed = bigBookEntryInputSchema.safeParse({
       ...clientPayload,
       currency_code: "IDR",
@@ -78,7 +78,7 @@ describe("big book entry schema", () => {
       settlement_conversion_rate: null,
       close_credit: false
     });
-    expect(parsed.success).toBe(false);
+    expect(parsed.success).toBe(true);
   });
 
   it("accepts a settlement that closes the credit", () => {

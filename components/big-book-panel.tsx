@@ -1883,19 +1883,9 @@ export function BigBookPanel({
       setSettlementFormError("Settlement amount must be greater than 0.");
       return;
     }
+    // Cross-currency FX rate / credit-currency amount are optional on submit.
+    // Same-currency derives rate = 1 in toCreditPayload + the entries API.
     const creditPayload = toCreditPayload(settlementForm, settlementTargetRef);
-    const conversionRate = creditPayload.settlement_conversion_rate;
-    // USDT settlements may omit FX rate; other cross-currency settles still need it.
-    if (
-      conversionRate == null &&
-      settlementForm.currency_code !== "USDT" &&
-      settlementTargetRef &&
-      settlementForm.currency_code !== settlementTargetRef.currency_code
-    ) {
-      setPendingSettlementConfirm(false);
-      setSettlementFormError("Enter a conversion rate greater than 0 to save.");
-      return;
-    }
     const gasFeeAmount =
       settlementForm.currency_code === "USDT"
         ? parseOptionalGasFeeAmount(settlementForm.gas_fee_amount)
