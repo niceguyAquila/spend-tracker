@@ -209,26 +209,27 @@ export function BigBookInvoiceBuilderModal({ open, seed, wallets: walletsProp, o
   useEffect(() => {
     if (!open || !seed) return;
 
+    const invoiceSeed = seed;
     const today = todayIsoDate();
-    const monthLabel = monthLabelFromIso(seed.credits[0]?.entry_date || today);
-    const defaultGroupId = defaultGroupTypeId(seed.credits);
+    const monthLabel = monthLabelFromIso(invoiceSeed.credits[0]?.entry_date || today);
+    const defaultGroupId = defaultGroupTypeId(invoiceSeed.credits);
     setTitle(monthLabel ? `${monthLabel} INVOICE` : "INVOICE");
     setInvoiceDate(today);
     setDueDate(addDaysIso(today, 7));
     setTerms("Due on receipt");
-    setCurrency(seed.currency);
+    setCurrency(invoiceSeed.currency);
     setBillToCompany(vendorCompanyDefault);
     setSelectedGroupTypeId(defaultGroupId);
     setSubject(
-      seed.credits.length
-        ? `Open credits for ${seed.actor_display_name} · ${seed.currency}`
+      invoiceSeed.credits.length
+        ? `Open credits for ${invoiceSeed.actor_display_name} · ${invoiceSeed.currency}`
         : ""
     );
     setNotes("");
     setFxNote("");
     setSelectedWalletIds(new Set());
-    setLines(seed.credits.map(creditToLine));
-    setAvailableCredits(seed.credits);
+    setLines(invoiceSeed.credits.map(creditToLine));
+    setAvailableCredits(invoiceSeed.credits);
     setCreditPickIds(new Set());
     setError(null);
     setInfo(null);
@@ -303,7 +304,7 @@ export function BigBookInvoiceBuilderModal({ open, seed, wallets: walletsProp, o
         const ledgerTypes: Array<{ id: string; name: string; code: string; is_active: boolean }> =
           Array.isArray(typesData?.rows) ? typesData.rows : [];
         const typeIdsFromCredits = new Set(
-          seed.credits.map((credit) => credit.entry_type_id).filter(Boolean) as string[]
+          invoiceSeed.credits.map((credit) => credit.entry_type_id).filter(Boolean) as string[]
         );
         const optionsMap = new Map<string, { id: string; name: string; code: string; is_active: boolean }>();
         for (const type of ledgerTypes) {
@@ -313,7 +314,7 @@ export function BigBookInvoiceBuilderModal({ open, seed, wallets: walletsProp, o
         }
         for (const typeId of typeIdsFromCredits) {
           if (!optionsMap.has(typeId)) {
-            const credit = seed.credits.find((item) => item.entry_type_id === typeId);
+            const credit = invoiceSeed.credits.find((item) => item.entry_type_id === typeId);
             optionsMap.set(typeId, {
               id: typeId,
               name: credit?.type_name ?? typeId,

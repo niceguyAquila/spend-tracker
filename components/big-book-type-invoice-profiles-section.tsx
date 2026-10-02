@@ -6,7 +6,6 @@ import type { BigBookLedgerType, BigBookLedgerTypeInvoiceProfile } from "@/lib/t
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { Modal } from "@/components/ui/modal";
-import { TableEmptyState } from "@/components/ui/table-empty-state";
 
 type Props = {
   types: BigBookLedgerType[];
@@ -210,7 +209,7 @@ export function BigBookTypeInvoiceProfilesSection({ types, initialProfiles }: Pr
           </table>
         </div>
       ) : (
-        <TableEmptyState message="No ledger types match your search." />
+        <p className="text-sm text-muted">No ledger types match your search.</p>
       )}
 
       <Modal
