@@ -12,8 +12,11 @@ type Props = {
   entries: BigBookEntry[];
   expanded: boolean;
   onToggle: () => void;
-  /** Columns between the select checkbox and the amount column. */
-  labelColSpan: number;
+  /**
+   * Empty columns after the expand/select cell and before the group label
+   * (Date … Action By), so the label lines up with Explanation on single rows.
+   */
+  leadingColSpan: number;
   /** Columns between the amount column and the actions column. */
   trailingColSpan: number;
   openActionMenu: { id: string; top: number; left: number } | null;
@@ -31,7 +34,7 @@ function BigBookGroupHeaderRowInner({
   entries,
   expanded,
   onToggle,
-  labelColSpan,
+  leadingColSpan,
   trailingColSpan,
   openActionMenu,
   actionMenuRef,
@@ -61,25 +64,27 @@ function BigBookGroupHeaderRowInner({
   return (
     <>
       <tr className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] align-top">
-        <td className="px-3 py-2" aria-hidden="true" />
-        <td className="px-3 py-2" colSpan={Math.max(1, labelColSpan)}>
-          <div className="flex items-start gap-2">
-            <button
-              type="button"
-              className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-[rgb(var(--border))] bg-[rgb(var(--surface))] text-xs"
-              aria-expanded={expanded}
-              aria-label={expanded ? "Collapse group" : "Expand group"}
-              onClick={onToggle}
-            >
-              {expanded ? "▾" : "▸"}
-            </button>
-            <div className="min-w-0">
-              <p className="font-medium text-[rgb(var(--text))]">{group.label}</p>
-              <p className="text-xs text-muted">
-                Group · {entries.length} transaction{entries.length === 1 ? "" : "s"} · {dateLabel}
-              </p>
-              {group.remark ? <p className="mt-1 truncate text-xs text-muted">{group.remark}</p> : null}
-            </div>
+        <td className="px-3 py-2">
+          <button
+            type="button"
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-[rgb(var(--border))] bg-[rgb(var(--surface))] text-xs"
+            aria-expanded={expanded}
+            aria-label={expanded ? "Collapse group" : "Expand group"}
+            onClick={onToggle}
+          >
+            {expanded ? "▾" : "▸"}
+          </button>
+        </td>
+        {leadingColSpan > 0 ? (
+          <td className="px-3 py-2" colSpan={leadingColSpan} aria-hidden="true" />
+        ) : null}
+        <td className="px-3 py-2">
+          <div className="min-w-0">
+            <p className="font-medium text-[rgb(var(--text))]">{group.label}</p>
+            <p className="text-xs text-muted">
+              Group · {entries.length} transaction{entries.length === 1 ? "" : "s"} · {dateLabel}
+            </p>
+            {group.remark ? <p className="mt-1 truncate text-xs text-muted">{group.remark}</p> : null}
           </div>
         </td>
         <td className="px-3 py-2 text-right tabular-nums">
