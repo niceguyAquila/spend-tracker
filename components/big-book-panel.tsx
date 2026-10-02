@@ -149,9 +149,11 @@ const LEDGER_COLUMN_WIDTH_DEFAULTS: Record<string, number> = {
 };
 const LEDGER_COLUMN_KEYS = Object.keys(LEDGER_COLUMN_WIDTH_DEFAULTS);
 // Group header rows mirror the ledger layout so their totals land in the Amount
-// column: select cell, one wide label cell, amount, filler, then actions.
+// column and the group label lines up with Explanation on single-entry rows:
+// select/expand, empty leading cols (Date…Action By), label, amount, filler, actions.
+const LEDGER_EXPLANATION_COLUMN_INDEX = LEDGER_COLUMN_KEYS.indexOf("explanation");
 const LEDGER_AMOUNT_COLUMN_INDEX = LEDGER_COLUMN_KEYS.indexOf("amount");
-const GROUP_ROW_LABEL_COLSPAN = LEDGER_AMOUNT_COLUMN_INDEX - 1;
+const GROUP_ROW_LEADING_COLSPAN = LEDGER_EXPLANATION_COLUMN_INDEX - 1;
 const GROUP_ROW_TRAILING_COLSPAN = LEDGER_COLUMN_COUNT - LEDGER_AMOUNT_COLUMN_INDEX - 2;
 const DESC_DEFAULT_SORT_KEYS = new Set<BigBookLedgerSortKey>(["entry_date", "amount"]);
 const EMPTY_LEDGER_TOTALS: BigBookLedgerTotals = {
@@ -927,6 +929,14 @@ export function BigBookPanel({
   const selectedCount = selectedEntryIds.size;
   const allSelectableSelected =
     selectableEntryIds.length > 0 && selectableEntryIds.every((id) => selectedEntryIds.has(id));
+  const someSelectableSelected = selectableEntryIds.some((id) => selectedEntryIds.has(id));
+  const selectAllRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someSelectableSelected && !allSelectableSelected;
+    }
+  }, [someSelectableSelected, allSelectableSelected]);
 
   const onViewRemark = useCallback((entryId: string, text: string) => {
     setViewingRemark({ entryId, text });
@@ -2361,9 +2371,15 @@ export function BigBookPanel({
               <tr>
                 <th className="relative px-3 py-2">
                   <input
+                    ref={selectAllRef}
                     type="checkbox"
                     className="h-4 w-4"
                     aria-label="Select all ungrouped transactions on this page"
+                    aria-checked={
+                      someSelectableSelected && !allSelectableSelected
+                        ? "mixed"
+                        : allSelectableSelected
+                    }
                     checked={allSelectableSelected}
                     disabled={selectableEntryIds.length === 0}
                     onChange={toggleSelectAllOnPage}
@@ -2475,7 +2491,7 @@ export function BigBookPanel({
                         entries={row.entries}
                         expanded={expandedGroupIds.has(row.group.id)}
                         onToggle={() => toggleGroupExpanded(row.group.id)}
-                        labelColSpan={GROUP_ROW_LABEL_COLSPAN}
+                        leadingColSpan={GROUP_ROW_LEADING_COLSPAN}
                         trailingColSpan={GROUP_ROW_TRAILING_COLSPAN}
                         openActionMenu={openActionMenu}
                         actionMenuRef={actionMenuRef}

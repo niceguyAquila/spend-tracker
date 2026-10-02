@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type {
   BigBookVendorActorOutstandingEntry,
@@ -23,6 +23,10 @@ import {
   type InvoiceBuilderCreditDraft,
   type InvoiceBuilderSeed
 } from "@/components/big-book-invoice-builder-modal";
+import {
+  parentCheckState,
+  type ParentCheckState
+} from "@/lib/big-book/outstanding-parent-check-state";
 
 const COLUMN_COUNT = 9;
 const CURRENCY_ORDER = ["IDR", "MYR", "USDT", "TRX"] as const;
@@ -216,22 +220,97 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
     });
   }
 
-  function toggleRowSelected(rowKey: string) {
+  const syncParentSelectionFromCredits = useCallback(
+    (row: BigBookVendorActorOutstandingRow, nextCreditIds: Set<string>) => {
+      const cacheKey = detailCacheKey(row, detailFilters);
+      const details = detailsByKey[cacheKey];
+      if (details?.status !== "ok" || !details.rows.length) return;
+      const allSelected = details.rows.every((entry) => nextCreditIds.has(entry.id));
+      setSelectedRowKeys((prev) => {
+        const has = prev.has(row.row_key);
+        if (allSelected === has) return prev;
+        const next = new Set(prev);
+        if (allSelected) next.add(row.row_key);
+        else next.delete(row.row_key);
+        return next;
+      });
+    },
+    [detailFilters, detailsByKey]
+  );
+
+  async function toggleRowSelected(row: BigBookVendorActorOutstandingRow) {
+    const cacheKey = detailCacheKey(row, detailFilters);
+    const currentlySelected = selectedRowKeys.has(row.row_key);
+    const details = detailsByKey[cacheKey];
+
+    if (currentlySelected) {
+      setSelectedRowKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(row.row_key);
+        return next;
+      });
+      const knownIds =
+        details?.status === "ok"
+          ? details.rows.map((entry) => entry.id)
+          : null;
+      if (knownIds) {
+        setSelectedCreditIds((prev) => {
+          const next = new Set(prev);
+          for (const id of knownIds) next.delete(id);
+          return next;
+        });
+        return;
+      }
+      try {
+        const detailRows = await fetchDetailRows(row);
+        setSelectedCreditIds((prev) => {
+          const next = new Set(prev);
+          for (const entry of detailRows) next.delete(entry.id);
+          return next;
+        });
+      } catch {
+        // Keep parent unchecked; children stay as-is if load failed.
+      }
+      return;
+    }
+
     setSelectedRowKeys((prev) => {
       const next = new Set(prev);
-      if (next.has(rowKey)) next.delete(rowKey);
-      else next.add(rowKey);
+      next.add(row.row_key);
       return next;
     });
+    try {
+      const detailRows = await fetchDetailRows(row);
+      setSelectedCreditIds((prev) => {
+        const next = new Set(prev);
+        for (const entry of detailRows) next.add(entry.id);
+        return next;
+      });
+    } catch {
+      // Parent stays selected; settle/invoice flows still fetch on demand.
+    }
   }
 
-  function toggleCreditSelected(creditId: string) {
-    setSelectedCreditIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(creditId)) next.delete(creditId);
-      else next.add(creditId);
-      return next;
-    });
+  function toggleCreditSelected(row: BigBookVendorActorOutstandingRow, creditId: string) {
+    const nextCredits = new Set(selectedCreditIds);
+    if (nextCredits.has(creditId)) nextCredits.delete(creditId);
+    else nextCredits.add(creditId);
+    setSelectedCreditIds(nextCredits);
+    syncParentSelectionFromCredits(row, nextCredits);
+  }
+
+  function setCreditsSelected(
+    row: BigBookVendorActorOutstandingRow,
+    creditIds: string[],
+    selected: boolean
+  ) {
+    const nextCredits = new Set(selectedCreditIds);
+    for (const id of creditIds) {
+      if (selected) nextCredits.add(id);
+      else nextCredits.delete(id);
+    }
+    setSelectedCreditIds(nextCredits);
+    syncParentSelectionFromCredits(row, nextCredits);
   }
 
   async function prepareSettleFromRow(row: BigBookVendorActorOutstandingRow) {
@@ -523,7 +602,20 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
     }
   }
 
-  const selectedCount = selectedRowKeys.size + selectedCreditIds.size;
+  // Prefer unique open-credit count so parent+child sync does not double-count.
+  const selectedCount = useMemo(() => {
+    if (selectedCreditIds.size > 0) return selectedCreditIds.size;
+    // Parents selected before detail fetch completes — approximate from open counts.
+    let pending = 0;
+    for (const row of rows) {
+      if (!selectedRowKeys.has(row.row_key)) continue;
+      const cacheKey = detailCacheKey(row, detailFilters);
+      const details = detailsByKey[cacheKey];
+      if (details?.status === "ok") continue;
+      pending += row.open_credit_count;
+    }
+    return pending;
+  }, [selectedCreditIds, selectedRowKeys, rows, detailFilters, detailsByKey]);
 
   return (
     <div className="mt-4 space-y-3">
@@ -595,6 +687,13 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
               const cacheKey = detailCacheKey(row, detailFilters);
               const expanded = expandedKeys.has(cacheKey);
               const details = detailsByKey[cacheKey];
+              const detailIds =
+                details?.status === "ok" ? details.rows.map((entry) => entry.id) : null;
+              const checkState = parentCheckState(
+                detailIds,
+                selectedCreditIds,
+                selectedRowKeys.has(row.row_key)
+              );
               return (
                 <OutstandingSummaryRows
                   key={row.row_key}
@@ -602,13 +701,16 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
                   index={index}
                   expanded={expanded}
                   details={details}
-                  selected={selectedRowKeys.has(row.row_key)}
+                  checkState={checkState}
                   selectedCreditIds={selectedCreditIds}
                   settleLoading={rowSettleLoadingKey === row.row_key}
                   invoiceLoading={invoiceLoadingKey === row.row_key}
                   onToggleExpand={() => toggleExpanded(row)}
-                  onToggleSelected={() => toggleRowSelected(row.row_key)}
-                  onToggleCredit={toggleCreditSelected}
+                  onToggleSelected={() => void toggleRowSelected(row)}
+                  onToggleCredit={(creditId) => toggleCreditSelected(row, creditId)}
+                  onSetCreditsSelected={(creditIds, selected) =>
+                    setCreditsSelected(row, creditIds, selected)
+                  }
                   onSettleRow={() => void prepareSettleFromRow(row)}
                   onInvoiceRow={() => void prepareInvoiceFromRow(row)}
                 />
@@ -753,13 +855,14 @@ function OutstandingSummaryRows({
   index,
   expanded,
   details,
-  selected,
+  checkState,
   selectedCreditIds,
   settleLoading,
   invoiceLoading,
   onToggleExpand,
   onToggleSelected,
   onToggleCredit,
+  onSetCreditsSelected,
   onSettleRow,
   onInvoiceRow
 }: {
@@ -767,25 +870,38 @@ function OutstandingSummaryRows({
   index: number;
   expanded: boolean;
   details: DetailState | undefined;
-  selected: boolean;
+  checkState: ParentCheckState;
   selectedCreditIds: Set<string>;
   settleLoading: boolean;
   invoiceLoading: boolean;
   onToggleExpand: () => void;
   onToggleSelected: () => void;
   onToggleCredit: (creditId: string) => void;
+  onSetCreditsSelected: (creditIds: string[], selected: boolean) => void;
   onSettleRow: () => void;
   onInvoiceRow: () => void;
 }) {
+  const checkboxRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (checkboxRef.current) {
+      checkboxRef.current.indeterminate = checkState === "indeterminate";
+    }
+  }, [checkState]);
+
   return (
     <>
       <tr className={`border-b border-[rgb(var(--border))] ${rowStripeClass(index)}`}>
         <td className="px-3 py-2">
           <input
+            ref={checkboxRef}
             type="checkbox"
             className="h-4 w-4"
             aria-label={`Select outstanding for ${row.vendor_name}`}
-            checked={selected}
+            aria-checked={
+              checkState === "indeterminate" ? "mixed" : checkState === "checked"
+            }
+            checked={checkState === "checked"}
             onChange={onToggleSelected}
             onClick={(event) => event.stopPropagation()}
           />
@@ -853,6 +969,7 @@ function OutstandingSummaryRows({
               details={details}
               selectedCreditIds={selectedCreditIds}
               onToggleCredit={onToggleCredit}
+              onSetCreditsSelected={onSetCreditsSelected}
             />
           </td>
         </tr>
@@ -864,11 +981,13 @@ function OutstandingSummaryRows({
 function OutstandingNestedTable({
   details,
   selectedCreditIds,
-  onToggleCredit
+  onToggleCredit,
+  onSetCreditsSelected
 }: {
   details: DetailState | undefined;
   selectedCreditIds: Set<string>;
   onToggleCredit: (creditId: string) => void;
+  onSetCreditsSelected: (creditIds: string[], selected: boolean) => void;
 }) {
   if (!details || details.status === "loading") {
     return <p className="text-sm text-muted">Loading open credits…</p>;
@@ -880,19 +999,67 @@ function OutstandingNestedTable({
     return <p className="text-sm text-muted">No open credits for this vendor and actor.</p>;
   }
 
-  const truncated = details.totalCount > details.rows.length;
+  return (
+    <OutstandingNestedTableLoaded
+      rows={details.rows}
+      totalCount={details.totalCount}
+      selectedCreditIds={selectedCreditIds}
+      onToggleCredit={onToggleCredit}
+      onSetCreditsSelected={onSetCreditsSelected}
+    />
+  );
+}
+
+function OutstandingNestedTableLoaded({
+  rows,
+  totalCount,
+  selectedCreditIds,
+  onToggleCredit,
+  onSetCreditsSelected
+}: {
+  rows: BigBookVendorActorOutstandingEntry[];
+  totalCount: number;
+  selectedCreditIds: Set<string>;
+  onToggleCredit: (creditId: string) => void;
+  onSetCreditsSelected: (creditIds: string[], selected: boolean) => void;
+}) {
+  const truncated = totalCount > rows.length;
+  const allChildIds = rows.map((entry) => entry.id);
+  const allChildrenSelected = allChildIds.every((id) => selectedCreditIds.has(id));
+  const someChildrenSelected = allChildIds.some((id) => selectedCreditIds.has(id));
+  const selectAllRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someChildrenSelected && !allChildrenSelected;
+    }
+  }, [someChildrenSelected, allChildrenSelected]);
 
   return (
     <div className="space-y-2">
       {truncated ? (
         <p className="text-xs text-muted">
-          Showing first {details.rows.length} of {details.totalCount} open credits.
+          Showing first {rows.length} of {totalCount} open credits.
         </p>
       ) : null}
       <table className="data-table min-w-full">
         <thead className="border-b border-[rgb(var(--border))] text-left text-xs text-muted">
           <tr>
-            <th className="px-3 py-1.5 font-medium">Select</th>
+            <th className="px-3 py-1.5 font-medium">
+              <input
+                ref={selectAllRef}
+                type="checkbox"
+                className="h-4 w-4"
+                aria-label="Select all open credits in this vendor row"
+                aria-checked={
+                  someChildrenSelected && !allChildrenSelected
+                    ? "mixed"
+                    : allChildrenSelected
+                }
+                checked={allChildrenSelected}
+                onChange={() => onSetCreditsSelected(allChildIds, !allChildrenSelected)}
+              />
+            </th>
             <th className="px-3 py-1.5 font-medium">Date</th>
             <th className="px-3 py-1.5 font-medium">In/Out</th>
             <th className="px-3 py-1.5 font-medium">Type</th>
@@ -903,7 +1070,7 @@ function OutstandingNestedTable({
           </tr>
         </thead>
         <tbody>
-          {details.rows.map((entry) => {
+          {rows.map((entry) => {
             const amount = signedAmount(entry);
             return (
               <tr key={entry.id} className="border-b border-[rgb(var(--border))] align-top">
