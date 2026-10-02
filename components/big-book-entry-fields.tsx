@@ -35,6 +35,10 @@ export type EntryFormState = {
   amount: string;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
   gas_fee_amount: string;
+  /** Create-only USDT inflow companion rate (e.g. 0.999423). */
+  kurs_rate: string;
+  /** Create-only companion USDT amount = A × (1 − r), editable override. */
+  kurs_amount: string;
   remark: string;
   responsible_actor_id: string;
   is_credit: boolean;
@@ -101,6 +105,8 @@ export function createEmptyEntryForm(options: {
     amount: "",
     currency_code: "IDR",
     gas_fee_amount: "",
+    kurs_rate: "",
+    kurs_amount: "",
     remark: "",
     responsible_actor_id: options.defaultActorId,
     is_credit: false,
@@ -133,7 +139,7 @@ type Props = {
   onFetchConversionRate?: () => void;
   fetchingConversionRate?: boolean;
   hideCreditToggle?: boolean;
-  /** Create-only: show an optional TRX gas-fee amount when currency is USDT. */
+  /** Create-only: show optional TRX gas-fee / KURS companions when applicable. */
   showGasFee?: boolean;
   /**
    * `full` shows labeled sections with a 1/2/3-column grid.
@@ -205,6 +211,8 @@ export function BigBookEntryFields({
     settlesEntry != null &&
     value.currency_code === "USDT" &&
     settlesEntry.currency_code !== "USDT";
+  const showKursFields =
+    showGasFee && value.currency_code === "USDT" && value.entry_direction === "profit";
 
   const moreDetailsFilled =
     Boolean(value.remark.trim()) || (showAttachments && attachmentFiles.length > 0);
@@ -292,6 +300,38 @@ export function BigBookEntryFields({
     settlesEntry?.amount
   ]);
 
+  // Recompute KURS companion amount whenever main amount or rate changes.
+  // Manual edits to kurs_amount stick until A or r changes again.
+  useEffect(() => {
+    if (!showKursFields) {
+      if (value.kurs_rate || value.kurs_amount) {
+        onChange({ ...value, kurs_rate: "", kurs_amount: "" });
+      }
+      return;
+    }
+    const rateRaw = value.kurs_rate.trim();
+    if (!rateRaw) {
+      if (value.kurs_amount) onChange({ ...value, kurs_amount: "" });
+      return;
+    }
+    const mainAmount = Number(parseAmountInput(value.amount));
+    const rate = Number(parseAmountInput(rateRaw));
+    if (!Number.isFinite(mainAmount) || mainAmount <= 0 || !Number.isFinite(rate)) {
+      if (value.kurs_amount) onChange({ ...value, kurs_amount: "" });
+      return;
+    }
+    const computed = mainAmount * (1 - rate);
+    if (!Number.isFinite(computed) || computed <= 0) {
+      if (value.kurs_amount) onChange({ ...value, kurs_amount: "" });
+      return;
+    }
+    const nextAmount = formatAmountInput(String(Math.round(computed * 1e4) / 1e4));
+    if (nextAmount !== value.kurs_amount) {
+      onChange({ ...value, kurs_amount: nextAmount });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showKursFields, value.amount, value.kurs_rate]);
+
   const moneyFields = (
     <>
       <label className="text-sm">
@@ -308,11 +348,15 @@ export function BigBookEntryFields({
         <select
           className="field mt-1"
           value={value.entry_direction}
-          onChange={(event) =>
+          onChange={(event) => {
+            const nextDirection = event.target.value as "spending" | "profit";
             patch({
-              entry_direction: event.target.value as "spending" | "profit"
-            })
-          }
+              entry_direction: nextDirection,
+              ...(nextDirection !== "profit"
+                ? { kurs_rate: "", kurs_amount: "" }
+                : {})
+            });
+          }}
         >
           <option value="spending">Out</option>
           <option value="profit">In</option>
@@ -340,10 +384,14 @@ export function BigBookEntryFields({
                 Boolean(settlesEntry) &&
                 nextCurrency === "USDT" &&
                 settlesEntry!.currency_code !== "USDT";
+              const keepUsdtCompanions = nextCurrency === "USDT";
               patch({
                 currency_code: nextCurrency,
                 pocket_id: "",
-                gas_fee_amount: nextCurrency === "USDT" ? value.gas_fee_amount : "",
+                gas_fee_amount: keepUsdtCompanions ? value.gas_fee_amount : "",
+                kurs_rate: keepUsdtCompanions && value.entry_direction === "profit" ? value.kurs_rate : "",
+                kurs_amount:
+                  keepUsdtCompanions && value.entry_direction === "profit" ? value.kurs_amount : "",
                 settlement_conversion_rate: sameAsCredit
                   ? "1"
                   : needsUsdtRate
@@ -420,6 +468,47 @@ export function BigBookEntryFields({
           </div>
           <span className="mt-1 block text-xs text-muted">Optional. Creates a grouped TRX spending entry.</span>
         </label>
+      ) : null}
+      {showKursFields ? (
+        <>
+          <label className="text-sm">
+            KURS
+            <input
+              className="field mt-1 text-right"
+              inputMode="decimal"
+              placeholder="0.999423"
+              value={value.kurs_rate}
+              onChange={(event) => patch({ kurs_rate: formatRateInput(event.target.value) })}
+              aria-label="KURS rate"
+            />
+            <span className="mt-1 block text-xs text-muted">
+              Optional. Companion amount = amount × (1 − rate).
+            </span>
+          </label>
+          <label className="text-sm">
+            KURS amount
+            <div className="mt-1 flex overflow-hidden rounded-md border border-[rgb(var(--border))] focus-within:shadow-[0_0_0_3px_rgba(var(--focus),0.25)]">
+              <input
+                className="min-w-0 flex-1 border-0 bg-[rgb(var(--surface))] px-3 py-2 text-right text-base font-medium text-[rgb(var(--text))] focus:outline-none"
+                inputMode="decimal"
+                placeholder="0"
+                value={value.kurs_amount}
+                onChange={(event) => patch({ kurs_amount: formatAmountInput(event.target.value) })}
+                aria-label="KURS USDT amount"
+              />
+              <span
+                className="shrink-0 border-0 border-l border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] px-2 py-2 text-sm font-medium text-[rgb(var(--text))]"
+                aria-hidden
+              >
+                USDT
+              </span>
+            </div>
+            <span className="mt-1 block text-xs text-muted">
+              Editable. Recalculates when amount or KURS rate changes. Creates a grouped USDT spending
+              entry typed KURS.
+            </span>
+          </label>
+        </>
       ) : null}
       <label className={`text-sm ${spanClass}`}>
         Explanation *

@@ -17,9 +17,19 @@ const getBigBookLedgerRowsPagedMock = vi.fn();
 const creditLookupMaybeSingleMock = vi.fn();
 const creditLookupEqMock = vi.fn(() => ({ maybeSingle: creditLookupMaybeSingleMock }));
 const creditLookupSelectMock = vi.fn(() => ({ eq: creditLookupEqMock }));
+const kursTypesIlikeMock = vi.fn();
+const kursTypesSelectMock = vi.fn(() => ({ ilike: kursTypesIlikeMock }));
 
 let insertManyResponse: { data: Array<{ id: string }> | null; error: { message: string } | null } = {
   data: [{ id: "entry-1" }, { id: "entry-gas" }],
+  error: null
+};
+
+let kursTypesResponse: {
+  data: Array<{ id: string; name: string; is_active: boolean }> | null;
+  error: { message: string } | null;
+} = {
+  data: [{ id: "kurs-type-1", name: "KURS", is_active: true }],
   error: null
 };
 
@@ -49,6 +59,11 @@ vi.mock("@/lib/supabase/server", () => ({
           delete: vi.fn(() => ({ eq: groupDeleteEqMock }))
         };
       }
+      if (table === "business_ledger_types") {
+        return {
+          select: kursTypesSelectMock
+        };
+      }
       return {};
     })
   }))
@@ -73,6 +88,10 @@ describe("big book entries route", () => {
       data: [{ id: "entry-1" }, { id: "entry-gas" }],
       error: null
     };
+    kursTypesResponse = {
+      data: [{ id: "kurs-type-1", name: "KURS", is_active: true }],
+      error: null
+    };
     insertMock.mockImplementation((rows: unknown) => ({
       select: vi.fn(() => {
         if (Array.isArray(rows)) {
@@ -92,6 +111,7 @@ describe("big book entries route", () => {
     });
     groupInsertSingleMock.mockResolvedValue({ data: { id: "group-1" }, error: null });
     groupDeleteEqMock.mockResolvedValue({ error: null });
+    kursTypesIlikeMock.mockImplementation(() => Promise.resolve(kursTypesResponse));
     updateMock.mockReturnValue({
       eq: updateEqIdMock
     });
@@ -233,6 +253,127 @@ describe("big book entries route", () => {
     expect(data.error).toBe("insert failed");
     expect(groupInsertMock).toHaveBeenCalled();
     expect(groupDeleteEqMock).toHaveBeenCalledWith("id", "group-1");
+  });
+
+  it("creates a grouped USDT KURS companion for a USDT inflow", async () => {
+    insertManyResponse = {
+      data: [{ id: "entry-1" }, { id: "entry-kurs" }],
+      error: null
+    };
+    const { POST } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_date: "2026-04-23",
+        entry_direction: "profit",
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        entry_sub_type_id: "44444444-4444-4444-8444-444444444444",
+        vendor_type_id: "66666666-6666-4666-8666-666666666666",
+        vendor_id: "77777777-7777-4777-8777-777777777777",
+        action_by_id: "99999999-9999-4999-8999-999999999999",
+        explanation: "Vendor payout",
+        amount: 1000,
+        currency_code: "USDT",
+        kurs_rate: 0.999423,
+        remark: "Monthly run rate",
+        responsible_actor_id: "22222222-2222-4222-8222-222222222222"
+      })
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.id).toBe("entry-1");
+    expect(kursTypesSelectMock).toHaveBeenCalled();
+    expect(kursTypesIlikeMock).toHaveBeenCalledWith("name", "KURS");
+    expect(groupInsertMock).toHaveBeenCalled();
+    const inserted = insertMock.mock.calls[0][0] as unknown[];
+    expect(inserted).toHaveLength(2);
+    expect(inserted[0]).toMatchObject({
+      group_id: "group-1",
+      currency_code: "USDT",
+      amount: 1000,
+      entry_direction: "profit",
+      explanation: "Vendor payout"
+    });
+    expect(inserted[1]).toMatchObject({
+      group_id: "group-1",
+      currency_code: "USDT",
+      amount: 0.577,
+      entry_direction: "spending",
+      entry_type_id: "kurs-type-1",
+      pocket_id: null,
+      is_credit: false,
+      explanation: "KURS — Vendor payout"
+    });
+  });
+
+  it("fails create with a clear error when the KURS type is missing", async () => {
+    kursTypesResponse = { data: [], error: null };
+    const { POST } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_date: "2026-04-23",
+        entry_direction: "profit",
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        explanation: "Vendor payout",
+        amount: 1000,
+        currency_code: "USDT",
+        kurs_rate: 0.999423,
+        remark: "",
+        responsible_actor_id: "22222222-2222-4222-8222-222222222222"
+      })
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toContain("KURS ledger type not found");
+    expect(groupInsertMock).not.toHaveBeenCalled();
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it("creates KURS and gas-fee companions together for a USDT inflow", async () => {
+    insertManyResponse = {
+      data: [{ id: "entry-1" }, { id: "entry-kurs" }, { id: "entry-gas" }],
+      error: null
+    };
+    const { POST } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_date: "2026-04-23",
+        entry_direction: "profit",
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        explanation: "Vendor payout",
+        amount: 1000,
+        currency_code: "USDT",
+        kurs_rate: 0.999423,
+        gas_fee_amount: 1.33,
+        remark: "",
+        responsible_actor_id: "22222222-2222-4222-8222-222222222222"
+      })
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    const inserted = insertMock.mock.calls[0][0] as unknown[];
+    expect(inserted).toHaveLength(3);
+    expect(inserted[1]).toMatchObject({
+      currency_code: "USDT",
+      entry_type_id: "kurs-type-1",
+      amount: 0.577
+    });
+    expect(inserted[2]).toMatchObject({
+      currency_code: "TRX",
+      amount: 1.33
+    });
   });
 
   it("persists entry_sub_type_id on create when provided", async () => {
