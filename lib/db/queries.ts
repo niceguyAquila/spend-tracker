@@ -33,6 +33,7 @@ import {
   BigBookLedgerRow,
   BigBookLedgerSubType,
   BigBookLedgerType,
+  BigBookLedgerTypeInvoiceProfile,
   BigBookSettlementRef,
   BigBookSettlementTargetRef,
   BigBookActionBy,
@@ -312,6 +313,49 @@ export async function getBigBookInvoiceWallets(options?: {
     ...row,
     sort_order: Number(row.sort_order)
   }));
+}
+
+export async function getBigBookLedgerTypeInvoiceProfiles(): Promise<BigBookLedgerTypeInvoiceProfile[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("business_ledger_type_invoice_profiles")
+    .select(
+      `
+      type_id,
+      pic_name,
+      pic_passport,
+      pic_address,
+      pic_phone,
+      bill_to_company,
+      background_color,
+      created_at,
+      updated_at,
+      business_ledger_types(code, name, is_active)
+    `
+    )
+    .order("type_id", { ascending: true });
+
+  if (error) throw error;
+
+  return (data ?? []).map((row) => {
+    const type = Array.isArray(row.business_ledger_types)
+      ? row.business_ledger_types[0]
+      : row.business_ledger_types;
+    return {
+      type_id: row.type_id,
+      pic_name: row.pic_name ?? "",
+      pic_passport: row.pic_passport ?? "",
+      pic_address: row.pic_address ?? "",
+      pic_phone: row.pic_phone ?? "",
+      bill_to_company: row.bill_to_company ?? "",
+      background_color: row.background_color ?? null,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      type_name: type?.name,
+      type_code: type?.code,
+      type_is_active: type?.is_active
+    };
+  });
 }
 
 
@@ -1865,7 +1909,7 @@ export async function getBigBookVendorActorOutstandingEntries(params: {
     .from("business_ledger_entries")
     .select(
       `
-      id, entry_date, entry_direction, explanation, amount, currency_code, remark,
+      id, entry_date, entry_direction, entry_type_id, explanation, amount, currency_code, remark,
       business_ledger_types(name)
     `,
       { count: "exact" }
@@ -1897,6 +1941,7 @@ export async function getBigBookVendorActorOutstandingEntries(params: {
       id: row.id,
       entry_date: row.entry_date,
       entry_direction: row.entry_direction === "profit" ? "profit" : "spending",
+      entry_type_id: row.entry_type_id ?? null,
       type_name: type?.name ?? "-",
       explanation: row.explanation,
       amount: Math.abs(Number(row.amount)),

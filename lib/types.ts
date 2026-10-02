@@ -11,6 +11,22 @@ export type BigBookLedgerType = {
   updated_at: string;
 };
 
+/** Invoice PIC + PDF styling preset for a ledger type (group). */
+export type BigBookLedgerTypeInvoiceProfile = {
+  type_id: string;
+  pic_name: string;
+  pic_passport: string;
+  pic_address: string;
+  pic_phone: string;
+  bill_to_company: string;
+  background_color: string | null;
+  created_at: string;
+  updated_at: string;
+  type_name?: string;
+  type_code?: string;
+  type_is_active?: boolean;
+};
+
 export type BigBookLedgerSubType = {
   id: string;
   entry_type_id: string;
@@ -278,6 +294,7 @@ export type BigBookVendorActorOutstandingEntry = {
   id: string;
   entry_date: string;
   entry_direction: "spending" | "profit";
+  entry_type_id: string | null;
   type_name: string;
   explanation: string;
   amount: number;

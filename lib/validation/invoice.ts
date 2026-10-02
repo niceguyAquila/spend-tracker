@@ -44,6 +44,28 @@ const optionalText = (max: number) =>
     .optional()
     .transform((value) => value ?? "");
 
+export const invoiceBackgroundColorSchema = z
+  .union([
+    z.string().trim().regex(/^#[0-9A-Fa-f]{6}$/, "Color must be a #RRGGBB hex value."),
+    z.literal(""),
+    z.null()
+  ])
+  .optional()
+  .transform((value) => {
+    if (value === undefined || value === null || value === "") return null;
+    return value;
+  });
+
+export const bigBookLedgerTypeInvoiceProfileUpsertSchema = z.object({
+  type_id: z.string().uuid(),
+  pic_name: optionalText(200),
+  pic_passport: optionalText(120),
+  pic_address: optionalText(400),
+  pic_phone: optionalText(80),
+  bill_to_company: optionalText(200),
+  background_color: invoiceBackgroundColorSchema
+});
+
 export const invoiceLineSchema = z.object({
   unit_name: optionalText(120),
   unit_no: optionalText(60),
@@ -69,7 +91,9 @@ export const invoicePdfRequestSchema = z.object({
   lines: z.array(invoiceLineSchema).min(1, "Add at least one line item."),
   notes: optionalText(2000),
   fx_note: optionalText(1000),
-  wallet_ids: z.array(z.string().uuid()).default([])
+  wallet_ids: z.array(z.string().uuid()).default([]),
+  ledger_type_id: z.string().uuid().nullable().optional(),
+  background_color: invoiceBackgroundColorSchema
 });
 
 export type InvoicePdfRequest = z.infer<typeof invoicePdfRequestSchema>;
