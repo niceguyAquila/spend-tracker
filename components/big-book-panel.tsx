@@ -56,6 +56,7 @@ import type { BigBookLedgerSortDir, BigBookLedgerSortKey } from "@/lib/big-book/
 import {
   describeGroupedMissingFields,
   describeMissingFields,
+  describeSettlementMissingFields,
   missingEntryFields
 } from "@/lib/big-book/entry-form-validation";
 import {
@@ -456,6 +457,7 @@ export function BigBookPanel({
   const [settlementForm, setSettlementForm] = useState<EntryFormState | null>(null);
   const [settlementAttachmentFiles, setSettlementAttachmentFiles] = useState<File[]>([]);
   const [settlementSubmitting, setSettlementSubmitting] = useState(false);
+  const [settlementFormError, setSettlementFormError] = useState<string | null>(null);
   const [pendingSettlementConfirm, setPendingSettlementConfirm] = useState(false);
   const [fetchingConversionRate, setFetchingConversionRate] = useState(false);
   // Kept as an id so the open history modal re-reads the freshly loaded entry
@@ -1755,6 +1757,7 @@ export function BigBookPanel({
     setOpenActionMenu(null);
     setSettlementTarget(row);
     setSettlementAttachmentFiles([]);
+    setSettlementFormError(null);
     setSettlementForm({
       entry_date: today,
       entry_direction: "profit",
@@ -1834,6 +1837,7 @@ export function BigBookPanel({
     setSettlementTarget(null);
     setSettlementForm(null);
     setSettlementAttachmentFiles([]);
+    setSettlementFormError(null);
   }
 
   async function fetchConversionRate(
@@ -1875,16 +1879,31 @@ export function BigBookPanel({
     if (!settlementTarget || !settlementForm) return;
     const amountValue = Number(parseAmountInput(settlementForm.amount));
     if (!Number.isFinite(amountValue) || amountValue <= 0) {
-      setError("Settlement amount must be greater than 0.");
+      setPendingSettlementConfirm(false);
+      setSettlementFormError("Settlement amount must be greater than 0.");
       return;
     }
     const creditPayload = toCreditPayload(settlementForm, settlementTargetRef);
     const conversionRate = creditPayload.settlement_conversion_rate;
     if (conversionRate == null) {
-      setError("Conversion rate must be greater than 0.");
+      setPendingSettlementConfirm(false);
+      setSettlementFormError("Enter a conversion rate greater than 0 to save.");
       return;
     }
+    const gasFeeAmount =
+      settlementForm.currency_code === "USDT"
+        ? parseOptionalGasFeeAmount(settlementForm.gas_fee_amount)
+        : null;
+    const kursCompanionAmount = resolveKursCompanionAmount({
+      currencyCode: settlementForm.currency_code,
+      entryDirection: settlementForm.entry_direction,
+      mainAmount: amountValue,
+      kursRate: settlementForm.kurs_rate,
+      kursAmount: settlementForm.kurs_amount
+    });
+
     setSettlementSubmitting(true);
+    setSettlementFormError(null);
     setError(null);
     setMessage(null);
     try {
@@ -1899,13 +1918,19 @@ export function BigBookPanel({
           pocket_id: settlementForm.pocket_id || null,
           action_by_id: settlementForm.action_by_id || null,
           amount: amountValue,
+          gas_fee_amount: gasFeeAmount,
+          kurs_rate: settlementForm.kurs_rate.trim()
+            ? Number(parseAmountInput(settlementForm.kurs_rate))
+            : null,
+          kurs_amount: kursCompanionAmount,
           ...creditPayload
         })
       });
       if (handleUnauthorizedResponse(response)) return;
       const data = await response.json();
       if (!response.ok) {
-        setError(extractApiError(data.error, "Failed to record the settlement."));
+        setPendingSettlementConfirm(false);
+        setSettlementFormError(extractApiError(data.error, "Failed to record the settlement."));
         return;
       }
 
@@ -1921,7 +1946,7 @@ export function BigBookPanel({
         if (handleUnauthorizedResponse(uploadResponse)) return;
         const uploadData = await uploadResponse.json();
         if (!uploadResponse.ok) {
-          setError(
+          setSettlementFormError(
             extractApiError(uploadData.error, `Settlement recorded, but failed to upload ${file.name}.`)
           );
           setPendingSettlementConfirm(false);
@@ -1931,12 +1956,17 @@ export function BigBookPanel({
         }
       }
 
-      setMessage("Settlement recorded.");
+      setMessage(
+        kursCompanionAmount != null
+          ? "Settlement recorded with a grouped KURS entry."
+          : "Settlement recorded."
+      );
       setPendingSettlementConfirm(false);
       closeRecordSettlement();
       triggerRefresh();
     } catch {
-      setError("Failed to record the settlement due to a network error.");
+      setPendingSettlementConfirm(false);
+      setSettlementFormError("Failed to record the settlement due to a network error.");
     } finally {
       setSettlementSubmitting(false);
     }
@@ -2048,8 +2078,26 @@ export function BigBookPanel({
     : describeMissingFields(missingEntryFields(editForm));
   const editValid = editMissingHint == null;
   const settlementMissingHint = settlementForm
-    ? describeMissingFields(missingEntryFields(settlementForm))
+    ? describeSettlementMissingFields({
+        explanation: settlementForm.explanation,
+        amount: settlementForm.amount,
+        currencyCode: settlementForm.currency_code,
+        creditCurrencyCode: settlementTargetRef?.currency_code,
+        settlementConversionRate: settlementForm.settlement_conversion_rate
+      })
     : null;
+  const settlementHasKurs =
+    Boolean(settlementForm) &&
+    willCreateKursEntry({
+      currencyCode: settlementForm!.currency_code,
+      entryDirection: settlementForm!.entry_direction,
+      mainAmount: Number(parseAmountInput(settlementForm!.amount)),
+      kursRate: settlementForm!.kurs_rate,
+      kursAmount: settlementForm!.kurs_amount
+    });
+  const settlementHasGasFee =
+    Boolean(settlementForm) &&
+    willCreateGasFeeEntry(settlementForm!.currency_code, settlementForm!.gas_fee_amount);
 
   function renderEntryRow(entry: BigBookEntry, isGroupMember: boolean) {
     const stripe = isGroupMember
@@ -3420,34 +3468,45 @@ export function BigBookPanel({
         }
       >
         {settlementForm && settlementTargetRef ? (
-          <BigBookEntryFields
-            value={settlementForm}
-            onChange={(next) => setSettlementForm(next)}
-            types={initialTypes}
-            subTypes={initialSubTypes}
-            vendorTypes={initialVendorTypes}
-            vendors={initialVendors}
-            actionByOptions={initialActionBy}
-            pockets={initialPockets}
-            actors={initialActors}
-            typeVendorTypeMaps={initialTypeVendorTypeMaps}
-            currencies={currencies}
-            showAttachments
-            attachmentFiles={settlementAttachmentFiles}
-            onAttachmentFilesChange={setSettlementAttachmentFiles}
-            onRemoveAttachmentAt={(index) =>
-              setSettlementAttachmentFiles((prev) => prev.filter((_, itemIndex) => itemIndex !== index))
-            }
-            explanationPlaceholder="What does this settlement payment cover?"
-            settlesEntry={settlementTargetRef}
-            hideCreditToggle
-            fetchingConversionRate={fetchingConversionRate}
-            onFetchConversionRate={() =>
-              void fetchConversionRate(settlementForm.currency_code, settlementTargetRef.currency_code, (rate) =>
-                setSettlementForm((prev) => (prev ? { ...prev, settlement_conversion_rate: rate } : prev))
-              )
-            }
-          />
+          <div className="space-y-3">
+            {settlementFormError ? (
+              <p className="text-sm text-[rgb(var(--danger))]" role="alert">
+                {settlementFormError}
+              </p>
+            ) : null}
+            <BigBookEntryFields
+              value={settlementForm}
+              onChange={(next) => {
+                setSettlementFormError(null);
+                setSettlementForm(next);
+              }}
+              types={initialTypes}
+              subTypes={initialSubTypes}
+              vendorTypes={initialVendorTypes}
+              vendors={initialVendors}
+              actionByOptions={initialActionBy}
+              pockets={initialPockets}
+              actors={initialActors}
+              typeVendorTypeMaps={initialTypeVendorTypeMaps}
+              currencies={currencies}
+              showAttachments
+              showGasFee
+              attachmentFiles={settlementAttachmentFiles}
+              onAttachmentFilesChange={setSettlementAttachmentFiles}
+              onRemoveAttachmentAt={(index) =>
+                setSettlementAttachmentFiles((prev) => prev.filter((_, itemIndex) => itemIndex !== index))
+              }
+              explanationPlaceholder="What does this settlement payment cover?"
+              settlesEntry={settlementTargetRef}
+              hideCreditToggle
+              fetchingConversionRate={fetchingConversionRate}
+              onFetchConversionRate={() =>
+                void fetchConversionRate(settlementForm.currency_code, settlementTargetRef.currency_code, (rate) =>
+                  setSettlementForm((prev) => (prev ? { ...prev, settlement_conversion_rate: rate } : prev))
+                )
+              }
+            />
+          </div>
         ) : null}
       </Modal>
 
@@ -3457,9 +3516,16 @@ export function BigBookPanel({
         title="Record settlement?"
         description={
           settlementTarget
-            ? settlementForm?.close_credit
-              ? `This will create a settlement entry against "${settlementTarget.explanation}" and mark that credit as settled.`
-              : `This will create a settlement entry against "${settlementTarget.explanation}". The credit stays open until marked settled.`
+            ? (() => {
+                const companions: string[] = [];
+                if (settlementHasKurs) companions.push("a grouped USDT KURS spending entry");
+                if (settlementHasGasFee) companions.push("a grouped TRX gas-fee spending entry");
+                const companionNote =
+                  companions.length > 0 ? ` This will also create ${companions.join(" and ")}.` : "";
+                return settlementForm?.close_credit
+                  ? `This will create a settlement entry against "${settlementTarget.explanation}" and mark that credit as settled.${companionNote}`
+                  : `This will create a settlement entry against "${settlementTarget.explanation}". The credit stays open until marked settled.${companionNote}`;
+              })()
             : "This will create a settlement entry."
         }
         confirmLabel="Record Settlement"

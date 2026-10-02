@@ -51,3 +51,49 @@ export function describeGroupedMissingFields(
 
   return null;
 }
+
+export type SettlementFormValidationInput = {
+  explanation: string;
+  amount: string;
+  currencyCode: string;
+  creditCurrencyCode: string | null | undefined;
+  settlementConversionRate: string | number | null | undefined;
+};
+
+/**
+ * True when settlement currency differs from the credit and a positive conversion
+ * rate is required (same-currency settlements force rate = 1).
+ */
+export function settlementNeedsConversionRate(
+  settlementCurrencyCode: string,
+  creditCurrencyCode: string | null | undefined
+): boolean {
+  if (!creditCurrencyCode) return false;
+  return settlementCurrencyCode !== creditCurrencyCode;
+}
+
+export function parsePositiveConversionRate(
+  value: string | number | null | undefined
+): number | null {
+  if (value == null || value === "") return null;
+  const raw = typeof value === "number" ? value : Number(String(value).replace(/,/g, "").trim());
+  if (!Number.isFinite(raw) || raw <= 0) return null;
+  return raw;
+}
+
+/**
+ * Blocking hint for Record Settlement. Prefer conversion-rate guidance over generic
+ * amount/explanation hints when both are missing so cross-currency no-ops are visible.
+ */
+export function describeSettlementMissingFields(
+  fields: SettlementFormValidationInput
+): string | null {
+  const base = describeMissingFields(missingEntryFields(fields));
+  if (
+    settlementNeedsConversionRate(fields.currencyCode, fields.creditCurrencyCode) &&
+    parsePositiveConversionRate(fields.settlementConversionRate) == null
+  ) {
+    return "Enter a conversion rate greater than 0 to save.";
+  }
+  return base;
+}
