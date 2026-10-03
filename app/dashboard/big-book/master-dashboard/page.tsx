@@ -1,6 +1,7 @@
 import { MasterDashboardBigBookTypeCashflowTable } from "@/components/master-dashboard-tables";
 import { BigBookTypeCashflowFilters } from "@/components/big-book-type-cashflow-filters";
 import { BigBookVendorActorOutstandingTable } from "@/components/big-book-vendor-actor-outstanding-table";
+import { BigBookVendorActorOutstandingDebtTable } from "@/components/big-book-vendor-actor-outstanding-debt-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { SetupRequiredCard } from "@/components/ui/setup-required-card";
 import {
@@ -8,6 +9,7 @@ import {
   getBigBookLedgerTypes,
   getBigBookTypeCashflowByCurrency,
   getBigBookVendorActorOutstanding,
+  getBigBookVendorActorOutstandingDebt,
   getBigBookVendorTypes,
   getBigBookVendors
 } from "@/lib/db/queries";
@@ -50,30 +52,40 @@ export default async function BigBookMasterDashboardPage({ searchParams }: BigBo
     const dateFrom = normalizeDateParam(params.dateFrom);
     const dateTo = normalizeDateParam(params.dateTo);
 
-    const [actors, types, vendorTypes, vendors, sourceRowsByCurrency, vendorActorOutstanding] =
-      await Promise.all([
-        getBigBookActors(),
-        getBigBookLedgerTypes({ includeInactive: true }),
-        getBigBookVendorTypes({ includeInactive: true }),
-        getBigBookVendors({ includeInactive: true }),
-        getBigBookTypeCashflowByCurrency({
-          actorId: actorIds.length ? actorIds : undefined,
-          typeId: typeIds.length ? typeIds : undefined,
-          vendorTypeId: vendorTypeIds.length ? vendorTypeIds : undefined,
-          vendorId: vendorIds.length ? vendorIds : undefined,
-          currencyCode: currencyCodes.length ? currencyCodes : undefined,
-          dateFrom: dateFrom || undefined,
-          dateTo: dateTo || undefined
-        }),
-        getBigBookVendorActorOutstanding({
-          actorId: actorIds.length ? actorIds : undefined,
-          vendorTypeId: vendorTypeIds.length ? vendorTypeIds : undefined,
-          vendorId: vendorIds.length ? vendorIds : undefined,
-          currencyCode: currencyCodes.length ? currencyCodes : undefined,
-          dateFrom: dateFrom || undefined,
-          dateTo: dateTo || undefined
-        })
-      ]);
+    const outstandingFilters = {
+      actorId: actorIds.length ? actorIds : undefined,
+      vendorTypeId: vendorTypeIds.length ? vendorTypeIds : undefined,
+      vendorId: vendorIds.length ? vendorIds : undefined,
+      currencyCode: currencyCodes.length ? currencyCodes : undefined,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined
+    };
+
+    const [
+      actors,
+      types,
+      vendorTypes,
+      vendors,
+      sourceRowsByCurrency,
+      vendorActorOutstanding,
+      vendorActorOutstandingDebt
+    ] = await Promise.all([
+      getBigBookActors(),
+      getBigBookLedgerTypes({ includeInactive: true }),
+      getBigBookVendorTypes({ includeInactive: true }),
+      getBigBookVendors({ includeInactive: true }),
+      getBigBookTypeCashflowByCurrency({
+        actorId: actorIds.length ? actorIds : undefined,
+        typeId: typeIds.length ? typeIds : undefined,
+        vendorTypeId: vendorTypeIds.length ? vendorTypeIds : undefined,
+        vendorId: vendorIds.length ? vendorIds : undefined,
+        currencyCode: currencyCodes.length ? currencyCodes : undefined,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined
+      }),
+      getBigBookVendorActorOutstanding(outstandingFilters),
+      getBigBookVendorActorOutstandingDebt(outstandingFilters)
+    ]);
 
     return (
       <div className="space-y-6">
@@ -114,6 +126,21 @@ export default async function BigBookMasterDashboardPage({ searchParams }: BigBo
           </p>
           <BigBookVendorActorOutstandingTable
             rows={vendorActorOutstanding}
+            detailFilters={{
+              dateFrom: dateFrom || undefined,
+              dateTo: dateTo || undefined
+            }}
+          />
+        </section>
+
+        <section className="card">
+          <h2 className="text-lg font-semibold">Outstanding Debt by Vendor and Actor</h2>
+          <p className="mt-1 text-sm text-muted">
+            Who we owe: actor (owes) to vendor (owed), per currency. Outstanding is the total of debts
+            not yet marked settled. Amounts are shown in red. Filters above also apply here.
+          </p>
+          <BigBookVendorActorOutstandingDebtTable
+            rows={vendorActorOutstandingDebt}
             detailFilters={{
               dateFrom: dateFrom || undefined,
               dateTo: dateTo || undefined

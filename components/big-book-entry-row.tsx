@@ -1,7 +1,7 @@
 "use client";
 
 import { memo } from "react";
-import type { BigBookCreditStatus, BigBookEntry } from "@/lib/types";
+import type { BigBookCreditStatus, BigBookDebtStatus, BigBookEntry } from "@/lib/types";
 import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
 import { LinkifyText } from "@/lib/linkify-text";
 
@@ -10,9 +10,19 @@ const CREDIT_STATUS_LABELS: Record<BigBookCreditStatus, string> = {
   settled: "Settled"
 };
 
+const DEBT_STATUS_LABELS: Record<BigBookDebtStatus, string> = {
+  open: "Open debt",
+  settled: "Settled debt"
+};
+
 function creditStatusBadgeClass(status: BigBookCreditStatus) {
   if (status === "settled") return "bg-[rgb(var(--success)/0.15)] text-[rgb(var(--success))]";
   return "bg-[rgb(var(--warning)/0.15)] text-[rgb(var(--warning))]";
+}
+
+function debtStatusBadgeClass(status: BigBookDebtStatus) {
+  if (status === "settled") return "bg-[rgb(var(--success)/0.15)] text-[rgb(var(--success))]";
+  return "bg-[rgb(var(--danger)/0.15)] text-[rgb(var(--danger))]";
 }
 
 function truncateText(value: string, maxLength = 28) {
@@ -119,6 +129,21 @@ function BigBookEntryRowInner({
             {entry.credit_settled_at ? (
               <p className="text-xs text-muted">
                 Closed {formatDateDisplay(entry.credit_settled_at.slice(0, 10))}
+              </p>
+            ) : null}
+          </div>
+        ) : entry.is_debt ? (
+          <div className="space-y-1">
+            <span
+              className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${debtStatusBadgeClass(
+                entry.debt_status ?? "open"
+              )}`}
+            >
+              {DEBT_STATUS_LABELS[entry.debt_status ?? "open"]}
+            </span>
+            {entry.debt_settled_at ? (
+              <p className="text-xs text-muted">
+                Closed {formatDateDisplay(entry.debt_settled_at.slice(0, 10))}
               </p>
             ) : null}
           </div>

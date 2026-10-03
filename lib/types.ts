@@ -135,6 +135,7 @@ export type BigBookEntryGroup = {
 };
 
 export type BigBookCreditStatus = "open" | "settled";
+export type BigBookDebtStatus = "open" | "settled";
 
 export type BigBookSettlementRef = {
   id: string;
@@ -176,6 +177,7 @@ export type BigBookEntry = {
   remark: string | null;
   responsible_actor_id: string;
   is_credit: boolean;
+  is_debt: boolean;
   settles_entry_id: string | null;
   settlement_conversion_rate: number | null;
   settlement_amount_in_credit_currency: number | null;
@@ -183,6 +185,9 @@ export type BigBookEntry = {
   credit_settled_at: string | null;
   credit_settled_by: string | null;
   credit_settlement_note: string | null;
+  debt_settled_at: string | null;
+  debt_settled_by: string | null;
+  debt_settlement_note: string | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -200,9 +205,11 @@ export type BigBookEntry = {
   creator_display_name: string;
   updater_display_name: string;
   credit_settled_by_display_name: string;
+  debt_settled_by_display_name: string;
   attachments: BigBookAttachment[];
   total_settled: number;
   credit_status: BigBookCreditStatus | null;
+  debt_status: BigBookDebtStatus | null;
   settlements: BigBookSettlementRef[];
   settles_entry: BigBookSettlementTargetRef | null;
 };
@@ -291,6 +298,20 @@ export type BigBookVendorActorOutstandingRow = {
   open_credit_count: number;
 };
 
+export type BigBookVendorActorOutstandingDebtRow = {
+  row_key: string;
+  vendor_id: string | null;
+  vendor_name: string;
+  vendor_type_id: string | null;
+  vendor_type_name: string;
+  actor_id: string;
+  actor_code: "A" | "B";
+  actor_display_name: string;
+  currency: BigBookCashflowCurrency;
+  outstanding: number;
+  open_debt_count: number;
+};
+
 export type BigBookVendorActorOutstandingEntry = {
   id: string;
   entry_date: string;
@@ -304,6 +325,11 @@ export type BigBookVendorActorOutstandingEntry = {
 };
 
 export type BigBookVendorActorOutstandingEntriesResult = {
+  rows: BigBookVendorActorOutstandingEntry[];
+  totalCount: number;
+};
+
+export type BigBookVendorActorOutstandingDebtEntriesResult = {
   rows: BigBookVendorActorOutstandingEntry[];
   totalCount: number;
 };

@@ -47,6 +47,20 @@ describe("big book entry schema", () => {
     expect(parsed.success).toBe(true);
   });
 
+  it("accepts a debt create payload", () => {
+    const parsed = bigBookEntryInputSchema.safeParse({ ...clientPayload, is_debt: true });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects credit and debt together", () => {
+    const parsed = bigBookEntryInputSchema.safeParse({
+      ...clientPayload,
+      is_credit: true,
+      is_debt: true
+    });
+    expect(parsed.success).toBe(false);
+  });
+
   it("accepts a settlement that leaves the credit open", () => {
     const parsed = bigBookEntryInputSchema.safeParse({
       ...clientPayload,
