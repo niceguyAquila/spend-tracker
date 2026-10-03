@@ -21,7 +21,8 @@ import {
   getBigBookActorPocketMetrics,
   getBigBookEntriesPaged,
   getBigBookLedgerRowsPaged,
-  getBigBookVendorActorOutstanding
+  getBigBookVendorActorOutstanding,
+  getBigBookVendorActorOutstandingDebt
 } from "@/lib/db/queries";
 
 type BigBookCurrency = "IDR" | "MYR" | "USDT" | "TRX";
@@ -163,7 +164,8 @@ export async function GET(request: Request) {
       ? Promise.all([
           getBigBookActorCurrencyMetrics(),
           getBigBookActorPocketMetrics(),
-          getBigBookVendorActorOutstanding()
+          getBigBookVendorActorOutstanding(),
+          getBigBookVendorActorOutstandingDebt()
         ])
       : null;
 
@@ -173,12 +175,14 @@ export async function GET(request: Request) {
         metricsPromise
       ]);
       if (!metrics) return NextResponse.json(result);
-      const [actorMetrics, actorPocketMetrics, vendorActorOutstanding] = metrics;
+      const [actorMetrics, actorPocketMetrics, vendorActorOutstanding, vendorActorOutstandingDebt] =
+        metrics;
       return NextResponse.json({
         ...result,
         actorMetrics,
         actorPocketMetrics,
-        vendorActorOutstanding
+        vendorActorOutstanding,
+        vendorActorOutstandingDebt
       });
     }
 
@@ -187,12 +191,14 @@ export async function GET(request: Request) {
       metricsPromise
     ]);
     if (!metrics) return NextResponse.json(result);
-    const [actorMetrics, actorPocketMetrics, vendorActorOutstanding] = metrics;
+    const [actorMetrics, actorPocketMetrics, vendorActorOutstanding, vendorActorOutstandingDebt] =
+      metrics;
     return NextResponse.json({
       ...result,
       actorMetrics,
       actorPocketMetrics,
-      vendorActorOutstanding
+      vendorActorOutstanding,
+      vendorActorOutstandingDebt
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to load ledger entries.";
@@ -281,6 +287,9 @@ export async function POST(request: Request) {
     groupId = group.id;
   }
 
+  const isCredit = settlement.settles_entry_id ? false : Boolean(payload.is_credit);
+  const isDebt = settlement.settles_entry_id || isCredit ? false : Boolean(payload.is_debt);
+
   const mainRow = {
     group_id: groupId,
     entry_date: payload.entry_date,
@@ -296,7 +305,8 @@ export async function POST(request: Request) {
     currency_code: payload.currency_code,
     remark: payload.remark || null,
     responsible_actor_id: payload.responsible_actor_id,
-    is_credit: settlement.settles_entry_id ? false : Boolean(payload.is_credit),
+    is_credit: isCredit,
+    is_debt: isDebt,
     settles_entry_id: settlement.settles_entry_id,
     settlement_conversion_rate: settlement.settlement_conversion_rate,
     settlement_amount_in_credit_currency: settlement.settlement_amount_in_credit_currency,
@@ -328,6 +338,7 @@ export async function POST(request: Request) {
         remark: kursEntry.remark || null,
         responsible_actor_id: kursEntry.responsible_actor_id,
         is_credit: false,
+        is_debt: false,
         created_by: actorId,
         updated_by: actorId
       });
@@ -351,6 +362,7 @@ export async function POST(request: Request) {
         remark: gasEntry.remark || null,
         responsible_actor_id: gasEntry.responsible_actor_id,
         is_credit: false,
+        is_debt: false,
         created_by: actorId,
         updated_by: actorId
       });
@@ -431,6 +443,9 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: settlement.error }, { status: settlement.status });
   }
 
+  const isCredit = settlement.settles_entry_id ? false : Boolean(payload.is_credit);
+  const isDebt = settlement.settles_entry_id || isCredit ? false : Boolean(payload.is_debt);
+
   const { error } = await supabase
     .from("business_ledger_entries")
     .update({
@@ -447,7 +462,8 @@ export async function PATCH(request: Request) {
       currency_code: payload.currency_code,
       remark: payload.remark || null,
       responsible_actor_id: payload.responsible_actor_id,
-      is_credit: settlement.settles_entry_id ? false : Boolean(payload.is_credit),
+      is_credit: isCredit,
+      is_debt: isDebt,
       settles_entry_id: settlement.settles_entry_id,
       settlement_conversion_rate: settlement.settlement_conversion_rate,
       settlement_amount_in_credit_currency: settlement.settlement_amount_in_credit_currency,

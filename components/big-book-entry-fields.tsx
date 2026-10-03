@@ -43,6 +43,7 @@ export type EntryFormState = {
   remark: string;
   responsible_actor_id: string;
   is_credit: boolean;
+  is_debt: boolean;
   settles_entry_id: string;
   settlement_conversion_rate: string;
   settlement_note: string;
@@ -111,6 +112,7 @@ export function createEmptyEntryForm(options: {
     remark: "",
     responsible_actor_id: options.defaultActorId,
     is_credit: false,
+    is_debt: false,
     settles_entry_id: "",
     settlement_conversion_rate: "",
     settlement_note: "",
@@ -579,29 +581,57 @@ export function BigBookEntryFields({
         </span>
       </label>
       {!hideCreditToggle && !isSettlementMode ? (
-        <label className={`flex items-start gap-2 text-sm ${spanClass}`}>
-          <input
-            className="mt-1"
-            type="checkbox"
-            checked={value.is_credit}
-            onChange={(event) =>
-              patch({
-                is_credit: event.target.checked,
-                settles_entry_id: "",
-                settlement_conversion_rate: "",
-                settlement_note: "",
-                close_credit: false,
-                credit_settlement_note: ""
-              })
-            }
-          />
-          <span>
-            <span className="font-medium">Mark as Credit</span>
-            <span className="mt-0.5 block text-xs text-muted">
-              Vendor owes our company this amount. You can record settlement payments later.
+        <>
+          <label className={`flex items-start gap-2 text-sm ${spanClass}`}>
+            <input
+              className="mt-1"
+              type="checkbox"
+              checked={value.is_credit}
+              onChange={(event) =>
+                patch({
+                  is_credit: event.target.checked,
+                  is_debt: event.target.checked ? false : value.is_debt,
+                  settles_entry_id: "",
+                  settlement_conversion_rate: "",
+                  settlement_note: "",
+                  close_credit: false,
+                  credit_settlement_note: ""
+                })
+              }
+            />
+            <span>
+              <span className="font-medium">Mark as Credit</span>
+              <span className="mt-0.5 block text-xs text-muted">
+                Vendor owes our company this amount. You can record settlement payments later.
+              </span>
             </span>
-          </span>
-        </label>
+          </label>
+          <label className={`flex items-start gap-2 text-sm ${spanClass}`}>
+            <input
+              className="mt-1"
+              type="checkbox"
+              checked={value.is_debt}
+              onChange={(event) =>
+                patch({
+                  is_debt: event.target.checked,
+                  is_credit: event.target.checked ? false : value.is_credit,
+                  settles_entry_id: "",
+                  settlement_conversion_rate: "",
+                  settlement_note: "",
+                  close_credit: false,
+                  credit_settlement_note: ""
+                })
+              }
+            />
+            <span>
+              <span className="font-medium">Mark as Debt</span>
+              <span className="mt-0.5 block text-xs text-muted">
+                Our company owes the counterparty this amount (outflow liability). Cannot combine with
+                credit.
+              </span>
+            </span>
+          </label>
+        </>
       ) : null}
     </>
   );

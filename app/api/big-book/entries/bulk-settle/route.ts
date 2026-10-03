@@ -122,6 +122,7 @@ function companionLedgerRow(
     remark: payload.remark || null,
     responsible_actor_id: payload.responsible_actor_id,
     is_credit: false,
+    is_debt: false,
     settles_entry_id: null,
     settlement_conversion_rate: null,
     settlement_amount_in_credit_currency: null,
@@ -339,6 +340,7 @@ export async function POST(request: Request) {
         remark: null,
         responsible_actor_id: credit.responsible_actor_id,
         is_credit: false,
+        is_debt: false,
         settles_entry_id: credit.id,
         settlement_conversion_rate: rateResult.rate,
         settlement_amount_in_credit_currency:
@@ -487,6 +489,7 @@ export async function POST(request: Request) {
       remark: null,
       responsible_actor_id: primary.responsible_actor_id,
       is_credit: false,
+      is_debt: false,
       settles_entry_id: primary.id,
       settlement_conversion_rate: rateResult.rate,
       settlement_amount_in_credit_currency:

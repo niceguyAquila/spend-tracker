@@ -18,6 +18,7 @@ import type {
   BigBookSettlementTargetRef,
   BigBookTypeVendorTypeMap,
   BigBookVendor,
+  BigBookVendorActorOutstandingDebtRow,
   BigBookVendorActorOutstandingRow,
   BigBookVendorType
 } from "@/lib/types";
@@ -95,6 +96,7 @@ type Props = {
   initialActorMetrics?: BigBookActorCurrencyMetrics[];
   initialActorPocketMetrics?: BigBookActorPocketMetrics[];
   initialVendorActorOutstanding?: BigBookVendorActorOutstandingRow[];
+  initialVendorActorOutstandingDebt?: BigBookVendorActorOutstandingDebtRow[];
   initialEntryId?: string;
 };
 
@@ -203,8 +205,11 @@ const CREDIT_STATUS_LABELS: Record<BigBookCreditStatus, string> = {
 function toCreditPayload(form: EntryFormState, settlesEntry: BigBookSettlementTargetRef | null) {
   const settlesEntryId = form.settles_entry_id || null;
   if (!settlesEntryId) {
+    const isCredit = form.is_credit && !form.is_debt;
+    const isDebt = form.is_debt && !form.is_credit;
     return {
-      is_credit: form.is_credit,
+      is_credit: isCredit,
+      is_debt: isDebt,
       settles_entry_id: null,
       settlement_conversion_rate: null,
       settlement_note: "",
@@ -217,6 +222,7 @@ function toCreditPayload(form: EntryFormState, settlesEntry: BigBookSettlementTa
   const rate = sameCurrency ? 1 : Number.isFinite(typedRate) && typedRate > 0 ? typedRate : null;
   return {
     is_credit: false,
+    is_debt: false,
     settles_entry_id: settlesEntryId,
     settlement_conversion_rate: rate,
     settlement_note: form.settlement_note,
@@ -276,6 +282,7 @@ function entryFormFromEntry(entry: BigBookEntry): GroupEntryFormState {
     remark: entry.remark ?? "",
     responsible_actor_id: entry.responsible_actor_id,
     is_credit: entry.is_credit,
+    is_debt: entry.is_debt,
     settles_entry_id: entry.settles_entry_id ?? "",
     settlement_conversion_rate:
       entry.settlement_conversion_rate != null ? formatRateInput(String(entry.settlement_conversion_rate)) : "",
@@ -322,6 +329,7 @@ export function BigBookPanel({
   initialActorMetrics,
   initialActorPocketMetrics,
   initialVendorActorOutstanding,
+  initialVendorActorOutstandingDebt,
   initialEntryId
 }: Props) {
   const router = useRouter();
@@ -404,6 +412,7 @@ export function BigBookPanel({
     remark: "",
     responsible_actor_id: "",
     is_credit: false,
+    is_debt: false,
     settles_entry_id: "",
     settlement_conversion_rate: "",
     settlement_note: "",
@@ -628,7 +637,8 @@ export function BigBookPanel({
       if (
         Array.isArray(data?.actorMetrics) ||
         Array.isArray(data?.actorPocketMetrics) ||
-        Array.isArray(data?.vendorActorOutstanding)
+        Array.isArray(data?.vendorActorOutstanding) ||
+        Array.isArray(data?.vendorActorOutstandingDebt)
       ) {
         setMetricsOverride((prev) => ({
           actorMetrics: Array.isArray(data?.actorMetrics)
@@ -639,7 +649,10 @@ export function BigBookPanel({
             : (prev?.actorPocketMetrics ?? []),
           vendorActorOutstanding: Array.isArray(data?.vendorActorOutstanding)
             ? data.vendorActorOutstanding
-            : (prev?.vendorActorOutstanding ?? [])
+            : (prev?.vendorActorOutstanding ?? []),
+          vendorActorOutstandingDebt: Array.isArray(data?.vendorActorOutstandingDebt)
+            ? data.vendorActorOutstandingDebt
+            : (prev?.vendorActorOutstandingDebt ?? [])
         }));
       }
       // Drop ticked ids that are no longer on screen, so grouping can never act
@@ -834,13 +847,19 @@ export function BigBookPanel({
   // `null` means "still streaming from metricsPromise via Suspense"; after the
   // first mutation refresh we hold an override so cards update in place.
   const [metricsOverride, setMetricsOverride] = useState<BigBookMetricsBundle | null>(() => {
-    if (!initialActorMetrics && !initialActorPocketMetrics && !initialVendorActorOutstanding) {
+    if (
+      !initialActorMetrics &&
+      !initialActorPocketMetrics &&
+      !initialVendorActorOutstanding &&
+      !initialVendorActorOutstandingDebt
+    ) {
       return null;
     }
     return {
       actorMetrics: initialActorMetrics ?? [],
       actorPocketMetrics: initialActorPocketMetrics ?? [],
-      vendorActorOutstanding: initialVendorActorOutstanding ?? []
+      vendorActorOutstanding: initialVendorActorOutstanding ?? [],
+      vendorActorOutstandingDebt: initialVendorActorOutstandingDebt ?? []
     };
   });
 
@@ -860,7 +879,8 @@ export function BigBookPanel({
         const base = prev ?? {
           actorMetrics: [],
           actorPocketMetrics: [],
-          vendorActorOutstanding: []
+          vendorActorOutstanding: [],
+          vendorActorOutstandingDebt: []
         };
         const next = base.actorMetrics.map((row) => ({ ...row, totals: { ...row.totals } }));
         const existing = next.find((row) => row.actor_id === actorId);
@@ -1770,6 +1790,7 @@ export function BigBookPanel({
       remark: "",
       responsible_actor_id: row.responsible_actor_id,
       is_credit: false,
+      is_debt: false,
       settles_entry_id: row.id,
       settlement_conversion_rate: "1",
       settlement_note: "",

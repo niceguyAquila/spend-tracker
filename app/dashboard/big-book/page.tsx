@@ -9,6 +9,7 @@ import {
   getBigBookLedgerTypes,
   getBigBookTypeVendorTypeMaps,
   getBigBookVendorActorOutstanding,
+  getBigBookVendorActorOutstandingDebt,
   getBigBookVendorTypes,
   getBigBookVendors
 } from "@/lib/db/queries";
@@ -51,12 +52,16 @@ export default async function BigBookPage({ searchParams }: BigBookPageProps) {
     const metricsPromise: Promise<BigBookMetricsBundle> = Promise.all([
       perfTimed("getBigBookActorCurrencyMetrics", () => getBigBookActorCurrencyMetrics()),
       perfTimed("getBigBookActorPocketMetrics", () => getBigBookActorPocketMetrics()),
-      perfTimed("getBigBookVendorActorOutstanding", () => getBigBookVendorActorOutstanding())
-    ]).then(([actorMetrics, actorPocketMetrics, vendorActorOutstanding]) => ({
-      actorMetrics,
-      actorPocketMetrics,
-      vendorActorOutstanding
-    }));
+      perfTimed("getBigBookVendorActorOutstanding", () => getBigBookVendorActorOutstanding()),
+      perfTimed("getBigBookVendorActorOutstandingDebt", () => getBigBookVendorActorOutstandingDebt())
+    ]).then(
+      ([actorMetrics, actorPocketMetrics, vendorActorOutstanding, vendorActorOutstandingDebt]) => ({
+        actorMetrics,
+        actorPocketMetrics,
+        vendorActorOutstanding,
+        vendorActorOutstandingDebt
+      })
+    );
 
     const [types, subTypes, vendorTypes, vendors, actionBy, pockets, actors, typeVendorTypeMaps, entriesPage] =
       await Promise.all([

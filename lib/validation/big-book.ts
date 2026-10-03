@@ -137,6 +137,7 @@ const bigBookEntryBaseSchema = z.object({
   remark: z.string().max(1000).optional().or(z.literal("")),
   responsible_actor_id: z.string().uuid("Responsible actor is required"),
   is_credit: z.boolean().optional().default(false),
+  is_debt: z.boolean().optional().default(false),
   settles_entry_id: optionalUuidOrEmpty("Settlement target must be a valid id"),
   settlement_conversion_rate: z.coerce.number().positive().nullable().optional(),
   settlement_note: optionalNoteSchema,
@@ -162,17 +163,32 @@ const optionalKursAmountSchema = z.preprocess((value) => {
 function refineBigBookEntryCreditFields<
   T extends {
     is_credit?: boolean;
+    is_debt?: boolean;
     settles_entry_id?: string | null;
     settlement_conversion_rate?: number | null;
     close_credit?: boolean;
     currency_code?: string;
   }
 >(value: T, ctx: z.RefinementCtx) {
+  if (value.is_credit && value.is_debt) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "An entry cannot be marked as both credit and debt.",
+      path: ["is_debt"]
+    });
+  }
   if (value.is_credit && value.settles_entry_id) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: "A settlement entry cannot also be marked as credit.",
       path: ["is_credit"]
+    });
+  }
+  if (value.is_debt && value.settles_entry_id) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "A settlement entry cannot also be marked as debt.",
+      path: ["is_debt"]
     });
   }
   // Conversion rate / settlement_amount_in_credit_currency are optional on input.
@@ -312,6 +328,7 @@ export const bigBookBulkSettleSchema = z
 
 const bigBookGroupEntryInputSchema = bigBookEntryBaseSchema.omit({
   is_credit: true,
+  is_debt: true,
   settles_entry_id: true,
   settlement_conversion_rate: true,
   settlement_note: true,

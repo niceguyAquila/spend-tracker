@@ -711,10 +711,62 @@ describe("big book entries route", () => {
     expect(response.status).toBe(200);
     expect(insertMock.mock.calls[0][0]).toMatchObject({
       is_credit: true,
+      is_debt: false,
       settles_entry_id: null,
       settlement_conversion_rate: null,
       settlement_amount_in_credit_currency: null
     });
+  });
+
+  it("creates a debt entry when is_debt is true", async () => {
+    const { POST } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_date: "2026-04-23",
+        entry_direction: "spending",
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        explanation: "We owe vendor",
+        amount: 1000,
+        currency_code: "USDT",
+        remark: "",
+        responsible_actor_id: "22222222-2222-4222-8222-222222222222",
+        is_debt: true
+      })
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    expect(insertMock.mock.calls[0][0]).toMatchObject({
+      is_credit: false,
+      is_debt: true,
+      settles_entry_id: null
+    });
+  });
+
+  it("rejects is_credit and is_debt together on create", async () => {
+    const { POST } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_date: "2026-04-23",
+        entry_direction: "spending",
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        explanation: "Both flags",
+        amount: 1000,
+        currency_code: "USDT",
+        remark: "",
+        responsible_actor_id: "22222222-2222-4222-8222-222222222222",
+        is_credit: true,
+        is_debt: true
+      })
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+    expect(insertMock).not.toHaveBeenCalled();
   });
 
   it("creates a same-currency settlement and forces conversion rate to 1", async () => {
