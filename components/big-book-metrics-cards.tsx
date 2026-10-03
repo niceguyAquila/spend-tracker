@@ -222,9 +222,13 @@ export function BigBookMetricsCardsView({
           <h2 className="text-lg font-semibold">Outstanding Debt by Vendor and Actor (All Time)</h2>
           <p className="mt-1 text-sm text-muted">
             Total of open debts (we owe the counterparty, not yet settled) by vendor and actor, per
-            currency. Amounts are shown in red.
+            currency. Amounts are shown in red. Record payment creates an Out ledger entry that hits
+            totals and can close the debt.
           </p>
-          <BigBookVendorActorOutstandingDebtTable rows={vendorActorOutstandingDebt} />
+          <BigBookVendorActorOutstandingDebtTable
+            rows={vendorActorOutstandingDebt}
+            onSettled={onOutstandingSettled}
+          />
         </section>
       </div>
     </>

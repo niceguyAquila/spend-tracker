@@ -25,7 +25,7 @@ export async function PATCH(request: Request) {
 
   const { data: entry, error: lookupError } = await supabase
     .from("business_ledger_entries")
-    .select("id, is_credit")
+    .select("id, is_credit, is_debt")
     .eq("id", id)
     .maybeSingle();
 
@@ -35,24 +35,50 @@ export async function PATCH(request: Request) {
   if (!entry) {
     return NextResponse.json({ error: "Entry not found." }, { status: 404 });
   }
-  if (!entry.is_credit) {
-    return NextResponse.json({ error: "Only credit entries can be marked settled." }, { status: 400 });
+
+  const isCredit = Boolean(entry.is_credit);
+  const isDebt = Boolean(entry.is_debt);
+  if (!isCredit && !isDebt) {
+    return NextResponse.json(
+      { error: "Only credit or debt entries can be marked settled." },
+      { status: 400 }
+    );
+  }
+  if (isCredit && isDebt) {
+    return NextResponse.json(
+      { error: "Entry cannot be both credit and debt." },
+      { status: 400 }
+    );
   }
 
   const actorId = authCheck.user.id;
-  const closureFields = settled
-    ? {
-        credit_settled_at: new Date().toISOString(),
-        credit_settled_by: actorId,
-        credit_settlement_note: note ?? null,
-        updated_by: actorId
-      }
-    : {
-        credit_settled_at: null,
-        credit_settled_by: null,
-        credit_settlement_note: null,
-        updated_by: actorId
-      };
+  const closureFields = isDebt
+    ? settled
+      ? {
+          debt_settled_at: new Date().toISOString(),
+          debt_settled_by: actorId,
+          debt_settlement_note: note ?? null,
+          updated_by: actorId
+        }
+      : {
+          debt_settled_at: null,
+          debt_settled_by: null,
+          debt_settlement_note: null,
+          updated_by: actorId
+        }
+    : settled
+      ? {
+          credit_settled_at: new Date().toISOString(),
+          credit_settled_by: actorId,
+          credit_settlement_note: note ?? null,
+          updated_by: actorId
+        }
+      : {
+          credit_settled_at: null,
+          credit_settled_by: null,
+          credit_settlement_note: null,
+          updated_by: actorId
+        };
 
   const { error } = await supabase
     .from("business_ledger_entries")
@@ -63,5 +89,9 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  return NextResponse.json({ ok: true, settled });
+  return NextResponse.json({
+    ok: true,
+    settled,
+    kind: isDebt ? "debt" : "credit"
+  });
 }

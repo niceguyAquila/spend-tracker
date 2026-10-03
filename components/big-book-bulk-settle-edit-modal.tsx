@@ -18,6 +18,7 @@ import { sortByDisplayLabel } from "@/lib/ui/sort-by-display-label";
 
 export type BulkSettleMode = "single" | "per_credit";
 export type BulkSettleCurrency = "IDR" | "MYR" | "USDT" | "TRX";
+export type BulkSettleVariant = "credit" | "debt";
 
 export type BulkSettleCreditDraft = {
   id: string;
@@ -57,6 +58,8 @@ type Props = {
   error: string | null;
   onOpenChange: (open: boolean) => void;
   onSubmit: (payload: BulkSettleSubmitPayload) => void;
+  /** Credit settle (default) vs debt payment — debt hides PROFIT/KURS and uses Out payment copy. */
+  variant?: BulkSettleVariant;
 };
 
 const CURRENCY_OPTIONS: BulkSettleCurrency[] = sortByDisplayLabel(
@@ -78,8 +81,11 @@ export function BigBookBulkSettleEditModal({
   submitting,
   error,
   onOpenChange,
-  onSubmit
+  onSubmit,
+  variant = "credit"
 }: Props) {
+  const isDebt = variant === "debt";
+  const obligationLabel = isDebt ? "debt" : "credit";
   const creditCurrency = draft?.credits[0]?.currency_code ?? "IDR";
   const creditTotal = useMemo(
     () => (draft?.credits ?? []).reduce((sum, row) => sum + Math.abs(row.amount), 0),
@@ -116,18 +122,26 @@ export function BigBookBulkSettleEditModal({
     setKursAmount("");
     setNote("");
     setCloseCredits(true);
+    setIncludeProfit(false);
+    setProfitAmount("");
+    setKursRate("");
+    setKursAmount("");
     setExplanation(
       draft.mode === "single" && draft.credits.length > 1
-        ? `Bulk settlement for ${draft.credits.length} open credits`
+        ? isDebt
+          ? `Bulk debt payment for ${draft.credits.length} open debts`
+          : `Bulk settlement for ${draft.credits.length} open credits`
         : draft.credits.length === 1
-          ? `Settlement for: ${draft.credits[0].explanation}`
+          ? isDebt
+            ? `Debt payment for: ${draft.credits[0].explanation}`
+            : `Settlement for: ${draft.credits[0].explanation}`
           : ""
     );
-  }, [open, draft]);
+  }, [open, draft, isDebt]);
 
   const sameCurrency = currencyCode === creditCurrency && !mixedCreditCurrency;
   const showConversionRate = !sameCurrency && !mixedCreditCurrency;
-  const showUsdtKurs = currencyCode === "USDT" && !mixedCreditCurrency;
+  const showUsdtKurs = !isDebt && currencyCode === "USDT" && !mixedCreditCurrency;
   const rateValue = sameCurrency ? 1 : Number(conversionRate);
   const amountValue = Number(parseAmountInput(amount));
   const profitValue = Number(parseAmountInput(profitAmount));
@@ -171,15 +185,15 @@ export function BigBookBulkSettleEditModal({
 
   const blockedReason =
     draft.mode === "single" && mixedCreditCurrency
-      ? "One settlement for all requires the same credit currency. Switch to one settlement per credit, or select a single-currency set."
-      : hasPositiveProfit && mixedCreditCurrency
+      ? `One ${isDebt ? "payment" : "settlement"} for all requires the same ${obligationLabel} currency. Switch to one ${isDebt ? "payment" : "settlement"} per ${obligationLabel}, or select a single-currency set.`
+      : !isDebt && hasPositiveProfit && mixedCreditCurrency
         ? "PROFIT requires a single credit currency so the surcharge matches the credits."
-        : currencyCode === "USDT" && mixedCreditCurrency && hasPositiveRate
+        : !isDebt && currencyCode === "USDT" && mixedCreditCurrency && hasPositiveRate
           ? "USDT conversion needs a single credit currency so one company rate applies. Clear the rate, settle same-currency credits together, or settle in each credit's own currency."
           : draft.mode === "single" && !isAmountValid
-            ? "Enter a settlement amount greater than 0."
+            ? `Enter a ${isDebt ? "payment" : "settlement"} amount greater than 0.`
             : !entryDate
-              ? "Choose a settlement date."
+              ? `Choose a ${isDebt ? "payment" : "settlement"} date.`
               : null;
   const canSubmit = !submitting && blockedReason == null;
 
@@ -279,9 +293,13 @@ export function BigBookBulkSettleEditModal({
         onOpenChange(next);
       }}
       title={
-        draft.mode === "single"
-          ? "Edit bulk settlement"
-          : "Edit per-credit settlements"
+        isDebt
+          ? draft.mode === "single"
+            ? "Edit debt payment"
+            : "Edit per-debt payments"
+          : draft.mode === "single"
+            ? "Edit bulk settlement"
+            : "Edit per-credit settlements"
       }
       size="lg"
       dismissible={!submitting}
@@ -340,9 +358,13 @@ export function BigBookBulkSettleEditModal({
           >
             {submitting
               ? "Saving..."
-              : draft.mode === "single"
-                ? "Record settlement"
-                : `Record ${draft.credits.length} settlements`}
+              : isDebt
+                ? draft.mode === "single"
+                  ? "Record payment"
+                  : `Record ${draft.credits.length} payments`
+                : draft.mode === "single"
+                  ? "Record settlement"
+                  : `Record ${draft.credits.length} settlements`}
           </button>
         </>
       }
@@ -350,13 +372,21 @@ export function BigBookBulkSettleEditModal({
       <div className="space-y-3 text-sm">
         <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-3">
           <p>
-            Settling <span className="font-medium">{draft.credits.length}</span> open credit
+            {isDebt ? "Paying" : "Settling"}{" "}
+            <span className="font-medium">{draft.credits.length}</span> open {obligationLabel}
             {draft.credits.length === 1 ? "" : "s"} for{" "}
             <span className="font-medium">{draft.label}</span>
-            {draft.mode === "single" ? " as one settlement" : " (one settlement per credit)"}.
+            {draft.mode === "single"
+              ? isDebt
+                ? " as one Out payment"
+                : " as one settlement"
+              : isDebt
+                ? " (one Out payment per debt)"
+                : " (one settlement per credit)"}
+            .
           </p>
           <p className="mt-1 text-xs text-muted">
-            Base (credit total):{" "}
+            Base ({obligationLabel} total):{" "}
             {formatAmount(creditTotal, {
               minimumFractionDigits: 0,
               maximumFractionDigits: 4
@@ -416,59 +446,63 @@ export function BigBookBulkSettleEditModal({
               <option key={currency} value={currency}>
                 {currency}
                 {currency === creditCurrency && !mixedCreditCurrency
-                  ? " (credit currency)"
+                  ? ` (${obligationLabel} currency)`
                   : ""}
               </option>
             ))}
           </select>
         </label>
 
-        <label className="flex items-start gap-2 text-sm">
-          <input
-            className="mt-1"
-            type="checkbox"
-            checked={includeProfit}
-            onChange={(event) => applyIncludeProfit(event.target.checked)}
-            disabled={mixedCreditCurrency}
-          />
-          <span>
-            <span className="font-medium">Include PROFIT</span>
-            <span className="mt-0.5 block text-xs text-muted">
-              Optional. Creates a separate PROFIT-type inflow in the credit currency
-              {currencyCode === "USDT" && !sameCurrency
-                ? ". When enabled with an amount > 0, USDT uses (base + profit) ÷ rate."
-                : "."}
-            </span>
-          </span>
-        </label>
-
-        {includeProfit ? (
-          <label className="block text-sm">
-            PROFIT amount
-            <div className="mt-1 flex overflow-hidden rounded-md border border-[rgb(var(--border))] focus-within:shadow-[0_0_0_3px_rgba(var(--focus),0.25)]">
+        {!isDebt ? (
+          <>
+            <label className="flex items-start gap-2 text-sm">
               <input
-                className="min-w-0 flex-1 border-0 bg-[rgb(var(--surface))] px-3 py-2 text-right text-base font-medium text-[rgb(var(--text))] focus:outline-none"
-                inputMode="decimal"
-                placeholder="0"
-                value={profitAmount}
-                onChange={(event) => applyProfitAmount(formatAmountInput(event.target.value))}
-                aria-label="PROFIT amount"
+                className="mt-1"
+                type="checkbox"
+                checked={includeProfit}
+                onChange={(event) => applyIncludeProfit(event.target.checked)}
                 disabled={mixedCreditCurrency}
               />
-              <span
-                className="shrink-0 border-0 border-l border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] px-2 py-2 text-sm font-medium text-[rgb(var(--text))]"
-                aria-hidden
-              >
-                {mixedCreditCurrency ? "—" : creditCurrency}
+              <span>
+                <span className="font-medium">Include PROFIT</span>
+                <span className="mt-0.5 block text-xs text-muted">
+                  Optional. Creates a separate PROFIT-type inflow in the credit currency
+                  {currencyCode === "USDT" && !sameCurrency
+                    ? ". When enabled with an amount > 0, USDT uses (base + profit) ÷ rate."
+                    : "."}
+                </span>
               </span>
-            </div>
-            <span className="mt-1 block text-xs text-muted">
-              Enter amount in credit currency when including PROFIT
-              {currencyCode === "USDT" && !sameCurrency
-                ? ". Included in USDT amount as (base + profit) ÷ rate."
-                : "."}
-            </span>
-          </label>
+            </label>
+
+            {includeProfit ? (
+              <label className="block text-sm">
+                PROFIT amount
+                <div className="mt-1 flex overflow-hidden rounded-md border border-[rgb(var(--border))] focus-within:shadow-[0_0_0_3px_rgba(var(--focus),0.25)]">
+                  <input
+                    className="min-w-0 flex-1 border-0 bg-[rgb(var(--surface))] px-3 py-2 text-right text-base font-medium text-[rgb(var(--text))] focus:outline-none"
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={profitAmount}
+                    onChange={(event) => applyProfitAmount(formatAmountInput(event.target.value))}
+                    aria-label="PROFIT amount"
+                    disabled={mixedCreditCurrency}
+                  />
+                  <span
+                    className="shrink-0 border-0 border-l border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] px-2 py-2 text-sm font-medium text-[rgb(var(--text))]"
+                    aria-hidden
+                  >
+                    {mixedCreditCurrency ? "—" : creditCurrency}
+                  </span>
+                </div>
+                <span className="mt-1 block text-xs text-muted">
+                  Enter amount in credit currency when including PROFIT
+                  {currencyCode === "USDT" && !sameCurrency
+                    ? ". Included in USDT amount as (base + profit) ÷ rate."
+                    : "."}
+                </span>
+              </label>
+            ) : null}
+          </>
         ) : null}
 
         {draft.mode === "single" ? (
@@ -609,9 +643,12 @@ export function BigBookBulkSettleEditModal({
             onChange={(event) => setCloseCredits(event.target.checked)}
           />
           <span>
-            <span className="font-medium">Mark selected credits as settled</span>
+            <span className="font-medium">
+              Mark selected {isDebt ? "debts" : "credits"} as settled
+            </span>
             <span className="mt-0.5 block text-xs text-muted">
-              Closing is an admin decision — payment amount does not need to match each credit.
+              Closing is an admin decision — payment amount does not need to match each{" "}
+              {obligationLabel}.
             </span>
           </span>
         </label>

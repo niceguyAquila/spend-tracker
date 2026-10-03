@@ -156,8 +156,12 @@ export type BigBookSettlementTargetRef = {
   amount: number;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
   vendor_name: string | null;
-  credit_status: BigBookCreditStatus;
+  /** True when the settlement target is a debt obligation (pay outflow). */
+  is_debt: boolean;
+  credit_status: BigBookCreditStatus | null;
   credit_settled_at: string | null;
+  debt_status: BigBookDebtStatus | null;
+  debt_settled_at: string | null;
 };
 
 export type BigBookEntry = {
