@@ -37,6 +37,7 @@ import {
 } from "@/components/big-book-metrics-cards";
 import { BigBookGroupHeaderRow } from "@/components/big-book-group-row";
 import { BigBookEntryRow } from "@/components/big-book-entry-row";
+import { LinkifyText } from "@/lib/linkify-text";
 
 // Heavy form UI only needed when a create/edit/settlement modal opens.
 const BigBookEntryFields = dynamic(
@@ -3030,7 +3031,10 @@ export function BigBookPanel({
           </button>
         }
       >
-        <p className="whitespace-pre-wrap break-words text-sm text-muted">{viewingRemark?.text ?? ""}</p>
+        <p className="whitespace-pre-wrap break-words text-sm text-muted">
+          <LinkifyText text={viewingRemark?.text ?? ""} />
+        </p>
+
       </Modal>
 
       <Modal
