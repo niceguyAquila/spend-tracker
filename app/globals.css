@@ -11,6 +11,11 @@
     --text: 15 23 42;
     --text-muted: 71 85 105;
     --border: 203 213 225;
+    /* Ink slate table headers (#334155) — keep CTAs on --primary */
+    --table-header-bg: 51 65 85;
+    --table-header-fg: 255 255 255;
+    --table-header-fg-muted: 226 232 240;
+    --table-header-border: 71 85 105;
     --primary: 59 130 246;
     --primary-strong: 79 70 229;
     --focus: 96 165 250;
@@ -29,6 +34,10 @@
     --text: 229 231 235;
     --text-muted: 148 163 184;
     --border: 71 85 105;
+    --table-header-bg: 51 65 85;
+    --table-header-fg: 255 255 255;
+    --table-header-fg-muted: 226 232 240;
+    --table-header-border: 100 116 139;
     --primary: 96 165 250;
     --primary-strong: 129 140 248;
     --focus: 125 211 252;
@@ -103,8 +112,20 @@ body {
 }
 
 .data-table thead {
-  @apply border-b bg-[rgb(var(--surface-muted))] text-left;
-  border-color: rgb(var(--border));
+  @apply border-b text-left;
+  background-color: rgb(var(--table-header-bg));
+  color: rgb(var(--table-header-fg));
+  border-color: rgb(var(--table-header-border));
+}
+
+.data-table thead th,
+.data-table thead th button {
+  color: inherit;
+}
+
+/* Secondary header labels stay readable on the dark ink slate header */
+.data-table thead .text-muted {
+  color: rgb(var(--table-header-fg-muted));
 }
 
 .data-table th,
@@ -137,6 +158,7 @@ body {
   position: sticky;
   top: 0;
   z-index: 20;
-  background-color: rgb(var(--surface-muted));
-  box-shadow: inset 0 -1px 0 rgb(var(--border));
+  background-color: rgb(var(--table-header-bg));
+  color: rgb(var(--table-header-fg));
+  box-shadow: inset 0 -1px 0 rgb(var(--table-header-border));
 }

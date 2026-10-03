@@ -675,7 +675,7 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
 
       <div className="overflow-x-auto">
         <table className="data-table min-w-[980px]">
-          <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
+          <thead>
             <tr>
               <th className="w-10 px-3 py-2" aria-label="Select" />
               <th className="w-10 px-3 py-2" aria-label="Expand" />
@@ -1069,7 +1069,7 @@ function OutstandingNestedTableLoaded({
         </p>
       ) : null}
       <table className="data-table min-w-full">
-        <thead className="border-b border-[rgb(var(--border))] text-left text-xs text-muted">
+        <thead className="text-xs text-muted">
           <tr>
             <th className="px-3 py-1.5 font-medium">
               <input

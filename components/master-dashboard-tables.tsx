@@ -36,7 +36,7 @@ export function MasterDashboardCashflowTable({ sourceRowsByCurrency }: MasterDas
     <>
       <div className="mt-4 overflow-x-auto">
         <table className="data-table min-w-[980px]">
-          <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
+          <thead>
             <tr>
               <th className="px-3 py-2">Currency</th>
               <th className="px-3 py-2">Actor</th>
@@ -201,7 +201,7 @@ export function MasterDashboardBigBookTypeCashflowTable({
   return (
     <div className="mt-4 overflow-x-auto">
       <table className="data-table min-w-[980px]">
-        <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
+        <thead>
           <tr>
             <th className="px-3 py-2">Currency</th>
             <th className="px-3 py-2">Actor</th>
@@ -279,7 +279,7 @@ export function MasterDashboardCreditBookTypeCashflowTable({
   return (
     <div className="mt-4 overflow-x-auto">
       <table className="data-table min-w-[1080px]">
-        <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
+        <thead>
           <tr>
             <th className="px-3 py-2">Currency</th>
             <th className="px-3 py-2">Actor</th>
