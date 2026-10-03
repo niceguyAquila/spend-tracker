@@ -61,6 +61,21 @@ function buildLoginRedirect(request: NextRequest, error?: string): NextResponse 
   return response;
 }
 
+/** API callers expect JSON (or CSV), not an HTML login redirect that fetch would follow. */
+function buildUnauthorizedApiResponse(error?: string): NextResponse {
+  const message = error === "session-expired" ? "Session expired" : "Unauthorized";
+  const response = NextResponse.json({ error: message }, { status: 401 });
+  response.cookies.set(SESSION_META_COOKIE, "", clearCookieOptions());
+  return response;
+}
+
+function denyProtectedRequest(request: NextRequest, error?: string): NextResponse {
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    return buildUnauthorizedApiResponse(error);
+  }
+  return buildLoginRedirect(request, error);
+}
+
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
 
@@ -73,7 +88,7 @@ export async function middleware(request: NextRequest) {
   const { response, user } = await updateSession(request);
 
   if (!user) {
-    return buildLoginRedirect(request);
+    return denyProtectedRequest(request);
   }
 
   const metaCookie = request.cookies.get(SESSION_META_COOKIE)?.value;
@@ -85,7 +100,7 @@ export async function middleware(request: NextRequest) {
     status.kind === "idle-expired" ||
     status.kind === "absolute-expired"
   ) {
-    return buildLoginRedirect(request, "session-expired");
+    return denyProtectedRequest(request, "session-expired");
   }
 
   const next = await rolled(status.meta);
