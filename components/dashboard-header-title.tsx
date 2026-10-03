@@ -1,5 +1,6 @@
 "use client";
 
+/** Shell brand label removed — sidebar/nav already names the current page. */
 export function DashboardHeaderTitle() {
-  return <p className="text-sm font-medium text-muted">Finance Operations Hub</p>;
+  return null;
 }

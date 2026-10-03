@@ -201,23 +201,27 @@ export function BigBookEntryFields({
   );
   const sortedActors = sortByDisplayLabel(actors, (row) => row.display_name);
   const sortedCurrencies = sortByDisplayLabel(currencies, (row) => row);
-  const pocketsForForm = sortByDisplayLabel(
-    pockets.filter(
-      (row) =>
-        row.is_active &&
-        row.actor_id === value.responsible_actor_id &&
-        row.currency_code === value.currency_code
-    ),
-    (row) => row.name
-  );
-  const pocketDisabled = value.currency_code !== "IDR" || !pocketsForForm.length;
-  const pocketHint =
-    value.currency_code !== "IDR"
-      ? "Pockets are IDR-only"
-      : !pocketsForForm.length
-        ? "No pockets for this actor yet"
-        : null;
+  // Pocket UI removed from create/edit; pocket_id stays in state/API (optional/empty).
+  void pockets;
   const isSettlementMode = Boolean(settlesEntry || value.settles_entry_id);
+  const settlementKind: "none" | "credit" | "debt" = value.is_credit
+    ? "credit"
+    : value.is_debt
+      ? "debt"
+      : "none";
+  const showSettlementType = !hideCreditToggle && !isSettlementMode;
+
+  function applySettlementKind(next: "none" | "credit" | "debt") {
+    patch({
+      is_credit: next === "credit",
+      is_debt: next === "debt",
+      settles_entry_id: "",
+      settlement_conversion_rate: "",
+      settlement_note: "",
+      close_credit: false,
+      credit_settlement_note: ""
+    });
+  }
   // Cross-currency settlement: admin enters company rate under Amount.
   // Convention: rate = credit_currency units per 1 settlement_currency unit;
   // settlement_amount = credit_amount / rate.
@@ -580,60 +584,65 @@ export function BigBookEntryFields({
               : "Set Type → Vendor Type mappings in Big Book Settings to auto-fill."}
         </span>
       </label>
-      {!hideCreditToggle && !isSettlementMode ? (
-        <>
-          <label className={`flex items-start gap-2 text-sm ${spanClass}`}>
-            <input
-              className="mt-1"
-              type="checkbox"
-              checked={value.is_credit}
-              onChange={(event) =>
-                patch({
-                  is_credit: event.target.checked,
-                  is_debt: event.target.checked ? false : value.is_debt,
-                  settles_entry_id: "",
-                  settlement_conversion_rate: "",
-                  settlement_note: "",
-                  close_credit: false,
-                  credit_settlement_note: ""
-                })
-              }
-            />
-            <span>
-              <span className="font-medium">Mark as Credit</span>
-              <span className="mt-0.5 block text-xs text-muted">
-                Vendor owes our company this amount. You can record settlement payments later.
-              </span>
-            </span>
-          </label>
-          <label className={`flex items-start gap-2 text-sm ${spanClass}`}>
-            <input
-              className="mt-1"
-              type="checkbox"
-              checked={value.is_debt}
-              onChange={(event) =>
-                patch({
-                  is_debt: event.target.checked,
-                  is_credit: event.target.checked ? false : value.is_credit,
-                  settles_entry_id: "",
-                  settlement_conversion_rate: "",
-                  settlement_note: "",
-                  close_credit: false,
-                  credit_settlement_note: ""
-                })
-              }
-            />
-            <span>
-              <span className="font-medium">Mark as Debt</span>
-              <span className="mt-0.5 block text-xs text-muted">
-                Our company owes the counterparty this amount (outflow liability). Cannot combine with
-                credit.
-              </span>
-            </span>
-          </label>
-        </>
-      ) : null}
     </>
+  );
+
+  const settlementTypeFields = (
+    <div
+      className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${spanClass}`}
+      role="radiogroup"
+      aria-label="Settlement Type"
+    >
+      {(
+        [
+          {
+            kind: "credit" as const,
+            title: "Credit",
+            subtitle: "Vendor owes our company"
+          },
+          {
+            kind: "debt" as const,
+            title: "Debt",
+            subtitle: "Our company owes the vendor"
+          }
+        ] as const
+      ).map((option) => {
+        const selected = settlementKind === option.kind;
+        return (
+          <button
+            key={option.kind}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            className={`rounded-lg border px-4 py-3 text-left transition ${
+              selected
+                ? "border-[rgb(var(--primary))] bg-[rgb(var(--primary)/0.08)] shadow-[0_0_0_1px_rgb(var(--primary)/0.35)]"
+                : "border-[rgb(var(--border))] bg-[rgb(var(--surface))] hover:border-[rgb(var(--primary)/0.45)] hover:bg-[rgb(var(--surface-muted))]"
+            }`}
+            onClick={() => applySettlementKind(selected ? "none" : option.kind)}
+          >
+            <span className="flex items-start gap-3">
+              <span
+                className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                  selected
+                    ? "border-[rgb(var(--primary))] bg-[rgb(var(--primary))]"
+                    : "border-[rgb(var(--border))] bg-[rgb(var(--surface))]"
+                }`}
+                aria-hidden
+              >
+                {selected ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
+              </span>
+              <span>
+                <span className="block text-sm font-semibold text-[rgb(var(--text))]">
+                  {option.title}
+                </span>
+                <span className="mt-0.5 block text-xs text-muted">{option.subtitle}</span>
+              </span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 
   const attributionFields = (
@@ -671,23 +680,6 @@ export function BigBookEntryFields({
             </option>
           ))}
         </select>
-      </label>
-      <label className="text-sm">
-        Pocket
-        <select
-          className="field mt-1"
-          value={value.pocket_id}
-          onChange={(event) => patch({ pocket_id: event.target.value })}
-          disabled={pocketDisabled}
-        >
-          <option value="">(none)</option>
-          {pocketsForForm.map((pocket) => (
-            <option key={pocket.id} value={pocket.id}>
-              {pocket.name}
-            </option>
-          ))}
-        </select>
-        {pocketHint ? <span className="mt-1 block text-xs text-muted">{pocketHint}</span> : null}
       </label>
     </>
   );
@@ -736,7 +728,7 @@ export function BigBookEntryFields({
   );
 
   return (
-    <div className="space-y-5">
+    <div className={isNested ? "space-y-4" : "space-y-6"}>
       {settlesEntry ? (
         <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-3 text-sm">
           <p className="font-medium">Settling credit</p>
@@ -761,24 +753,35 @@ export function BigBookEntryFields({
       ) : null}
 
       {isNested ? (
-        <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2`}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {moneyFields}
           {classificationFields}
+          {showSettlementType ? settlementTypeFields : null}
           {attributionFields}
           {moreDetailsFields}
         </div>
       ) : (
         <>
-          <FormSection title="Money & timing" columns={columns}>
+          <FormSection step="01" title="Money & timing" columns={columns}>
             {moneyFields}
           </FormSection>
-          <FormSection title="Classification" columns={columns}>
+          <FormSection step="02" title="Classification" columns={columns}>
             {classificationFields}
           </FormSection>
-          <FormSection title="Attribution" columns={columns}>
+          {showSettlementType ? (
+            <FormSection step="03" title="Settlement Type" columns={columns}>
+              {settlementTypeFields}
+            </FormSection>
+          ) : null}
+          <FormSection
+            step={showSettlementType ? "04" : "03"}
+            title="Attribution"
+            columns={columns}
+          >
             {attributionFields}
           </FormSection>
           <FormSection
+            step={showSettlementType ? "05" : "04"}
             title="More details"
             columns={columns}
             collapsible
