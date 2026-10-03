@@ -11,6 +11,7 @@ import type {
   CreditBookLedgerType
 } from "@/lib/types";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
+import { downloadCsvBlob, readExportErrorMessage } from "@/lib/client/csv-download";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
@@ -760,33 +761,25 @@ export function CreditBigBookPanel({
       for (const status of statusFilter) params.append("status", status);
 
       const url = `/api/credit-big-book/export${params.toString() ? `?${params.toString()}` : ""}`;
-      const response = await fetch(url);
-      if (handleUnauthorizedResponse(response)) return;
-      if (!response.ok) {
-        let errorMessage = "Failed to export ledger entries.";
-        try {
-          const data = await response.json();
-          errorMessage = extractApiError(data?.error, errorMessage);
-        } catch {
-          // ignore JSON parse errors; keep default message
-        }
-        setError(errorMessage);
+      const response = await fetch(url, {
+        headers: { Accept: "text/csv, application/json" },
+        redirect: "manual"
+      });
+      if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400)) {
+        setError("Export failed: unexpected redirect instead of CSV.");
         return;
       }
-      const blob = await response.blob();
+      if (handleUnauthorizedResponse(response)) return;
+      if (!response.ok) {
+        setError(await readExportErrorMessage(response));
+        return;
+      }
       const today = new Date().toISOString().slice(0, 10);
       const filename = `credit-big-book-export-${today}.csv`;
-      const downloadUrl = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = downloadUrl;
-      anchor.download = filename;
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-      URL.revokeObjectURL(downloadUrl);
+      await downloadCsvBlob(response, filename);
       setMessage("Exported ledger entries to CSV.");
-    } catch {
-      setError("Failed to export ledger entries due to a network error.");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Failed to export ledger entries due to a network error.");
     } finally {
       setExportSubmitting(false);
     }
