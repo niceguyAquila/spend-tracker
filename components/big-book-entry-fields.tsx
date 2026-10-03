@@ -13,6 +13,7 @@ import type {
   BigBookVendorType
 } from "@/lib/types";
 import { formatAmount } from "@/lib/display-format";
+import { FieldHintTooltip } from "@/components/ui/field-hint-tooltip";
 import { FormSection } from "@/components/ui/form-section";
 import {
   computeSettlementAmountFromCredit,
@@ -423,7 +424,18 @@ export function BigBookEntryFields({
       </label>
       {showConversionRate && settlesEntry ? (
         <label className={`text-sm ${spanClass}`}>
-          Conversion Rate (1 {value.currency_code} = ? {settlesEntry.currency_code})
+          <span className="inline-flex items-center gap-1.5">
+            Conversion Rate (1 {value.currency_code} = ? {settlesEntry.currency_code})
+            <FieldHintTooltip
+              label="Conversion rate help"
+              content={
+                <>
+                  Optional. When set, amount in {value.currency_code} = credit amount ÷ rate.
+                  Credit-currency equivalent is not required to save.
+                </>
+              }
+            />
+          </span>
           <div className="mt-1 flex gap-2">
             <input
               className="field flex-1"
@@ -445,9 +457,8 @@ export function BigBookEntryFields({
               </button>
             ) : null}
           </div>
-          <span className="mt-1 block text-xs text-muted">
-            Optional. When set, amount in {value.currency_code} = credit amount ÷ rate. Credit-currency
-            equivalent is not required to save. Equivalent in {settlesEntry.currency_code}:{" "}
+          <span className="mt-1 block text-xs tabular-nums text-muted">
+            Equivalent in {settlesEntry.currency_code}:{" "}
             {(() => {
               const rate = Number(value.settlement_conversion_rate);
               const settleAmount = Number(parseAmountInput(value.amount));
@@ -462,7 +473,13 @@ export function BigBookEntryFields({
       ) : null}
       {showGasFee && value.currency_code === "USDT" ? (
         <label className="text-sm">
-          Gas fee
+          <span className="inline-flex items-center gap-1.5">
+            Gas fee
+            <FieldHintTooltip
+              label="Gas fee help"
+              content="Optional. Creates a grouped TRX spending entry."
+            />
+          </span>
           <div className="mt-1 flex overflow-hidden rounded-md border border-[rgb(var(--border))] focus-within:shadow-[0_0_0_3px_rgba(var(--focus),0.25)]">
             <input
               className="min-w-0 flex-1 border-0 bg-[rgb(var(--surface))] px-3 py-2 text-right text-base font-medium text-[rgb(var(--text))] focus:outline-none"
@@ -479,13 +496,18 @@ export function BigBookEntryFields({
               TRX
             </span>
           </div>
-          <span className="mt-1 block text-xs text-muted">Optional. Creates a grouped TRX spending entry.</span>
         </label>
       ) : null}
       {showKursFields ? (
         <>
           <label className="text-sm">
-            KURS
+            <span className="inline-flex items-center gap-1.5">
+              KURS
+              <FieldHintTooltip
+                label="KURS rate help"
+                content="Optional. Companion amount = amount × (1 − rate)."
+              />
+            </span>
             <input
               className="field mt-1 text-right"
               inputMode="decimal"
@@ -494,12 +516,15 @@ export function BigBookEntryFields({
               onChange={(event) => patch({ kurs_rate: formatRateInput(event.target.value) })}
               aria-label="KURS rate"
             />
-            <span className="mt-1 block text-xs text-muted">
-              Optional. Companion amount = amount × (1 − rate).
-            </span>
           </label>
           <label className="text-sm">
-            KURS amount
+            <span className="inline-flex items-center gap-1.5">
+              KURS amount
+              <FieldHintTooltip
+                label="KURS amount help"
+                content="Editable. Recalculates when amount or KURS rate changes. Creates a grouped USDT spending entry typed KURS."
+              />
+            </span>
             <div className="mt-1 flex overflow-hidden rounded-md border border-[rgb(var(--border))] focus-within:shadow-[0_0_0_3px_rgba(var(--focus),0.25)]">
               <input
                 className="min-w-0 flex-1 border-0 bg-[rgb(var(--surface))] px-3 py-2 text-right text-base font-medium text-[rgb(var(--text))] focus:outline-none"
@@ -516,10 +541,6 @@ export function BigBookEntryFields({
                 USDT
               </span>
             </div>
-            <span className="mt-1 block text-xs text-muted">
-              Editable. Recalculates when amount or KURS rate changes. Creates a grouped USDT spending
-              entry typed KURS.
-            </span>
           </label>
         </>
       ) : null}
@@ -554,7 +575,21 @@ export function BigBookEntryFields({
       </label>
       {/* Sub-Type and Vendor Name are hidden for now; values remain stored and linked. */}
       <label className="text-sm">
-        Vendor Type
+        <span className="inline-flex items-center gap-1.5">
+          Vendor Type
+          <FieldHintTooltip
+            label="Vendor Type mapping help"
+            content={
+              mappedVendorType
+                ? value.vendor_type_id === mappedVendorType.id
+                  ? `Auto-filled from Type mapping: ${mappedVendorType.name}`
+                  : `Type mapping suggests ${mappedVendorType.name} (currently overridden).`
+                : typeVendorTypeMaps.length
+                  ? "No Vendor Type mapping for this Type."
+                  : "Set Type → Vendor Type mappings in Big Book Settings to auto-fill."
+            }
+          />
+        </span>
         <select
           className="field mt-1"
           value={value.vendor_type_id}
@@ -564,7 +599,6 @@ export function BigBookEntryFields({
               vendor_id: ""
             })
           }
-          aria-describedby="vendor-type-mapping-hint"
         >
           <option value="">(none)</option>
           {vendorTypesForSelect.map((vendorType) => (
@@ -574,15 +608,6 @@ export function BigBookEntryFields({
             </option>
           ))}
         </select>
-        <span id="vendor-type-mapping-hint" className="mt-1 block text-xs text-muted">
-          {mappedVendorType
-            ? value.vendor_type_id === mappedVendorType.id
-              ? `Auto-filled from Type mapping: ${mappedVendorType.name}`
-              : `Type mapping suggests ${mappedVendorType.name} (currently overridden).`
-            : typeVendorTypeMaps.length
-              ? "No Vendor Type mapping for this Type."
-              : "Set Type → Vendor Type mappings in Big Book Settings to auto-fill."}
-        </span>
       </label>
     </>
   );
@@ -598,28 +623,34 @@ export function BigBookEntryFields({
           {
             kind: "credit" as const,
             title: "Credit",
-            subtitle: "Vendor owes our company"
+            hint: "Vendor owes our company"
           },
           {
             kind: "debt" as const,
             title: "Debt",
-            subtitle: "Our company owes the vendor"
+            hint: "Our company owes the vendor"
           }
         ] as const
       ).map((option) => {
         const selected = settlementKind === option.kind;
         return (
-          <button
+          <div
             key={option.kind}
-            type="button"
             role="radio"
             aria-checked={selected}
-            className={`rounded-lg border px-4 py-3 text-left transition ${
+            tabIndex={0}
+            className={`cursor-pointer rounded-lg border px-4 py-3 text-left transition ${
               selected
                 ? "border-[rgb(var(--primary))] bg-[rgb(var(--primary)/0.08)] shadow-[0_0_0_1px_rgb(var(--primary)/0.35)]"
                 : "border-[rgb(var(--border))] bg-[rgb(var(--surface))] hover:border-[rgb(var(--primary)/0.45)] hover:bg-[rgb(var(--surface-muted))]"
             }`}
             onClick={() => applySettlementKind(selected ? "none" : option.kind)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                applySettlementKind(selected ? "none" : option.kind);
+              }
+            }}
           >
             <span className="flex items-start gap-3">
               <span
@@ -632,14 +663,12 @@ export function BigBookEntryFields({
               >
                 {selected ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
               </span>
-              <span>
-                <span className="block text-sm font-semibold text-[rgb(var(--text))]">
-                  {option.title}
-                </span>
-                <span className="mt-0.5 block text-xs text-muted">{option.subtitle}</span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="text-sm font-semibold text-[rgb(var(--text))]">{option.title}</span>
+                <FieldHintTooltip label={`${option.title} help`} content={option.hint} />
               </span>
             </span>
-          </button>
+          </div>
         );
       })}
     </div>
@@ -816,11 +845,12 @@ export function BigBookEntryFields({
                 })
               }
             />
-            <span>
-              <span className="font-medium">Mark this credit as settled</span>
-              <span className="mt-0.5 block text-xs text-muted">
-                Closing is an admin decision — payment amount does not need to match the credit.
-              </span>
+            <span className="inline-flex items-center gap-1.5 font-medium">
+              Mark this credit as settled
+              <FieldHintTooltip
+                label="Mark credit settled help"
+                content="Closing is an admin decision — payment amount does not need to match the credit."
+              />
             </span>
           </label>
           {value.close_credit ? (
