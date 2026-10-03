@@ -188,4 +188,18 @@ describe("debt / credit mutual exclusivity", () => {
     });
     expect(parsed.success).toBe(false);
   });
+
+  it("rejects debt with Cash Flow In", () => {
+    const parsed = bigBookEntryInputSchema.safeParse({
+      ...basePayload,
+      is_debt: true,
+      entry_direction: "profit"
+    });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.issues.some((issue) => issue.path.includes("entry_direction"))).toBe(
+        true
+      );
+    }
+  });
 });

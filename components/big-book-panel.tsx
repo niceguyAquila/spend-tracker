@@ -214,20 +214,27 @@ function toCreditPayload(form: EntryFormState, settlesEntry: BigBookSettlementTa
       settlement_conversion_rate: null,
       settlement_note: "",
       close_credit: false,
-      credit_settlement_note: null
+      credit_settlement_note: null,
+      close_debt: false,
+      debt_settlement_note: null
     };
   }
   const typedRate = Number(form.settlement_conversion_rate);
   const sameCurrency = settlesEntry ? form.currency_code === settlesEntry.currency_code : false;
   const rate = sameCurrency ? 1 : Number.isFinite(typedRate) && typedRate > 0 ? typedRate : null;
+  const settlingDebt = Boolean(settlesEntry?.is_debt);
   return {
     is_credit: false,
     is_debt: false,
     settles_entry_id: settlesEntryId,
     settlement_conversion_rate: rate,
     settlement_note: form.settlement_note,
-    close_credit: form.close_credit,
-    credit_settlement_note: form.close_credit ? form.credit_settlement_note.trim() || null : null
+    close_credit: settlingDebt ? false : form.close_credit,
+    credit_settlement_note:
+      !settlingDebt && form.close_credit ? form.credit_settlement_note.trim() || null : null,
+    close_debt: settlingDebt ? form.close_debt : false,
+    debt_settlement_note:
+      settlingDebt && form.close_debt ? form.debt_settlement_note.trim() || null : null
   };
 }
 
@@ -239,8 +246,11 @@ function settlementTargetFromEntry(entry: BigBookEntry): BigBookSettlementTarget
     amount: entry.amount,
     currency_code: entry.currency_code,
     vendor_name: entry.vendor_name,
-    credit_status: entry.credit_status ?? "open",
-    credit_settled_at: entry.credit_settled_at
+    is_debt: entry.is_debt,
+    credit_status: entry.is_credit ? entry.credit_status ?? "open" : null,
+    credit_settled_at: entry.credit_settled_at,
+    debt_status: entry.is_debt ? entry.debt_status ?? "open" : null,
+    debt_settled_at: entry.debt_settled_at
   };
 }
 
@@ -288,7 +298,9 @@ function entryFormFromEntry(entry: BigBookEntry): GroupEntryFormState {
       entry.settlement_conversion_rate != null ? formatRateInput(String(entry.settlement_conversion_rate)) : "",
     settlement_note: entry.settlement_note ?? "",
     close_credit: false,
-    credit_settlement_note: ""
+    credit_settlement_note: "",
+    close_debt: false,
+    debt_settlement_note: ""
   };
 }
 
@@ -417,7 +429,9 @@ export function BigBookPanel({
     settlement_conversion_rate: "",
     settlement_note: "",
     close_credit: false,
-    credit_settlement_note: ""
+    credit_settlement_note: "",
+    close_debt: false,
+    debt_settlement_note: ""
   });
   const [editSettlesEntry, setEditSettlesEntry] = useState<BigBookSettlementTargetRef | null>(null);
   const [pendingDeleteEntry, setPendingDeleteEntry] = useState<BigBookEntry | null>(null);
@@ -479,6 +493,7 @@ export function BigBookPanel({
   const [creditClosureDialog, setCreditClosureDialog] = useState<{
     entry: BigBookEntry;
     settled: boolean;
+    kind: "credit" | "debt";
   } | null>(null);
   const [creditClosureNote, setCreditClosureNote] = useState("");
   const [creditClosureSubmitting, setCreditClosureSubmitting] = useState(false);
@@ -1278,13 +1293,16 @@ export function BigBookPanel({
       const createdActor = initialActors.find((actor) => actor.id === entryForm.responsible_actor_id);
       const createdDelta =
         entryForm.entry_direction === "spending" ? -amountValue : amountValue;
-      applyMetricDelta(
-        entryForm.responsible_actor_id,
-        createdActor?.display_name ?? "Unknown Actor",
-        entryForm.currency_code,
-        createdDelta,
-        entryForm.pocket_id || null
-      );
+      // Open debt is obligation-only and must not move Grand Total / actor nets.
+      if (!entryForm.is_debt) {
+        applyMetricDelta(
+          entryForm.responsible_actor_id,
+          createdActor?.display_name ?? "Unknown Actor",
+          entryForm.currency_code,
+          createdDelta,
+          entryForm.pocket_id || null
+        );
+      }
       if (gasFeeAmount != null) {
         applyMetricDelta(
           entryForm.responsible_actor_id,
@@ -1772,16 +1790,19 @@ export function BigBookPanel({
     setSettlementTarget(row);
     setSettlementAttachmentFiles([]);
     setSettlementFormError(null);
+    const payingDebt = Boolean(row.is_debt);
     setSettlementForm({
       entry_date: today,
-      entry_direction: "profit",
+      entry_direction: payingDebt ? "spending" : "profit",
       entry_type_id: row.entry_type_id,
       entry_sub_type_id: row.entry_sub_type_id ?? "",
       vendor_type_id: row.vendor_type_id ?? "",
       vendor_id: row.vendor_id ?? "",
       pocket_id: "",
       action_by_id: row.action_by_id ?? "",
-      explanation: `Settlement for: ${row.explanation}`,
+      explanation: payingDebt
+        ? `Debt payment for: ${row.explanation}`
+        : `Settlement for: ${row.explanation}`,
       amount: formatAmountInput(String(row.amount)),
       currency_code: row.currency_code,
       gas_fee_amount: "",
@@ -1795,14 +1816,26 @@ export function BigBookPanel({
       settlement_conversion_rate: "1",
       settlement_note: "",
       close_credit: false,
-      credit_settlement_note: ""
+      credit_settlement_note: "",
+      close_debt: payingDebt,
+      debt_settlement_note: ""
     });
   }
 
-  function openCreditClosureDialog(row: BigBookEntry, settled: boolean) {
+  function openCreditClosureDialog(
+    row: BigBookEntry,
+    settled: boolean,
+    kind: "credit" | "debt" = "credit"
+  ) {
     setOpenActionMenu(null);
-    setCreditClosureDialog({ entry: row, settled });
-    setCreditClosureNote(settled ? row.credit_settlement_note ?? "" : "");
+    setCreditClosureDialog({ entry: row, settled, kind });
+    setCreditClosureNote(
+      settled
+        ? kind === "debt"
+          ? row.debt_settlement_note ?? ""
+          : row.credit_settlement_note ?? ""
+        : ""
+    );
   }
 
   async function submitCreditClosure() {
@@ -1810,6 +1843,7 @@ export function BigBookPanel({
     setCreditClosureSubmitting(true);
     setError(null);
     setMessage(null);
+    const kindLabel = creditClosureDialog.kind === "debt" ? "debt" : "credit";
     try {
       const response = await secureFetch("/api/big-book/entries/settle", {
         method: "PATCH",
@@ -1827,16 +1861,16 @@ export function BigBookPanel({
           extractApiError(
             data.error,
             creditClosureDialog.settled
-              ? "Failed to mark the credit as settled."
-              : "Failed to reopen the credit."
+              ? `Failed to mark the ${kindLabel} as settled.`
+              : `Failed to reopen the ${kindLabel}.`
           )
         );
         return;
       }
       setMessage(
         creditClosureDialog.settled
-          ? "Credit marked as settled."
-          : "Credit reopened."
+          ? `${kindLabel === "debt" ? "Debt" : "Credit"} marked as settled.`
+          : `${kindLabel === "debt" ? "Debt" : "Credit"} reopened.`
       );
       setCreditClosureDialog(null);
       setCreditClosureNote("");
@@ -2642,34 +2676,53 @@ export function BigBookPanel({
                 >
                   Manage attachments
                 </button>
-                {targetRow.is_credit ? (
+                {targetRow.is_credit || targetRow.is_debt ? (
                   <button
                     className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
                     role="menuitem"
                     onClick={() => openRecordSettlement(targetRow)}
                   >
-                    Record settlement
+                    {targetRow.is_debt ? "Record payment" : "Record settlement"}
                   </button>
                 ) : null}
                 {targetRow.is_credit && targetRow.credit_status !== "settled" ? (
                   <button
                     className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
                     role="menuitem"
-                    onClick={() => openCreditClosureDialog(targetRow, true)}
+                    onClick={() => openCreditClosureDialog(targetRow, true, "credit")}
                   >
                     Mark as settled
+                  </button>
+                ) : null}
+                {targetRow.is_debt && targetRow.debt_status !== "settled" ? (
+                  <button
+                    className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
+                    role="menuitem"
+                    onClick={() => openCreditClosureDialog(targetRow, true, "debt")}
+                  >
+                    Mark debt settled
                   </button>
                 ) : null}
                 {targetRow.is_credit && targetRow.credit_status === "settled" ? (
                   <button
                     className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
                     role="menuitem"
-                    onClick={() => openCreditClosureDialog(targetRow, false)}
+                    onClick={() => openCreditClosureDialog(targetRow, false, "credit")}
                   >
                     Reopen credit
                   </button>
                 ) : null}
-                {targetRow.is_credit && targetRow.settlements.length > 0 ? (
+                {targetRow.is_debt && targetRow.debt_status === "settled" ? (
+                  <button
+                    className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
+                    role="menuitem"
+                    onClick={() => openCreditClosureDialog(targetRow, false, "debt")}
+                  >
+                    Reopen debt
+                  </button>
+                ) : null}
+                {(targetRow.is_credit || targetRow.is_debt) &&
+                targetRow.settlements.length > 0 ? (
                   <button
                     className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
                     role="menuitem"
@@ -2678,7 +2731,7 @@ export function BigBookPanel({
                       setSettlementHistoryEntryId(targetRow.id);
                     }}
                   >
-                    View settlements
+                    {targetRow.is_debt ? "View payments" : "View settlements"}
                   </button>
                 ) : null}
                 <button
@@ -3454,7 +3507,7 @@ export function BigBookPanel({
         onOpenChange={(open) => {
           if (!open && !settlementSubmitting) closeRecordSettlement();
         }}
-        title="Record Settlement"
+        title={settlementTarget?.is_debt ? "Record Debt Payment" : "Record Settlement"}
         size="xl"
         dismissible={!settlementSubmitting}
         closeOnBackdrop={!settlementSubmitting}
@@ -3527,7 +3580,7 @@ export function BigBookPanel({
       <ConfirmDialog
         open={pendingSettlementConfirm}
         onOpenChange={setPendingSettlementConfirm}
-        title="Record settlement?"
+        title={settlementTarget?.is_debt ? "Record debt payment?" : "Record settlement?"}
         description={
           settlementTarget
             ? (() => {
@@ -3536,13 +3589,18 @@ export function BigBookPanel({
                 if (settlementHasGasFee) companions.push("a grouped TRX gas-fee spending entry");
                 const companionNote =
                   companions.length > 0 ? ` This will also create ${companions.join(" and ")}.` : "";
+                if (settlementTarget.is_debt) {
+                  return settlementForm?.close_debt
+                    ? `This will create an Out payment against "${settlementTarget.explanation}" and mark that debt as settled.${companionNote}`
+                    : `This will create an Out payment against "${settlementTarget.explanation}". The debt stays open until marked settled.${companionNote}`;
+                }
                 return settlementForm?.close_credit
                   ? `This will create a settlement entry against "${settlementTarget.explanation}" and mark that credit as settled.${companionNote}`
                   : `This will create a settlement entry against "${settlementTarget.explanation}". The credit stays open until marked settled.${companionNote}`;
               })()
             : "This will create a settlement entry."
         }
-        confirmLabel="Record Settlement"
+        confirmLabel={settlementTarget?.is_debt ? "Record Payment" : "Record Settlement"}
         confirming={settlementSubmitting}
         closeOnBackdrop={false}
         onConfirm={recordSettlement}
@@ -3557,7 +3615,13 @@ export function BigBookPanel({
           }
         }}
         title={
-          creditClosureDialog?.settled ? "Mark credit as settled?" : "Reopen credit?"
+          creditClosureDialog?.kind === "debt"
+            ? creditClosureDialog.settled
+              ? "Mark debt as settled?"
+              : "Reopen debt?"
+            : creditClosureDialog?.settled
+              ? "Mark credit as settled?"
+              : "Reopen credit?"
         }
         dismissible={!creditClosureSubmitting}
         closeOnBackdrop={!creditClosureSubmitting}
@@ -3593,7 +3657,7 @@ export function BigBookPanel({
           <div className="space-y-3 text-sm">
             <p className="text-muted">
               {creditClosureDialog.settled
-                ? `Close "${creditClosureDialog.entry.explanation}" as settled. Payment amounts do not need to match the credit.`
+                ? `Close "${creditClosureDialog.entry.explanation}" as settled. Payment amounts do not need to match the ${creditClosureDialog.kind}.`
                 : `Reopen "${creditClosureDialog.entry.explanation}" so it appears in Outstanding again.`}
             </p>
             {creditClosureDialog.settled ? (
@@ -3603,7 +3667,11 @@ export function BigBookPanel({
                   className="field mt-1"
                   value={creditClosureNote}
                   onChange={(event) => setCreditClosureNote(event.target.value)}
-                  placeholder="Why is this credit being closed? (optional)"
+                  placeholder={
+                    creditClosureDialog.kind === "debt"
+                      ? "Why is this debt being closed? (optional)"
+                      : "Why is this credit being closed? (optional)"
+                  }
                 />
               </label>
             ) : null}

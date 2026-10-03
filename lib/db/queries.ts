@@ -736,7 +736,10 @@ type RawBigBookSettlementParentRow = {
   explanation: string;
   amount: number | string;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
+  is_credit: boolean | null;
+  is_debt: boolean | null;
   credit_settled_at: string | null;
+  debt_settled_at: string | null;
   vendor_id: string | null;
   business_ledger_vendors: { id: string; name: string } | { id: string; name: string }[] | null;
 };
@@ -747,7 +750,9 @@ async function attachBigBookCreditSummaries(
 ): Promise<BigBookEntry[]> {
   if (!entries.length) return entries;
 
-  const creditIds = entries.filter((entry) => entry.is_credit).map((entry) => entry.id);
+  const obligationIds = entries
+    .filter((entry) => entry.is_credit || entry.is_debt)
+    .map((entry) => entry.id);
   const parentIds = [
     ...new Set(
       entries
@@ -756,19 +761,19 @@ async function attachBigBookCreditSummaries(
     )
   ];
 
-  const settlementsByCreditId = new Map<string, BigBookSettlementRef[]>();
-  const settledSumByCreditId = new Map<string, number>();
+  const settlementsByObligationId = new Map<string, BigBookSettlementRef[]>();
+  const settledSumByObligationId = new Map<string, number>();
   const parentsById = new Map<string, BigBookSettlementTargetRef>();
 
-  // Settlements and parent-credit lookups are independent — fetch together.
+  // Settlements and parent-obligation lookups are independent — fetch together.
   const [settlementResult, parentResult] = await Promise.all([
-    creditIds.length
+    obligationIds.length
       ? supabase
           .from("business_ledger_entries")
           .select(
             "id, settles_entry_id, entry_date, amount, currency_code, settlement_conversion_rate, settlement_amount_in_credit_currency, settlement_note, explanation"
           )
-          .in("settles_entry_id", creditIds)
+          .in("settles_entry_id", obligationIds)
           .order("entry_date", { ascending: false })
           .order("created_at", { ascending: false })
       : Promise.resolve({ data: [] as RawBigBookSettlementChildRow[], error: null }),
@@ -776,7 +781,7 @@ async function attachBigBookCreditSummaries(
       ? supabase
           .from("business_ledger_entries")
           .select(
-            "id, entry_date, explanation, amount, currency_code, credit_settled_at, vendor_id, business_ledger_vendors(id, name)"
+            "id, entry_date, explanation, amount, currency_code, is_credit, is_debt, credit_settled_at, debt_settled_at, vendor_id, business_ledger_vendors(id, name)"
           )
           .in("id", parentIds)
       : Promise.resolve({ data: [] as RawBigBookSettlementParentRow[], error: null })
@@ -787,12 +792,12 @@ async function attachBigBookCreditSummaries(
 
   for (const row of (settlementResult.data ?? []) as RawBigBookSettlementChildRow[]) {
     if (!row.settles_entry_id) continue;
-    const amountInCredit = Number(row.settlement_amount_in_credit_currency ?? 0);
-    settledSumByCreditId.set(
+    const amountInObligation = Number(row.settlement_amount_in_credit_currency ?? 0);
+    settledSumByObligationId.set(
       row.settles_entry_id,
-      (settledSumByCreditId.get(row.settles_entry_id) ?? 0) + amountInCredit
+      (settledSumByObligationId.get(row.settles_entry_id) ?? 0) + amountInObligation
     );
-    const list = settlementsByCreditId.get(row.settles_entry_id) ?? [];
+    const list = settlementsByObligationId.get(row.settles_entry_id) ?? [];
     list.push({
       id: row.id,
       entry_date: row.entry_date,
@@ -801,18 +806,20 @@ async function attachBigBookCreditSummaries(
       settlement_conversion_rate:
         row.settlement_conversion_rate == null ? null : Number(row.settlement_conversion_rate),
       settlement_amount_in_credit_currency:
-        row.settlement_amount_in_credit_currency == null ? null : amountInCredit,
+        row.settlement_amount_in_credit_currency == null ? null : amountInObligation,
       settlement_note: row.settlement_note ?? null,
       explanation: row.explanation
     });
-    settlementsByCreditId.set(row.settles_entry_id, list);
+    settlementsByObligationId.set(row.settles_entry_id, list);
   }
 
   for (const row of (parentResult.data ?? []) as RawBigBookSettlementParentRow[]) {
     const vendor = Array.isArray(row.business_ledger_vendors)
       ? row.business_ledger_vendors[0]
       : row.business_ledger_vendors;
+    const isDebt = Boolean(row.is_debt);
     const creditSettledAt = row.credit_settled_at ?? null;
+    const debtSettledAt = row.debt_settled_at ?? null;
     parentsById.set(row.id, {
       id: row.id,
       entry_date: row.entry_date,
@@ -820,22 +827,27 @@ async function attachBigBookCreditSummaries(
       amount: Number(row.amount),
       currency_code: row.currency_code,
       vendor_name: vendor?.name ?? null,
-      credit_status: computeBigBookCreditStatus(creditSettledAt),
-      credit_settled_at: creditSettledAt
+      is_debt: isDebt,
+      credit_status: isDebt ? null : computeBigBookCreditStatus(creditSettledAt),
+      credit_settled_at: creditSettledAt,
+      debt_status: isDebt ? computeBigBookDebtStatus(debtSettledAt) : null,
+      debt_settled_at: debtSettledAt
     });
   }
 
   return entries.map((entry) => {
     const debtStatus = entry.is_debt ? computeBigBookDebtStatus(entry.debt_settled_at) : null;
 
-    if (entry.is_credit) {
-      const settlements = settlementsByCreditId.get(entry.id) ?? [];
-      const totalSettled = settledSumByCreditId.get(entry.id) ?? 0;
+    if (entry.is_credit || entry.is_debt) {
+      const settlements = settlementsByObligationId.get(entry.id) ?? [];
+      const totalSettled = settledSumByObligationId.get(entry.id) ?? 0;
       return {
         ...entry,
         settlements,
         total_settled: totalSettled,
-        credit_status: computeBigBookCreditStatus(entry.credit_settled_at),
+        credit_status: entry.is_credit
+          ? computeBigBookCreditStatus(entry.credit_settled_at)
+          : null,
         debt_status: debtStatus,
         settles_entry: null
       };
@@ -1037,14 +1049,15 @@ const EMPTY_LEDGER_TOTALS: BigBookLedgerTotals = {
 };
 
 function ledgerTotalsFromEntries(entries: BigBookEntry[]): BigBookLedgerTotals {
-  const totalRows = entries.filter((entry) => !entry.pocket_id);
+  const pocketRows = entries.filter((entry) => !entry.pocket_id);
+  const totalRows = pocketRows.filter((entry) => !entry.is_debt);
   return {
     pageTotals: summarizeCurrencies(totalRows),
     pageEntryCount: entries.length,
     grandTotals: summarizeCurrencies(totalRows),
     grandEntryCount: entries.length,
-    pagePocketExcludedCount: entries.length - totalRows.length,
-    grandPocketExcludedCount: entries.length - totalRows.length
+    pagePocketExcludedCount: entries.length - pocketRows.length,
+    grandPocketExcludedCount: entries.length - pocketRows.length
   };
 }
 
@@ -1134,7 +1147,7 @@ export async function getBigBookLedgerRowsPaged(
           let query = supabase
             .from("business_ledger_entries")
             .select(
-              "id, group_id, entry_date, created_at, amount, currency_code, entry_direction, pocket_id, is_credit, explanation, entry_type_id, entry_sub_type_id, vendor_type_id, vendor_id, action_by_id, responsible_actor_id"
+              "id, group_id, entry_date, created_at, amount, currency_code, entry_direction, pocket_id, is_credit, is_debt, explanation, entry_type_id, entry_sub_type_id, vendor_type_id, vendor_id, action_by_id, responsible_actor_id"
             )
             .order("entry_date", { ascending: false })
             .order("created_at", { ascending: false })
@@ -1169,16 +1182,23 @@ export async function getBigBookLedgerRowsPaged(
       row.group_id ? pageGroupIdSet.has(row.group_id) : standaloneIdSet.has(row.id)
     );
     const pocketFilterActive = Boolean(toFilterArray(filters.pocketId)?.length);
-    const countsTowardTotals = (row: LedgerScanRow) => pocketFilterActive || !row.pocket_id;
+    const countsTowardTotals = (row: LedgerScanRow) =>
+      (pocketFilterActive || !row.pocket_id) && !row.is_debt;
     const pageTotalRows = pageScanRows.filter(countsTowardTotals);
     const grandTotalRows = scanRows.filter(countsTowardTotals);
+    const pagePocketExcludedCount = pageScanRows.filter(
+      (row) => !pocketFilterActive && Boolean(row.pocket_id)
+    ).length;
+    const grandPocketExcludedCount = scanRows.filter(
+      (row) => !pocketFilterActive && Boolean(row.pocket_id)
+    ).length;
     totals = {
       pageTotals: summarizeCurrencies(pageTotalRows),
       pageEntryCount: pageScanRows.length,
       grandTotals: summarizeCurrencies(grandTotalRows),
       grandEntryCount: scanRows.length,
-      pagePocketExcludedCount: pageScanRows.length - pageTotalRows.length,
-      grandPocketExcludedCount: scanRows.length - grandTotalRows.length
+      pagePocketExcludedCount,
+      grandPocketExcludedCount
     };
   }
   }
@@ -1382,6 +1402,7 @@ export async function getBigBookActorCurrencyMetrics(): Promise<BigBookActorCurr
     entry_direction: "spending" | "profit";
     currency_code: "IDR" | "MYR" | "USDT" | "TRX";
     amount: number;
+    is_debt: boolean | null;
     big_book_actors: { actor_code: "A" | "B"; display_name: string } | { actor_code: "A" | "B"; display_name: string }[] | null;
   }> = [];
 
@@ -1390,7 +1411,7 @@ export async function getBigBookActorCurrencyMetrics(): Promise<BigBookActorCurr
       .from("business_ledger_entries")
       .select(
         `
-        responsible_actor_id, entry_direction, currency_code, amount,
+        responsible_actor_id, entry_direction, currency_code, amount, is_debt,
         big_book_actors(actor_code, display_name)
       `
       )
@@ -1407,6 +1428,7 @@ export async function getBigBookActorCurrencyMetrics(): Promise<BigBookActorCurr
 
   const byActor = new Map<string, BigBookActorCurrencyMetrics>();
   for (const row of rows) {
+    if (row.is_debt) continue;
     const actor = Array.isArray(row.big_book_actors) ? row.big_book_actors[0] : row.big_book_actors;
     const actorId = row.responsible_actor_id;
     const existing =
@@ -1478,12 +1500,13 @@ export async function getBigBookActorPocketMetrics(): Promise<BigBookActorPocket
     pocket_id: string | null;
     entry_direction: "spending" | "profit";
     amount: number;
+    is_debt: boolean | null;
   }> = [];
 
   while (true) {
     const { data: batchData, error: batchError } = await supabase
       .from("business_ledger_entries")
-      .select("pocket_id, entry_direction, amount")
+      .select("pocket_id, entry_direction, amount, is_debt")
       .not("pocket_id", "is", null)
       .order("created_at", { ascending: false })
       .range(offset, offset + pageSize - 1);
@@ -1497,7 +1520,7 @@ export async function getBigBookActorPocketMetrics(): Promise<BigBookActorPocket
 
   const netByPocket = new Map<string, number>();
   for (const row of rows) {
-    if (!row.pocket_id) continue;
+    if (!row.pocket_id || row.is_debt) continue;
     const amount = Math.abs(Number(row.amount));
     const signedAmount = row.entry_direction === "spending" ? -amount : amount;
     netByPocket.set(row.pocket_id, (netByPocket.get(row.pocket_id) ?? 0) + signedAmount);
@@ -1523,7 +1546,7 @@ export async function getBigBookActorPocketMetrics(): Promise<BigBookActorPocket
 const BIG_BOOK_CASHFLOW_SCAN_PAGE_SIZE = 1000;
 
 const BIG_BOOK_CASHFLOW_SCAN_SELECT = `
-  responsible_actor_id, entry_type_id, entry_direction, currency_code, amount,
+  responsible_actor_id, entry_type_id, entry_direction, currency_code, amount, is_debt,
   big_book_actors(display_name),
   business_ledger_types(code, name)
 `;
@@ -1534,6 +1557,7 @@ type RawBigBookCashflowScanRow = {
   entry_direction: "spending" | "profit";
   currency_code: BigBookTypeCashflowByCurrency["currency"];
   amount: number | string;
+  is_debt: boolean | null;
   big_book_actors: { display_name: string } | { display_name: string }[] | null;
   business_ledger_types: { code: string; name: string } | { code: string; name: string }[] | null;
 };
@@ -1635,6 +1659,7 @@ export async function getBigBookTypeCashflowByCurrency(filters?: {
     }
 
     for (const row of scanRows) {
+      if (row.is_debt) continue;
       const bucket = rowsByCurrency.get(row.currency_code);
       if (!bucket) continue;
       const amount = Math.abs(Number(row.amount));
@@ -1747,7 +1772,7 @@ export async function getBigBookTypeMonthlyCurrencySummary(
   const endDate = `${year}-12-31`;
   const { data, error } = await supabase
     .from("business_ledger_entries")
-    .select("entry_date, entry_direction, currency_code, amount")
+    .select("entry_date, entry_direction, currency_code, amount, is_debt")
     .eq("entry_type_id", typeId)
     .gte("entry_date", startDate)
     .lte("entry_date", endDate);
@@ -1760,10 +1785,15 @@ export async function getBigBookTypeMonthlyCurrencySummary(
       entry_direction: "spending" | "profit";
       currency_code: "IDR" | "MYR" | "USDT" | "TRX";
       amount: number;
-    }>).map((row) => ({
-      ...row,
-      amount: Number(row.amount)
-    }))
+      is_debt: boolean | null;
+    }>)
+      .filter((row) => !row.is_debt)
+      .map((row) => ({
+        entry_date: row.entry_date,
+        entry_direction: row.entry_direction,
+        currency_code: row.currency_code,
+        amount: Number(row.amount)
+      }))
   );
 }
 

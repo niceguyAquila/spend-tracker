@@ -50,6 +50,8 @@ export type EntryFormState = {
   settlement_note: string;
   close_credit: boolean;
   credit_settlement_note: string;
+  close_debt: boolean;
+  debt_settlement_note: string;
 };
 
 const amountFormatter = new Intl.NumberFormat("en-US", {
@@ -118,7 +120,9 @@ export function createEmptyEntryForm(options: {
     settlement_conversion_rate: "",
     settlement_note: "",
     close_credit: false,
-    credit_settlement_note: ""
+    credit_settlement_note: "",
+    close_debt: false,
+    debt_settlement_note: ""
   };
 }
 
@@ -216,13 +220,19 @@ export function BigBookEntryFields({
     patch({
       is_credit: next === "credit",
       is_debt: next === "debt",
+      entry_direction: next === "debt" ? "spending" : value.entry_direction,
       settles_entry_id: "",
       settlement_conversion_rate: "",
       settlement_note: "",
       close_credit: false,
-      credit_settlement_note: ""
+      credit_settlement_note: "",
+      close_debt: false,
+      debt_settlement_note: "",
+      ...(next === "debt" ? { kurs_rate: "", kurs_amount: "" } : {})
     });
   }
+  const cashFlowLockedOut =
+    settlementKind === "debt" || Boolean(settlesEntry?.is_debt);
   // Cross-currency settlement: admin enters company rate under Amount.
   // Convention: rate = credit_currency units per 1 settlement_currency unit;
   // settlement_amount = credit_amount / rate.
@@ -367,7 +377,13 @@ export function BigBookEntryFields({
         Cash Flow *
         <select
           className="field mt-1"
-          value={value.entry_direction}
+          value={cashFlowLockedOut ? "spending" : value.entry_direction}
+          disabled={cashFlowLockedOut}
+          title={
+            cashFlowLockedOut
+              ? "Debt and debt payments always use Cash Flow Out."
+              : undefined
+          }
           onChange={(event) => {
             const nextDirection = event.target.value as "spending" | "profit";
             patch({
@@ -381,6 +397,9 @@ export function BigBookEntryFields({
           <option value="spending">Out</option>
           <option value="profit">In</option>
         </select>
+        {cashFlowLockedOut ? (
+          <span className="mt-1 block text-xs text-muted">Locked to Out for Debt.</span>
+        ) : null}
       </label>
       <label className="text-sm">
         Amount *
@@ -760,13 +779,15 @@ export function BigBookEntryFields({
     <div className={isNested ? "space-y-4" : "space-y-6"}>
       {settlesEntry ? (
         <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-3 text-sm">
-          <p className="font-medium">Settling credit</p>
+          <p className="font-medium">
+            {settlesEntry.is_debt ? "Paying debt" : "Settling credit"}
+          </p>
           <p className="mt-1 text-muted">
             {settlesEntry.entry_date} · {settlesEntry.explanation}
             {settlesEntry.vendor_name ? ` · ${settlesEntry.vendor_name}` : ""}
           </p>
           <p className="mt-1">
-            Credit amount:{" "}
+            {settlesEntry.is_debt ? "Debt" : "Credit"} amount:{" "}
             <span className="font-medium">
               {formatAmount(settlesEntry.amount, {
                 minimumFractionDigits: 0,
@@ -776,7 +797,11 @@ export function BigBookEntryFields({
             </span>
             {" · "}
             Status:{" "}
-            <span className="font-medium capitalize">{settlesEntry.credit_status}</span>
+            <span className="font-medium capitalize">
+              {settlesEntry.is_debt
+                ? settlesEntry.debt_status ?? "open"
+                : settlesEntry.credit_status ?? "open"}
+            </span>
           </p>
         </div>
       ) : null}
@@ -833,37 +858,79 @@ export function BigBookEntryFields({
               placeholder="Optional note about this settlement payment"
             />
           </label>
-          <label className="flex items-start gap-2 text-sm">
-            <input
-              className="mt-1"
-              type="checkbox"
-              checked={value.close_credit}
-              onChange={(event) =>
-                patch({
-                  close_credit: event.target.checked,
-                  credit_settlement_note: event.target.checked ? value.credit_settlement_note : ""
-                })
-              }
-            />
-            <span className="inline-flex items-center gap-1.5 font-medium">
-              Mark this credit as settled
-              <FieldHintTooltip
-                label="Mark credit settled help"
-                content="Closing is an admin decision — payment amount does not need to match the credit."
-              />
-            </span>
-          </label>
-          {value.close_credit ? (
-            <label className="block text-sm">
-              Closure Note
-              <input
-                className="field mt-1"
-                value={value.credit_settlement_note}
-                onChange={(event) => patch({ credit_settlement_note: event.target.value })}
-                placeholder="Why is this credit being closed? (e.g. short/over payment approved)"
-              />
-            </label>
-          ) : null}
+          {settlesEntry?.is_debt ? (
+            <>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  className="mt-1"
+                  type="checkbox"
+                  checked={value.close_debt}
+                  onChange={(event) =>
+                    patch({
+                      close_debt: event.target.checked,
+                      debt_settlement_note: event.target.checked
+                        ? value.debt_settlement_note
+                        : ""
+                    })
+                  }
+                />
+                <span className="inline-flex items-center gap-1.5 font-medium">
+                  Mark this debt as settled
+                  <FieldHintTooltip
+                    label="Mark debt settled help"
+                    content="Closing is an admin decision — payment amount does not need to match the debt."
+                  />
+                </span>
+              </label>
+              {value.close_debt ? (
+                <label className="block text-sm">
+                  Closure Note
+                  <input
+                    className="field mt-1"
+                    value={value.debt_settlement_note}
+                    onChange={(event) => patch({ debt_settlement_note: event.target.value })}
+                    placeholder="Why is this debt being closed?"
+                  />
+                </label>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  className="mt-1"
+                  type="checkbox"
+                  checked={value.close_credit}
+                  onChange={(event) =>
+                    patch({
+                      close_credit: event.target.checked,
+                      credit_settlement_note: event.target.checked
+                        ? value.credit_settlement_note
+                        : ""
+                    })
+                  }
+                />
+                <span className="inline-flex items-center gap-1.5 font-medium">
+                  Mark this credit as settled
+                  <FieldHintTooltip
+                    label="Mark credit settled help"
+                    content="Closing is an admin decision — payment amount does not need to match the credit."
+                  />
+                </span>
+              </label>
+              {value.close_credit ? (
+                <label className="block text-sm">
+                  Closure Note
+                  <input
+                    className="field mt-1"
+                    value={value.credit_settlement_note}
+                    onChange={(event) => patch({ credit_settlement_note: event.target.value })}
+                    placeholder="Why is this credit being closed? (e.g. short/over payment approved)"
+                  />
+                </label>
+              ) : null}
+            </>
+          )}
         </div>
       ) : null}
     </div>

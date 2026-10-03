@@ -50,6 +50,7 @@ async function resolveSettlementFields(
       settles_entry_id: string | null;
       settlement_conversion_rate: number | null;
       settlement_amount_in_credit_currency: number | null;
+      target_kind: "credit" | "debt" | null;
     }
   | { ok: false; status: number; error: string }
 > {
@@ -58,26 +59,40 @@ async function resolveSettlementFields(
       ok: true,
       settles_entry_id: null,
       settlement_conversion_rate: null,
-      settlement_amount_in_credit_currency: null
+      settlement_amount_in_credit_currency: null,
+      target_kind: null
     };
   }
 
-  const { data: creditEntry, error: creditError } = await supabase
+  const { data: targetEntry, error: targetError } = await supabase
     .from("business_ledger_entries")
-    .select("id, is_credit, settles_entry_id, currency_code")
+    .select("id, is_credit, is_debt, settles_entry_id, currency_code")
     .eq("id", payload.settles_entry_id)
     .maybeSingle();
 
-  if (creditError) {
-    return { ok: false, status: 400, error: creditError.message };
+  if (targetError) {
+    return { ok: false, status: 400, error: targetError.message };
   }
-  if (!creditEntry) {
+  if (!targetEntry) {
     return { ok: false, status: 404, error: "Settlement target entry not found." };
   }
-  if (!creditEntry.is_credit) {
-    return { ok: false, status: 400, error: "Settlement target is not marked as credit." };
+  const isCredit = Boolean(targetEntry.is_credit);
+  const isDebt = Boolean(targetEntry.is_debt);
+  if (!isCredit && !isDebt) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Settlement target is not marked as credit or debt."
+    };
   }
-  if (creditEntry.settles_entry_id) {
+  if (isCredit && isDebt) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Settlement target cannot be both credit and debt."
+    };
+  }
+  if (targetEntry.settles_entry_id) {
     return {
       ok: false,
       status: 400,
@@ -85,8 +100,9 @@ async function resolveSettlementFields(
     };
   }
 
-  const creditCurrency = creditEntry.currency_code as BigBookCurrency;
-  if (payload.currency_code === creditCurrency) {
+  const targetKind = isDebt ? ("debt" as const) : ("credit" as const);
+  const targetCurrency = targetEntry.currency_code as BigBookCurrency;
+  if (payload.currency_code === targetCurrency) {
     return {
       ok: true,
       settles_entry_id: payload.settles_entry_id,
@@ -94,21 +110,23 @@ async function resolveSettlementFields(
       settlement_amount_in_credit_currency: computeSettlementAmountInCreditCurrency(
         payload.amount,
         1
-      )
+      ),
+      target_kind: targetKind
     };
   }
 
   const typedRate = Number(payload.settlement_conversion_rate);
   const hasRate = Number.isFinite(typedRate) && typedRate > 0;
 
-  // Cross-currency: FX rate and credit-currency equivalent are optional.
+  // Cross-currency: FX rate and obligation-currency equivalent are optional.
   // When omitted, store nulls — settlement stands in settle currency only.
   if (!hasRate) {
     return {
       ok: true,
       settles_entry_id: payload.settles_entry_id,
       settlement_conversion_rate: null,
-      settlement_amount_in_credit_currency: null
+      settlement_amount_in_credit_currency: null,
+      target_kind: targetKind
     };
   }
 
@@ -119,7 +137,8 @@ async function resolveSettlementFields(
     settlement_amount_in_credit_currency: computeSettlementAmountInCreditCurrency(
       payload.amount,
       typedRate
-    )
+    ),
+    target_kind: targetKind
   };
 }
 
@@ -239,6 +258,33 @@ export async function POST(request: Request) {
   });
   if (!settlement.ok) {
     return NextResponse.json({ error: settlement.error }, { status: settlement.status });
+  }
+
+  if (payload.is_debt && payload.entry_direction !== "spending") {
+    return NextResponse.json(
+      { error: "Debt entries must use Cash Flow Out (spending)." },
+      { status: 400 }
+    );
+  }
+
+  if (settlement.target_kind === "debt" && payload.entry_direction !== "spending") {
+    return NextResponse.json(
+      { error: "Debt payment settlements must use Cash Flow Out (spending)." },
+      { status: 400 }
+    );
+  }
+
+  if (payload.close_credit && settlement.target_kind === "debt") {
+    return NextResponse.json(
+      { error: "Cannot close a debt target with close_credit." },
+      { status: 400 }
+    );
+  }
+  if (payload.close_debt && settlement.target_kind === "credit") {
+    return NextResponse.json(
+      { error: "Cannot close a credit target with close_debt." },
+      { status: 400 }
+    );
   }
 
   const kursAmount = resolveKursCompanionAmount({
@@ -390,7 +436,7 @@ export async function POST(request: Request) {
     createdEntryId = data.id;
   }
 
-  if (payload.close_credit && settlement.settles_entry_id) {
+  if (payload.close_credit && settlement.settles_entry_id && settlement.target_kind === "credit") {
     const { error: closeError } = await supabase
       .from("business_ledger_entries")
       .update({
@@ -406,11 +452,32 @@ export async function POST(request: Request) {
     }
   }
 
+  if (payload.close_debt && settlement.settles_entry_id && settlement.target_kind === "debt") {
+    const { error: closeError } = await supabase
+      .from("business_ledger_entries")
+      .update({
+        debt_settled_at: new Date().toISOString(),
+        debt_settled_by: actorId,
+        debt_settlement_note: payload.debt_settlement_note ?? null,
+        updated_by: actorId
+      })
+      .eq("id", settlement.settles_entry_id);
+
+    if (closeError) {
+      return NextResponse.json({ error: closeError.message }, { status: 400 });
+    }
+  }
+
   return NextResponse.json({
     id: createdEntryId,
     settlement_conversion_rate: settlement.settlement_conversion_rate,
     settlement_amount_in_credit_currency: settlement.settlement_amount_in_credit_currency,
-    credit_closed: Boolean(payload.close_credit && settlement.settles_entry_id)
+    credit_closed: Boolean(
+      payload.close_credit && settlement.settles_entry_id && settlement.target_kind === "credit"
+    ),
+    debt_closed: Boolean(
+      payload.close_debt && settlement.settles_entry_id && settlement.target_kind === "debt"
+    )
   });
 }
 
@@ -441,6 +508,19 @@ export async function PATCH(request: Request) {
   });
   if (!settlement.ok) {
     return NextResponse.json({ error: settlement.error }, { status: settlement.status });
+  }
+
+  if (payload.is_debt && payload.entry_direction !== "spending") {
+    return NextResponse.json(
+      { error: "Debt entries must use Cash Flow Out (spending)." },
+      { status: 400 }
+    );
+  }
+  if (settlement.target_kind === "debt" && payload.entry_direction !== "spending") {
+    return NextResponse.json(
+      { error: "Debt payment settlements must use Cash Flow Out (spending)." },
+      { status: 400 }
+    );
   }
 
   const isCredit = settlement.settles_entry_id ? false : Boolean(payload.is_credit);

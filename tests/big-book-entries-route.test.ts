@@ -1006,11 +1006,12 @@ describe("big book entries route", () => {
     });
   });
 
-  it("rejects settling a non-credit entry", async () => {
+  it("rejects settling a non-credit non-debt entry", async () => {
     creditLookupMaybeSingleMock.mockResolvedValueOnce({
       data: {
         id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         is_credit: false,
+        is_debt: false,
         settles_entry_id: null,
         currency_code: "USDT"
       },
@@ -1038,8 +1039,54 @@ describe("big book entries route", () => {
     const response = await POST(request);
     const data = await response.json();
     expect(response.status).toBe(400);
-    expect(data.error).toMatch(/not marked as credit/i);
+    expect(data.error).toMatch(/not marked as credit or debt/i);
     expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it("creates an Out debt payment and closes the debt", async () => {
+    creditLookupMaybeSingleMock.mockResolvedValueOnce({
+      data: {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        is_credit: false,
+        is_debt: true,
+        settles_entry_id: null,
+        currency_code: "USDT"
+      },
+      error: null
+    });
+
+    const { POST } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_date: "2026-05-01",
+        entry_direction: "spending",
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        explanation: "Debt payment for: Vendor invoice",
+        amount: 100,
+        currency_code: "USDT",
+        remark: "",
+        responsible_actor_id: "22222222-2222-4222-8222-222222222222",
+        settles_entry_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        settlement_conversion_rate: 1,
+        close_debt: true,
+        debt_settlement_note: "Paid in full"
+      })
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+    expect(response.status).toBe(200);
+    expect(data.debt_closed).toBe(true);
+    expect(insertMock).toHaveBeenCalled();
+    const inserted = insertMock.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(inserted).toMatchObject({
+      entry_direction: "spending",
+      is_credit: false,
+      is_debt: false,
+      settles_entry_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    });
   });
 
   it("rejects settlement chains", async () => {
