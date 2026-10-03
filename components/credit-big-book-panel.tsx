@@ -1236,7 +1236,7 @@ export function CreditBigBookPanel({
           }}
         >
           <table className="data-table data-table-sticky-head min-w-[1440px]">
-            <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
+            <thead>
               <tr>
                 <th className="px-3 py-2">Date</th>
                 <th className="px-3 py-2">Cash Flow</th>

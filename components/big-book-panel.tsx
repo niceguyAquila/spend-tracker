@@ -2403,7 +2403,7 @@ export function BigBookPanel({
                 <col key={key} style={{ width: columnWidths[key] }} />
               ))}
             </colgroup>
-            <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
+            <thead>
               <tr>
                 <th className="relative px-3 py-2">
                   <input

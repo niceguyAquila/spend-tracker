@@ -94,6 +94,7 @@ export function BigBookBulkSettleEditModal({
   const [currencyCode, setCurrencyCode] = useState<BulkSettleCurrency>(creditCurrency);
   const [amount, setAmount] = useState("");
   const [conversionRate, setConversionRate] = useState("");
+  const [includeProfit, setIncludeProfit] = useState(false);
   const [profitAmount, setProfitAmount] = useState("");
   const [kursRate, setKursRate] = useState("");
   const [kursAmount, setKursAmount] = useState("");
@@ -109,6 +110,7 @@ export function BigBookBulkSettleEditModal({
     setCurrencyCode(primaryCurrency);
     setAmount(formatAmountInput(String(total)));
     setConversionRate(primaryCurrency === "USDT" ? "1" : "");
+    setIncludeProfit(false);
     setProfitAmount("");
     setKursRate("");
     setKursAmount("");
@@ -129,7 +131,8 @@ export function BigBookBulkSettleEditModal({
   const rateValue = sameCurrency ? 1 : Number(conversionRate);
   const amountValue = Number(parseAmountInput(amount));
   const profitValue = Number(parseAmountInput(profitAmount));
-  const hasPositiveProfit = Number.isFinite(profitValue) && profitValue > 0;
+  const hasPositiveProfit =
+    includeProfit && Number.isFinite(profitValue) && profitValue > 0;
   const hasPositiveRate = Number.isFinite(rateValue) && rateValue > 0;
   const isAmountValid =
     draft?.mode === "per_credit"
@@ -188,12 +191,14 @@ export function BigBookBulkSettleEditModal({
   function syncSettlementAmountFromRateAndProfit(
     nextRateRaw: string,
     nextProfitRaw: string,
-    settleCurrency: BulkSettleCurrency
+    settleCurrency: BulkSettleCurrency,
+    profitIncluded: boolean
   ) {
     if (draft?.mode !== "single" || mixedCreditCurrency) return;
     const rate = Number(nextRateRaw);
     const profit = Number(parseAmountInput(nextProfitRaw));
-    const profitSafe = Number.isFinite(profit) && profit > 0 ? profit : 0;
+    const profitSafe =
+      profitIncluded && Number.isFinite(profit) && profit > 0 ? profit : 0;
 
     if (settleCurrency === creditCurrency) {
       setAmount(formatAmountInput(String(creditTotal)));
@@ -214,13 +219,42 @@ export function BigBookBulkSettleEditModal({
 
   function applyConversionRate(nextRateRaw: string) {
     setConversionRate(nextRateRaw);
-    syncSettlementAmountFromRateAndProfit(nextRateRaw, profitAmount, currencyCode);
+    syncSettlementAmountFromRateAndProfit(
+      nextRateRaw,
+      profitAmount,
+      currencyCode,
+      includeProfit
+    );
   }
 
   function applyProfitAmount(nextProfitRaw: string) {
     setProfitAmount(nextProfitRaw);
     if (currencyCode === "USDT" && !sameCurrency) {
-      syncSettlementAmountFromRateAndProfit(conversionRate, nextProfitRaw, currencyCode);
+      syncSettlementAmountFromRateAndProfit(
+        conversionRate,
+        nextProfitRaw,
+        currencyCode,
+        true
+      );
+    }
+  }
+
+  function applyIncludeProfit(next: boolean) {
+    setIncludeProfit(next);
+    if (!next) {
+      setProfitAmount("");
+      if (currencyCode === "USDT" && !sameCurrency) {
+        syncSettlementAmountFromRateAndProfit(conversionRate, "", currencyCode, false);
+      }
+      return;
+    }
+    if (currencyCode === "USDT" && !sameCurrency) {
+      syncSettlementAmountFromRateAndProfit(
+        conversionRate,
+        profitAmount,
+        currencyCode,
+        true
+      );
     }
   }
 
@@ -288,7 +322,9 @@ export function BigBookBulkSettleEditModal({
                 settlement_note: note.trim(),
                 close_credits: closeCredits,
                 explanation: explanation.trim(),
-                ...(Number.isFinite(profitParsed) && profitParsed > 0
+                ...(includeProfit &&
+                Number.isFinite(profitParsed) &&
+                profitParsed > 0
                   ? { profit_amount: profitParsed }
                   : {}),
                 ...(showUsdtKurs && Number.isFinite(kursRateParsed)
@@ -387,32 +423,53 @@ export function BigBookBulkSettleEditModal({
           </select>
         </label>
 
-        <label className="block text-sm">
-          PROFIT amount
-          <div className="mt-1 flex overflow-hidden rounded-md border border-[rgb(var(--border))] focus-within:shadow-[0_0_0_3px_rgba(var(--focus),0.25)]">
-            <input
-              className="min-w-0 flex-1 border-0 bg-[rgb(var(--surface))] px-3 py-2 text-right text-base font-medium text-[rgb(var(--text))] focus:outline-none"
-              inputMode="decimal"
-              placeholder="0"
-              value={profitAmount}
-              onChange={(event) => applyProfitAmount(formatAmountInput(event.target.value))}
-              aria-label="PROFIT amount"
-              disabled={mixedCreditCurrency}
-            />
-            <span
-              className="shrink-0 border-0 border-l border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] px-2 py-2 text-sm font-medium text-[rgb(var(--text))]"
-              aria-hidden
-            >
-              {mixedCreditCurrency ? "—" : creditCurrency}
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            className="mt-1"
+            type="checkbox"
+            checked={includeProfit}
+            onChange={(event) => applyIncludeProfit(event.target.checked)}
+            disabled={mixedCreditCurrency}
+          />
+          <span>
+            <span className="font-medium">Include PROFIT</span>
+            <span className="mt-0.5 block text-xs text-muted">
+              Optional. Creates a separate PROFIT-type inflow in the credit currency
+              {currencyCode === "USDT" && !sameCurrency
+                ? ". When enabled with an amount > 0, USDT uses (base + profit) ÷ rate."
+                : "."}
             </span>
-          </div>
-          <span className="mt-1 block text-xs text-muted">
-            Optional. Creates a separate PROFIT-type inflow in the credit currency
-            {currencyCode === "USDT" && !sameCurrency
-              ? ". Included in USDT amount as (base + profit) ÷ rate."
-              : "."}
           </span>
         </label>
+
+        {includeProfit ? (
+          <label className="block text-sm">
+            PROFIT amount
+            <div className="mt-1 flex overflow-hidden rounded-md border border-[rgb(var(--border))] focus-within:shadow-[0_0_0_3px_rgba(var(--focus),0.25)]">
+              <input
+                className="min-w-0 flex-1 border-0 bg-[rgb(var(--surface))] px-3 py-2 text-right text-base font-medium text-[rgb(var(--text))] focus:outline-none"
+                inputMode="decimal"
+                placeholder="0"
+                value={profitAmount}
+                onChange={(event) => applyProfitAmount(formatAmountInput(event.target.value))}
+                aria-label="PROFIT amount"
+                disabled={mixedCreditCurrency}
+              />
+              <span
+                className="shrink-0 border-0 border-l border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] px-2 py-2 text-sm font-medium text-[rgb(var(--text))]"
+                aria-hidden
+              >
+                {mixedCreditCurrency ? "—" : creditCurrency}
+              </span>
+            </div>
+            <span className="mt-1 block text-xs text-muted">
+              Enter amount in credit currency when including PROFIT
+              {currencyCode === "USDT" && !sameCurrency
+                ? ". Included in USDT amount as (base + profit) ÷ rate."
+                : "."}
+            </span>
+          </label>
+        ) : null}
 
         {draft.mode === "single" ? (
           <div className="space-y-3">
@@ -439,7 +496,9 @@ export function BigBookBulkSettleEditModal({
                 <span className="mt-1 block text-xs text-muted">
                   Optional. When set,{" "}
                   {currencyCode === "USDT"
-                    ? `amount in USDT = (base + profit) ÷ rate.`
+                    ? hasPositiveProfit
+                      ? "amount in USDT = (base + profit) ÷ rate."
+                      : "amount in USDT = base ÷ rate."
                     : `amount in ${currencyCode} = credit amount ÷ rate.`}
                   Credit-currency equivalent is not required to record the settlement.
                   {equivalentCredit != null

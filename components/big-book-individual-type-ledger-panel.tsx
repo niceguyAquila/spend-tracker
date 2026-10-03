@@ -191,7 +191,7 @@ export function BigBookIndividualTypeLedgerPanel({ types }: Props) {
         </div>
         <div className="overflow-x-auto">
           <table className="data-table min-w-[680px]">
-            <thead className="border-b text-left bg-[rgb(var(--surface-muted))] text-[rgb(var(--text))]">
+            <thead>
               <tr>
                 <th className="px-3 py-2">Month</th>
                 <th className="px-3 py-2">IDR</th>
@@ -287,7 +287,7 @@ export function BigBookIndividualTypeLedgerPanel({ types }: Props) {
 
         <div className="mt-4 overflow-x-auto">
           <table className="data-table data-table-zebra min-w-[1100px]">
-            <thead className="text-[rgb(var(--text))]">
+            <thead>
               <tr>
                 <th>Date</th>
                 <th>Cash Flow</th>
