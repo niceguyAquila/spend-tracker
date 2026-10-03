@@ -71,8 +71,7 @@ function TotalsBox({
 export function BigBookMetricsSkeleton() {
   return (
     <div className="space-y-4" aria-busy="true">
-      <section className="card h-56 animate-pulse bg-[rgb(var(--surface-muted))]" />
-      <section className="card h-40 animate-pulse bg-[rgb(var(--surface-muted))]" />
+      <section className="card h-72 animate-pulse bg-[rgb(var(--surface-muted))]" />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <section className="card h-40 min-w-0 animate-pulse bg-[rgb(var(--surface-muted))]" />
         <section className="card h-40 min-w-0 animate-pulse bg-[rgb(var(--surface-muted))]" />
@@ -161,48 +160,48 @@ export function BigBookMetricsCardsView({
             <p className="text-sm text-muted sm:col-span-1 xl:col-span-2">No actor totals yet.</p>
           ) : null}
         </div>
-      </section>
 
-      <section className="card">
-        <h2 className="text-lg font-semibold">Outstanding Credit & Debt Totals</h2>
-        <p className="mt-1 text-sm text-muted">
-          Open (unsettled) credit and debt balances by currency. Credit amounts use the usual signed
-          color; debt amounts are shown in red as outflow liability.
-        </p>
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <article className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-4">
-            <p className="font-semibold">Total outstanding credit</p>
-            <div className="mt-3 space-y-2 text-sm">
-              {creditTotals.length ? (
-                creditTotals.map((total) => (
-                  <TotalsBox
-                    key={total.currency}
-                    label={`${total.currency} · ${total.openCount} open`}
-                    value={total.outstanding}
-                  />
-                ))
-              ) : (
-                <p className="text-sm text-muted">No open credits.</p>
-              )}
-            </div>
-          </article>
-          <article className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-4">
-            <p className="font-semibold">Total outstanding debt</p>
-            <div className="mt-3 space-y-2 text-sm">
-              {debtTotals.length ? (
-                debtTotals.map((total) => (
-                  <TotalsBox
-                    key={total.currency}
-                    label={`${total.currency} · ${total.openCount} open`}
-                    value={total.outstanding}
-                    forceNegativeColor
-                  />
-                ))
-              ) : (
-                <p className="text-sm text-muted">No open debts.</p>
-              )}
-            </div>
-          </article>
+        <div className="mt-6 rounded-lg border border-[rgb(var(--border))] border-l-[3px] border-l-[rgb(var(--primary))] bg-[rgb(var(--surface-muted))]/70 p-4">
+          <h3 className="text-base font-semibold">Outstanding Credit & Debt Totals</h3>
+          <p className="mt-1 text-sm text-muted">
+            Open (unsettled) credit and debt balances by currency. Credit amounts use the usual signed
+            color; debt amounts are shown in red as outflow liability.
+          </p>
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <article className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4">
+              <p className="font-semibold">Total outstanding credit</p>
+              <div className="mt-3 space-y-2 text-sm">
+                {creditTotals.length ? (
+                  creditTotals.map((total) => (
+                    <TotalsBox
+                      key={total.currency}
+                      label={`${total.currency} · ${total.openCount} open`}
+                      value={total.outstanding}
+                    />
+                  ))
+                ) : (
+                  <p className="text-sm text-muted">No open credits.</p>
+                )}
+              </div>
+            </article>
+            <article className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4">
+              <p className="font-semibold">Total outstanding debt</p>
+              <div className="mt-3 space-y-2 text-sm">
+                {debtTotals.length ? (
+                  debtTotals.map((total) => (
+                    <TotalsBox
+                      key={total.currency}
+                      label={`${total.currency} · ${total.openCount} open`}
+                      value={total.outstanding}
+                      forceNegativeColor
+                    />
+                  ))
+                ) : (
+                  <p className="text-sm text-muted">No open debts.</p>
+                )}
+              </div>
+            </article>
+          </div>
         </div>
       </section>
 

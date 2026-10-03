@@ -14,7 +14,6 @@ import {
   getBigBookVendors
 } from "@/lib/db/queries";
 import { BigBookPanel } from "@/components/big-book-panel";
-import { PageHeader } from "@/components/ui/page-header";
 import { SetupRequiredCard } from "@/components/ui/setup-required-card";
 import { DEFAULT_PAGE_SIZE } from "@/lib/table-pagination";
 import { perfTimed } from "@/lib/perf";
@@ -87,10 +86,6 @@ export default async function BigBookPage({ searchParams }: BigBookPageProps) {
 
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Transaction Dashboard"
-          description="Manage operational spendings and business profits."
-        />
         <BigBookPanel
           key={entryId ?? "ledger"}
           initialTypes={types}
