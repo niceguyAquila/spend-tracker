@@ -73,7 +73,10 @@ export function BigBookMetricsSkeleton() {
     <div className="space-y-4" aria-busy="true">
       <section className="card h-56 animate-pulse bg-[rgb(var(--surface-muted))]" />
       <section className="card h-40 animate-pulse bg-[rgb(var(--surface-muted))]" />
-      <section className="card h-40 animate-pulse bg-[rgb(var(--surface-muted))]" />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <section className="card h-40 min-w-0 animate-pulse bg-[rgb(var(--surface-muted))]" />
+        <section className="card h-40 min-w-0 animate-pulse bg-[rgb(var(--surface-muted))]" />
+      </div>
     </div>
   );
 }
@@ -203,26 +206,28 @@ export function BigBookMetricsCardsView({
         </div>
       </section>
 
-      <section className="card">
-        <h2 className="text-lg font-semibold">Outstanding Credit by Vendor and Actor (All Time)</h2>
-        <p className="mt-1 text-sm text-muted">
-          Total of open credits (not yet marked settled) by vendor and actor, per currency. Settle one
-          vendor row or multi-select rows/credits for bulk settlement.
-        </p>
-        <BigBookVendorActorOutstandingTable
-          rows={vendorActorOutstanding}
-          onSettled={onOutstandingSettled}
-        />
-      </section>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <section className="card min-w-0 overflow-hidden">
+          <h2 className="text-lg font-semibold">Outstanding Credit by Vendor and Actor (All Time)</h2>
+          <p className="mt-1 text-sm text-muted">
+            Total of open credits (not yet marked settled) by vendor and actor, per currency. Settle one
+            vendor row or multi-select rows/credits for bulk settlement.
+          </p>
+          <BigBookVendorActorOutstandingTable
+            rows={vendorActorOutstanding}
+            onSettled={onOutstandingSettled}
+          />
+        </section>
 
-      <section className="card">
-        <h2 className="text-lg font-semibold">Outstanding Debt by Vendor and Actor (All Time)</h2>
-        <p className="mt-1 text-sm text-muted">
-          Total of open debts (we owe the counterparty, not yet settled) by vendor and actor, per
-          currency. Amounts are shown in red.
-        </p>
-        <BigBookVendorActorOutstandingDebtTable rows={vendorActorOutstandingDebt} />
-      </section>
+        <section className="card min-w-0 overflow-hidden">
+          <h2 className="text-lg font-semibold">Outstanding Debt by Vendor and Actor (All Time)</h2>
+          <p className="mt-1 text-sm text-muted">
+            Total of open debts (we owe the counterparty, not yet settled) by vendor and actor, per
+            currency. Amounts are shown in red.
+          </p>
+          <BigBookVendorActorOutstandingDebtTable rows={vendorActorOutstandingDebt} />
+        </section>
+      </div>
     </>
   );
 }
