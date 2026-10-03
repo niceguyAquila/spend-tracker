@@ -3,6 +3,7 @@
 import { memo } from "react";
 import type { BigBookCreditStatus, BigBookEntry } from "@/lib/types";
 import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
+import { LinkifyText } from "@/lib/linkify-text";
 
 const CREDIT_STATUS_LABELS: Record<BigBookCreditStatus, string> = {
   open: "Open",
@@ -136,7 +137,10 @@ function BigBookEntryRowInner({
       <td className="overflow-hidden break-words px-3 py-2">
         {entry.remark ? (
           <div className="flex items-start gap-2">
-            <span className="truncate">{entry.remark}</span>
+            <span className="truncate">
+              <LinkifyText text={entry.remark} />
+            </span>
+
             <button
               className="shrink-0 text-xs text-[rgb(var(--info))] underline"
               type="button"
