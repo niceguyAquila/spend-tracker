@@ -40,6 +40,20 @@ export function computeSettlementAmountFromCredit(
   return roundSettlementAmount(creditAmount / conversionRate);
 }
 
+/**
+ * USDT settle with optional PROFIT surcharge:
+ *   A = (base + profit) / rate
+ * where rate = credit-currency units per 1 USDT.
+ */
+export function computeUsdtSettleAmountWithProfit(
+  baseCreditAmount: number,
+  profitAmount: number,
+  conversionRate: number
+): number {
+  const profit = Number.isFinite(profitAmount) && profitAmount > 0 ? profitAmount : 0;
+  return computeSettlementAmountFromCredit(baseCreditAmount + profit, conversionRate);
+}
+
 export type VendorActorOutstandingCreditInput = {
   id: string;
   responsible_actor_id: string;
