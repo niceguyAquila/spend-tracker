@@ -556,6 +556,9 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
     settlement_note: string;
     close_credits: boolean;
     explanation: string;
+    profit_amount?: number;
+    kurs_rate?: number;
+    kurs_amount?: number;
   }) {
     if (!editDraft) return;
     setSettleSubmitting(true);
@@ -578,6 +581,23 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
       if (payload.settlement_note) body.settlement_note = payload.settlement_note;
       if (payload.explanation) body.explanation = payload.explanation;
       if (editDraft.mode === "single") body.amount = payload.amount;
+      if (
+        payload.profit_amount != null &&
+        Number.isFinite(payload.profit_amount) &&
+        payload.profit_amount > 0
+      ) {
+        body.profit_amount = payload.profit_amount;
+      }
+      if (payload.kurs_rate != null && Number.isFinite(payload.kurs_rate)) {
+        body.kurs_rate = payload.kurs_rate;
+      }
+      if (
+        payload.kurs_amount != null &&
+        Number.isFinite(payload.kurs_amount) &&
+        payload.kurs_amount > 0
+      ) {
+        body.kurs_amount = payload.kurs_amount;
+      }
 
       const response = await secureFetch("/api/big-book/entries/bulk-settle", {
         method: "POST",

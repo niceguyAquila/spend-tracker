@@ -4,8 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import {
   computeSettlementAmountFromCredit,
-  computeSettlementAmountInCreditCurrency
+  computeSettlementAmountInCreditCurrency,
+  computeUsdtSettleAmountWithProfit
 } from "@/lib/big-book/credit";
+import { calculateKursAmount } from "@/lib/big-book/kurs-usdt-entry";
 import { formatAmount } from "@/lib/display-format";
 import {
   formatAmountInput,
@@ -31,22 +33,30 @@ export type BulkSettleEditDraft = {
   label: string;
 };
 
+export type BulkSettleSubmitPayload = {
+  entry_date: string;
+  currency_code: BulkSettleCurrency;
+  amount: number;
+  /** Omitted when USDT settle has no optional FX rate. */
+  settlement_conversion_rate?: number;
+  settlement_note: string;
+  close_credits: boolean;
+  explanation: string;
+  /** Optional PROFIT surcharge in credit currency. */
+  profit_amount?: number;
+  /** Optional KURS rate (USDT settle only). */
+  kurs_rate?: number;
+  /** Optional KURS amount override (USDT settle only). */
+  kurs_amount?: number;
+};
+
 type Props = {
   draft: BulkSettleEditDraft | null;
   open: boolean;
   submitting: boolean;
   error: string | null;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (payload: {
-    entry_date: string;
-    currency_code: BulkSettleCurrency;
-    amount: number;
-    /** Omitted when USDT settle has no optional FX rate. */
-    settlement_conversion_rate?: number;
-    settlement_note: string;
-    close_credits: boolean;
-    explanation: string;
-  }) => void;
+  onSubmit: (payload: BulkSettleSubmitPayload) => void;
 };
 
 const CURRENCY_OPTIONS: BulkSettleCurrency[] = sortByDisplayLabel(
@@ -60,7 +70,7 @@ function todayIsoDate() {
 
 /**
  * Bulk settle always opens this edit dialog (even for “one settlement for all”)
- * so admins can change currency / USDT rate before commit.
+ * so admins can change currency / USDT rate / PROFIT / KURS before commit.
  */
 export function BigBookBulkSettleEditModal({
   draft,
@@ -84,6 +94,9 @@ export function BigBookBulkSettleEditModal({
   const [currencyCode, setCurrencyCode] = useState<BulkSettleCurrency>(creditCurrency);
   const [amount, setAmount] = useState("");
   const [conversionRate, setConversionRate] = useState("");
+  const [profitAmount, setProfitAmount] = useState("");
+  const [kursRate, setKursRate] = useState("");
+  const [kursAmount, setKursAmount] = useState("");
   const [note, setNote] = useState("");
   const [closeCredits, setCloseCredits] = useState(true);
   const [explanation, setExplanation] = useState("");
@@ -96,6 +109,9 @@ export function BigBookBulkSettleEditModal({
     setCurrencyCode(primaryCurrency);
     setAmount(formatAmountInput(String(total)));
     setConversionRate(primaryCurrency === "USDT" ? "1" : "");
+    setProfitAmount("");
+    setKursRate("");
+    setKursAmount("");
     setNote("");
     setCloseCredits(true);
     setExplanation(
@@ -107,27 +123,61 @@ export function BigBookBulkSettleEditModal({
     );
   }, [open, draft]);
 
-  if (!draft) return null;
-
   const sameCurrency = currencyCode === creditCurrency && !mixedCreditCurrency;
   const showConversionRate = !sameCurrency && !mixedCreditCurrency;
+  const showUsdtKurs = currencyCode === "USDT" && !mixedCreditCurrency;
   const rateValue = sameCurrency ? 1 : Number(conversionRate);
   const amountValue = Number(parseAmountInput(amount));
+  const profitValue = Number(parseAmountInput(profitAmount));
+  const hasPositiveProfit = Number.isFinite(profitValue) && profitValue > 0;
   const hasPositiveRate = Number.isFinite(rateValue) && rateValue > 0;
   const isAmountValid =
-    draft.mode === "per_credit"
+    draft?.mode === "per_credit"
       ? true
       : Number.isFinite(amountValue) && amountValue > 0;
+
+  // Recalculate KURS amount from rate + settlement amount A (manual override sticks until A/r change).
+  useEffect(() => {
+    if (!showUsdtKurs) {
+      if (kursRate || kursAmount) {
+        setKursRate("");
+        setKursAmount("");
+      }
+      return;
+    }
+    const rateRaw = kursRate.trim();
+    if (!rateRaw) {
+      if (kursAmount) setKursAmount("");
+      return;
+    }
+    const rate = Number(parseAmountInput(rateRaw));
+    if (!Number.isFinite(rate) || !Number.isFinite(amountValue) || amountValue <= 0) {
+      if (kursAmount) setKursAmount("");
+      return;
+    }
+    const next = calculateKursAmount(amountValue, rate);
+    const nextAmount = next != null ? formatAmountInput(String(next)) : "";
+    if (nextAmount !== kursAmount) {
+      setKursAmount(nextAmount);
+    }
+    // Intentionally omit kursAmount from deps so manual edits stick until A or r changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showUsdtKurs, amountValue, kursRate]);
+
+  if (!draft) return null;
+
   const blockedReason =
     draft.mode === "single" && mixedCreditCurrency
       ? "One settlement for all requires the same credit currency. Switch to one settlement per credit, or select a single-currency set."
-      : currencyCode === "USDT" && mixedCreditCurrency && hasPositiveRate
-        ? "USDT conversion needs a single credit currency so one company rate applies. Clear the rate, settle same-currency credits together, or settle in each credit's own currency."
-        : draft.mode === "single" && !isAmountValid
-          ? "Enter a settlement amount greater than 0."
-          : !entryDate
-            ? "Choose a settlement date."
-            : null;
+      : hasPositiveProfit && mixedCreditCurrency
+        ? "PROFIT requires a single credit currency so the surcharge matches the credits."
+        : currencyCode === "USDT" && mixedCreditCurrency && hasPositiveRate
+          ? "USDT conversion needs a single credit currency so one company rate applies. Clear the rate, settle same-currency credits together, or settle in each credit's own currency."
+          : draft.mode === "single" && !isAmountValid
+            ? "Enter a settlement amount greater than 0."
+            : !entryDate
+              ? "Choose a settlement date."
+              : null;
   const canSubmit = !submitting && blockedReason == null;
 
   const equivalentCredit =
@@ -135,16 +185,42 @@ export function BigBookBulkSettleEditModal({
       ? computeSettlementAmountInCreditCurrency(amountValue, rateValue)
       : null;
 
+  function syncSettlementAmountFromRateAndProfit(
+    nextRateRaw: string,
+    nextProfitRaw: string,
+    settleCurrency: BulkSettleCurrency
+  ) {
+    if (draft?.mode !== "single" || mixedCreditCurrency) return;
+    const rate = Number(nextRateRaw);
+    const profit = Number(parseAmountInput(nextProfitRaw));
+    const profitSafe = Number.isFinite(profit) && profit > 0 ? profit : 0;
+
+    if (settleCurrency === creditCurrency) {
+      setAmount(formatAmountInput(String(creditTotal)));
+      return;
+    }
+    if (!(rate > 0)) return;
+
+    if (settleCurrency === "USDT") {
+      setAmount(
+        formatAmountInput(
+          String(computeUsdtSettleAmountWithProfit(creditTotal, profitSafe, rate))
+        )
+      );
+      return;
+    }
+    setAmount(formatAmountInput(String(computeSettlementAmountFromCredit(creditTotal, rate))));
+  }
+
   function applyConversionRate(nextRateRaw: string) {
     setConversionRate(nextRateRaw);
-    const rate = Number(nextRateRaw);
-    if (!(rate > 0) || mixedCreditCurrency) return;
-    // App convention: settlement_amount = credit_amount / rate
-    // (rate = credit units per 1 settlement-currency unit).
-    if (draft?.mode === "single") {
-      setAmount(
-        formatAmountInput(String(computeSettlementAmountFromCredit(creditTotal, rate)))
-      );
+    syncSettlementAmountFromRateAndProfit(nextRateRaw, profitAmount, currencyCode);
+  }
+
+  function applyProfitAmount(nextProfitRaw: string) {
+    setProfitAmount(nextProfitRaw);
+    if (currencyCode === "USDT" && !sameCurrency) {
+      syncSettlementAmountFromRateAndProfit(conversionRate, nextProfitRaw, currencyCode);
     }
   }
 
@@ -197,6 +273,9 @@ export function BigBookBulkSettleEditModal({
                   ? // API ignores amount in per_credit mode; send a placeholder > 0.
                     1
                   : amountValue;
+              const profitParsed = Number(parseAmountInput(profitAmount));
+              const kursRateParsed = Number(parseAmountInput(kursRate));
+              const kursAmountParsed = Number(parseAmountInput(kursAmount));
               onSubmit({
                 entry_date: entryDate,
                 currency_code: currencyCode,
@@ -208,7 +287,18 @@ export function BigBookBulkSettleEditModal({
                     : {}),
                 settlement_note: note.trim(),
                 close_credits: closeCredits,
-                explanation: explanation.trim()
+                explanation: explanation.trim(),
+                ...(Number.isFinite(profitParsed) && profitParsed > 0
+                  ? { profit_amount: profitParsed }
+                  : {}),
+                ...(showUsdtKurs && Number.isFinite(kursRateParsed)
+                  ? { kurs_rate: kursRateParsed }
+                  : {}),
+                ...(showUsdtKurs &&
+                Number.isFinite(kursAmountParsed) &&
+                kursAmountParsed > 0
+                  ? { kurs_amount: kursAmountParsed }
+                  : {})
               });
             }}
           >
@@ -230,7 +320,7 @@ export function BigBookBulkSettleEditModal({
             {draft.mode === "single" ? " as one settlement" : " (one settlement per credit)"}.
           </p>
           <p className="mt-1 text-xs text-muted">
-            Credit total:{" "}
+            Base (credit total):{" "}
             {formatAmount(creditTotal, {
               minimumFractionDigits: 0,
               maximumFractionDigits: 4
@@ -297,6 +387,33 @@ export function BigBookBulkSettleEditModal({
           </select>
         </label>
 
+        <label className="block text-sm">
+          PROFIT amount
+          <div className="mt-1 flex overflow-hidden rounded-md border border-[rgb(var(--border))] focus-within:shadow-[0_0_0_3px_rgba(var(--focus),0.25)]">
+            <input
+              className="min-w-0 flex-1 border-0 bg-[rgb(var(--surface))] px-3 py-2 text-right text-base font-medium text-[rgb(var(--text))] focus:outline-none"
+              inputMode="decimal"
+              placeholder="0"
+              value={profitAmount}
+              onChange={(event) => applyProfitAmount(formatAmountInput(event.target.value))}
+              aria-label="PROFIT amount"
+              disabled={mixedCreditCurrency}
+            />
+            <span
+              className="shrink-0 border-0 border-l border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] px-2 py-2 text-sm font-medium text-[rgb(var(--text))]"
+              aria-hidden
+            >
+              {mixedCreditCurrency ? "—" : creditCurrency}
+            </span>
+          </div>
+          <span className="mt-1 block text-xs text-muted">
+            Optional. Creates a separate PROFIT-type inflow in the credit currency
+            {currencyCode === "USDT" && !sameCurrency
+              ? ". Included in USDT amount as (base + profit) ÷ rate."
+              : "."}
+          </span>
+        </label>
+
         {draft.mode === "single" ? (
           <div className="space-y-3">
             <label className="block text-sm">
@@ -320,7 +437,10 @@ export function BigBookBulkSettleEditModal({
                   onChange={(event) => applyConversionRate(formatRateInput(event.target.value))}
                 />
                 <span className="mt-1 block text-xs text-muted">
-                  Optional. When set, amount in {currencyCode} = credit amount ÷ rate.
+                  Optional. When set,{" "}
+                  {currencyCode === "USDT"
+                    ? `amount in USDT = (base + profit) ÷ rate.`
+                    : `amount in ${currencyCode} = credit amount ÷ rate.`}
                   Credit-currency equivalent is not required to record the settlement.
                   {equivalentCredit != null
                     ? ` Equivalent: ${formatAmount(equivalentCredit, {
@@ -338,7 +458,8 @@ export function BigBookBulkSettleEditModal({
               Each credit gets its own settlement amount
               {showConversionRate && hasPositiveRate
                 ? " (credit amount ÷ conversion rate)"
-                : " (matching that credit’s outstanding)"}.
+                : " (matching that credit’s outstanding)"}
+              {hasPositiveProfit ? ". PROFIT is recorded once for the batch." : "."}
             </p>
             {showConversionRate ? (
               <label className="block text-sm">
@@ -358,6 +479,48 @@ export function BigBookBulkSettleEditModal({
             ) : null}
           </div>
         )}
+
+        {showUsdtKurs ? (
+          <div className="space-y-3">
+            <label className="block text-sm">
+              KURS
+              <input
+                className="field mt-1 w-full text-right"
+                inputMode="decimal"
+                placeholder="0.999423"
+                value={kursRate}
+                onChange={(event) => setKursRate(formatRateInput(event.target.value))}
+                aria-label="KURS rate"
+              />
+              <span className="mt-1 block text-xs text-muted">
+                Optional. Companion amount = settlement amount × (1 − rate).
+              </span>
+            </label>
+            <label className="block text-sm">
+              KURS amount
+              <div className="mt-1 flex overflow-hidden rounded-md border border-[rgb(var(--border))] focus-within:shadow-[0_0_0_3px_rgba(var(--focus),0.25)]">
+                <input
+                  className="min-w-0 flex-1 border-0 bg-[rgb(var(--surface))] px-3 py-2 text-right text-base font-medium text-[rgb(var(--text))] focus:outline-none"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={kursAmount}
+                  onChange={(event) => setKursAmount(formatAmountInput(event.target.value))}
+                  aria-label="KURS USDT amount"
+                />
+                <span
+                  className="shrink-0 border-0 border-l border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] px-2 py-2 text-sm font-medium text-[rgb(var(--text))]"
+                  aria-hidden
+                >
+                  USDT
+                </span>
+              </div>
+              <span className="mt-1 block text-xs text-muted">
+                Editable. Recalculates when settlement amount or KURS rate changes. Creates a
+                grouped USDT spending entry typed KURS.
+              </span>
+            </label>
+          </div>
+        ) : null}
 
         <label className="block text-sm">
           Explanation

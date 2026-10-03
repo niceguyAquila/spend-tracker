@@ -258,31 +258,57 @@ export const bigBookTypeVendorTypeMapDeleteSchema = z.object({
 
 export const bigBookBulkSettleModeSchema = z.enum(["single", "per_credit"]);
 
-export const bigBookBulkSettleSchema = z.object({
-  credit_entry_ids: z
-    .array(z.string().uuid())
-    .min(1, "Select at least one open credit to settle.")
-    .max(100)
-    .refine((ids) => new Set(ids).size === ids.length, "Duplicate credit ids"),
-  mode: bigBookBulkSettleModeSchema.default("single"),
-  entry_date: z.string().min(1, "Date is required"),
-  close_credits: z.boolean().optional().default(true),
-  settlement_note: optionalNoteSchema,
-  explanation: z.string().trim().min(2).max(500).optional(),
-  /** Override settlement payment currency (defaults to each credit's currency). */
-  currency_code: bigBookCurrencySchema.optional(),
-  /**
-   * Settlement amount in `currency_code`.
-   * - single mode: one combined payment amount (defaults to sum of credit amounts when same currency / rate 1)
-   * - per_credit mode: ignored; each settlement uses that credit's converted amount
-   */
-  amount: z.coerce.number().positive("Amount must be greater than 0").optional(),
-  /**
-   * credit_currency units per 1 settlement_currency unit.
-   * Required when settlement currency differs from credit currency; forced to 1 when same.
-   */
-  settlement_conversion_rate: z.coerce.number().positive().optional()
-});
+const optionalProfitAmountSchema = z.preprocess((value) => {
+  if (value === "" || value == null) return undefined;
+  return value;
+}, z.coerce.number().positive("PROFIT amount must be greater than 0").optional());
+
+export const bigBookBulkSettleSchema = z
+  .object({
+    credit_entry_ids: z
+      .array(z.string().uuid())
+      .min(1, "Select at least one open credit to settle.")
+      .max(100)
+      .refine((ids) => new Set(ids).size === ids.length, "Duplicate credit ids"),
+    mode: bigBookBulkSettleModeSchema.default("single"),
+    entry_date: z.string().min(1, "Date is required"),
+    close_credits: z.boolean().optional().default(true),
+    settlement_note: optionalNoteSchema,
+    explanation: z.string().trim().min(2).max(500).optional(),
+    /** Override settlement payment currency (defaults to each credit's currency). */
+    currency_code: bigBookCurrencySchema.optional(),
+    /**
+     * Settlement amount in `currency_code`.
+     * - single mode: one combined payment amount (defaults to sum of credit amounts when same currency / rate 1)
+     * - per_credit mode: ignored; each settlement uses that credit's converted amount
+     */
+    amount: z.coerce.number().positive("Amount must be greater than 0").optional(),
+    /**
+     * credit_currency units per 1 settlement_currency unit.
+     * Required when settlement currency differs from credit currency; forced to 1 when same.
+     */
+    settlement_conversion_rate: z.coerce.number().positive().optional(),
+    /**
+     * Optional PROFIT surcharge in the credit currency (creates a separate PROFIT-type ledger row).
+     */
+    profit_amount: optionalProfitAmountSchema,
+    /** Optional KURS rate for USDT settle path (companion USDT spending). */
+    kurs_rate: optionalKursRateSchema,
+    /** Optional KURS amount override (companion USDT spending). */
+    kurs_amount: optionalKursAmountSchema
+  })
+  .superRefine((value, ctx) => {
+    const hasKurs = value.kurs_rate != null || value.kurs_amount != null;
+    if (!hasKurs) return;
+    if (value.currency_code !== "USDT") {
+      const path = value.kurs_amount != null ? ["kurs_amount"] : ["kurs_rate"];
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "KURS is only allowed when settlement currency is USDT.",
+        path
+      });
+    }
+  });
 
 const bigBookGroupEntryInputSchema = bigBookEntryBaseSchema.omit({
   is_credit: true,
