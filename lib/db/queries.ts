@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { loadDisplayNameDirectory } from "@/lib/db/display-names";
+import { collectRangePages } from "@/lib/db/range-pages";
 import { perfStart } from "@/lib/perf";
 import {
   computeBigBookCreditStatus,
@@ -833,29 +834,43 @@ async function attachBigBookCreditSummaries(
   });
 }
 
+/** Absolute ceiling for unpaginated-style fetches (export uses this). */
+export const BIG_BOOK_ENTRIES_MAX_ROWS = 100_000;
+
 export async function getBigBookEntries(filters?: BigBookEntryFilters & { limit?: number }): Promise<BigBookEntry[]> {
   const supabase = await createClient();
-  let query = supabase
-    .from("business_ledger_entries")
-    .select(BIG_BOOK_ENTRY_SELECT)
-    .order("entry_date", { ascending: false })
-    .order("created_at", { ascending: false });
+  const maxRows = Math.min(
+    Math.max(1, Math.floor(filters?.limit ?? 500)),
+    BIG_BOOK_ENTRIES_MAX_ROWS
+  );
 
-  query = applyBigBookEntryFilters(query, filters);
-  query = query.limit(filters?.limit ?? 500);
+  // Page with .range() — a single .limit(N) is silently clamped by PostgREST
+  // max-rows (~1000), which truncated full CSV exports.
+  const data = await collectRangePages(
+    async (from, to) => {
+      let query = supabase
+        .from("business_ledger_entries")
+        .select(BIG_BOOK_ENTRY_SELECT)
+        .order("entry_date", { ascending: false })
+        .order("created_at", { ascending: false });
 
-  const { data, error } = await query;
-  if (error) throw error;
+      query = applyBigBookEntryFilters(query, filters);
+      const { data: batch, error } = await query.range(from, to);
+      if (error) throw error;
+      return (batch ?? []) as RawBigBookEntryRow[];
+    },
+    { maxRows }
+  );
 
   const actorIds: string[] = [];
-  for (const row of data ?? []) {
+  for (const row of data) {
     if (row.created_by) actorIds.push(row.created_by);
     if (row.updated_by) actorIds.push(row.updated_by);
     if (row.credit_settled_by) actorIds.push(row.credit_settled_by);
   }
   const actorMap = await resolveDisplayNameMap(supabase, actorIds);
 
-  const mapped = (data ?? []).map((row) => mapBigBookEntryRow(row as RawBigBookEntryRow, actorMap));
+  const mapped = data.map((row) => mapBigBookEntryRow(row, actorMap));
   return attachBigBookCreditSummaries(supabase, mapped);
 }
 

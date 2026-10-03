@@ -109,6 +109,11 @@ export function parseAmount(value: string): number | null {
   return parsed;
 }
 
+/** Replace CR/LF so spreadsheet apps that split on bare newlines keep one row. */
+export function flattenCsvNewlines(value: string): string {
+  return value.replace(/\r\n|\r|\n/g, " ");
+}
+
 export function escapeCsvCell(value: string | null | undefined): string {
   const str = value == null ? "" : String(value);
   if (str.length === 0) return "";
@@ -116,6 +121,15 @@ export function escapeCsvCell(value: string | null | undefined): string {
     return `"${str.replace(/"/g, '""')}"`;
   }
   return str;
+}
+
+/**
+ * Excel/Sheets-friendly CSV cell: flatten embedded newlines to spaces, then
+ * quote when commas or quotes remain.
+ */
+export function escapeCsvCellSpreadsheetSafe(value: string | null | undefined): string {
+  const str = value == null ? "" : flattenCsvNewlines(String(value));
+  return escapeCsvCell(str);
 }
 
 export function formatAmountForCsv(amount: number): string {
