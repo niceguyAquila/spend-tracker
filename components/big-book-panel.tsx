@@ -2210,8 +2210,10 @@ export function BigBookPanel({
     willCreateGasFeeEntry(settlementForm!.currency_code, settlementForm!.gas_fee_amount);
 
   function renderEntryRow(entry: BigBookEntry, isGroupMember: boolean) {
+    // Group members get magenta `.group-child` styling from globals.css;
+    // stripeClass is only applied for ungrouped rows.
     const stripe = isGroupMember
-      ? "bg-[rgb(var(--surface-muted))]/40"
+      ? ""
       : rowStripeClass(standaloneEntryStripeIndex.get(entry.id) ?? 0);
     return (
       <BigBookEntryRow
@@ -2648,6 +2650,7 @@ export function BigBookPanel({
                         expanded={expandedGroupIds.has(row.group.id)}
                         onToggle={() => toggleGroupExpanded(row.group.id)}
                         trailingColSpan={GROUP_ROW_TRAILING_COLSPAN}
+                        columnCount={LEDGER_COLUMN_COUNT}
                         openActionMenu={openActionMenu}
                         actionMenuRef={actionMenuRef}
                         onOpenActionMenu={(id, top, left) => setOpenActionMenu({ id, top, left })}

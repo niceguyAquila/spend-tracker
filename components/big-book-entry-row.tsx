@@ -64,10 +64,15 @@ function BigBookEntryRowInner({
     ? " bg-[rgb(var(--info)/0.12)] ring-1 ring-inset ring-[rgb(var(--info))]"
     : entry.is_debt
       ? " bg-debt-row"
-      : ` ${stripeClass}`;
+      : isGroupMember
+        ? ""
+        : ` ${stripeClass}`;
+  const groupChildClass = isGroupMember ? " group-child" : "";
 
   return (
-    <tr className={`border-b border-[rgb(var(--border))] align-top${rowToneClass}`}>
+    <tr
+      className={`border-b border-[rgb(var(--border))] align-top${groupChildClass}${rowToneClass}`}
+    >
       <td className="overflow-hidden px-3 py-2">
         {isGroupMember ? null : (
           <input
@@ -79,7 +84,7 @@ function BigBookEntryRowInner({
           />
         )}
       </td>
-      <td className={`overflow-hidden break-words px-3 py-2 ${isGroupMember ? "pl-8" : ""}`}>
+      <td className="overflow-hidden break-words px-3 py-2">
         {formatDateDisplay(entry.entry_date)}
       </td>
       <td className="overflow-hidden px-3 py-2">
