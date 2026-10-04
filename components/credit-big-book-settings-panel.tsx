@@ -15,10 +15,26 @@ import { EntityEditDialog } from "@/components/ui/entity-edit-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { TableEmptyState } from "@/components/ui/table-empty-state";
+import {
+  SettingsCategoryTabBar,
+  SettingsDangerZonePanel
+} from "@/components/settings-category-tab-bar";
 import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
 import { sortByDisplayLabel } from "@/lib/ui/sort-by-display-label";
+import { DANGER_ZONE_TAB_ID, type SettingsCategoryTab } from "@/lib/ui/settings-tabs";
+import { useSettingsTab } from "@/lib/ui/use-settings-tab";
 
 type StatusFilter = "all" | "active" | "inactive";
+
+const CREDIT_SETTINGS_TABS = [
+  { id: "types", label: "Types", icon: "types" },
+  { id: "actors", label: "Actor Mapping", icon: "actors" },
+  { id: DANGER_ZONE_TAB_ID, label: "Danger zone", icon: "danger-zone" }
+] as const satisfies readonly SettingsCategoryTab[];
+
+type CreditSettingsTabId = (typeof CREDIT_SETTINGS_TABS)[number]["id"];
+
+const CREDIT_SETTINGS_TAB_IDS = CREDIT_SETTINGS_TABS.map((tab) => tab.id);
 
 type Props = {
   initialTypes: CreditBookLedgerType[];
@@ -54,6 +70,10 @@ function extractApiError(error: unknown, fallback: string) {
 export function CreditBigBookSettingsPanel({ initialTypes, initialActors, allowedUsers }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
+  const { activeTab, setTab } = useSettingsTab<CreditSettingsTabId>(
+    CREDIT_SETTINGS_TAB_IDS,
+    "types"
+  );
   const [message, setMessage] = useState<string | null>(null);
   const typesForSelect = useMemo(
     () => sortByDisplayLabel(initialTypes, (row) => row.name),
@@ -255,6 +275,13 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialActors, allowe
 
   return (
     <div className="space-y-6">
+      <SettingsCategoryTabBar
+        tabs={CREDIT_SETTINGS_TABS}
+        activeTab={activeTab}
+        onChange={setTab}
+      />
+
+      {activeTab === "types" ? (
       <section className="card relative" aria-busy={criticalPending}>
         <BlockingOverlay active={criticalPending} label="Processing settings..." />
         <h2 className="text-lg font-semibold">Type Management</h2>
@@ -378,8 +405,9 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialActors, allowe
           rangeLabel={typePagination.rangeLabel}
         />
       </section>
+      ) : null}
 
-
+      {activeTab === "actors" ? (
       <section className="card">
         <h2 className="text-lg font-semibold">Actor A/B Mapping</h2>
         <p className="mt-1 text-sm text-muted">Both actors share the same authority level and are fixed globally.</p>
@@ -427,6 +455,19 @@ export function CreditBigBookSettingsPanel({ initialTypes, initialActors, allowe
           ))}
         </div>
       </section>
+      ) : null}
+
+      {activeTab === DANGER_ZONE_TAB_ID ? (
+        <SettingsDangerZonePanel>
+          <p className="mt-4 text-sm text-muted">
+            Credit Big Book settings currently expose soft activate/deactivate on the{" "}
+            <button type="button" className="underline" onClick={() => setTab("types")}>
+              Types
+            </button>{" "}
+            tab. No permanent bulk wipe actions are available here.
+          </p>
+        </SettingsDangerZonePanel>
+      ) : null}
 
       {error ? <p className="text-sm text-[rgb(var(--danger))]">{error}</p> : null}
       {message ? <p className="text-sm text-[rgb(var(--success))]">{message}</p> : null}
