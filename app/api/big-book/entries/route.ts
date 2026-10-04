@@ -10,6 +10,10 @@ import {
 } from "@/lib/validation/big-book";
 import { buildGasFeeEntry, buildGasFeeGroupLabel } from "@/lib/big-book/gas-fee-entry";
 import {
+  ensureDebtPaymentGroup,
+  rollbackDebtPaymentGroup
+} from "@/lib/big-book/debt-payment-group";
+import {
   buildKursEntry,
   findKursTypeId,
   KURS_TYPE_MISSING_ERROR,
@@ -51,6 +55,8 @@ async function resolveSettlementFields(
       settlement_conversion_rate: number | null;
       settlement_amount_in_credit_currency: number | null;
       target_kind: "credit" | "debt" | null;
+      target_group_id: string | null;
+      target_explanation: string | null;
     }
   | { ok: false; status: number; error: string }
 > {
@@ -60,13 +66,15 @@ async function resolveSettlementFields(
       settles_entry_id: null,
       settlement_conversion_rate: null,
       settlement_amount_in_credit_currency: null,
-      target_kind: null
+      target_kind: null,
+      target_group_id: null,
+      target_explanation: null
     };
   }
 
   const { data: targetEntry, error: targetError } = await supabase
     .from("business_ledger_entries")
-    .select("id, is_credit, is_debt, settles_entry_id, currency_code")
+    .select("id, is_credit, is_debt, settles_entry_id, currency_code, group_id, explanation")
     .eq("id", payload.settles_entry_id)
     .maybeSingle();
 
@@ -101,6 +109,8 @@ async function resolveSettlementFields(
   }
 
   const targetKind = isDebt ? ("debt" as const) : ("credit" as const);
+  const targetGroupId = (targetEntry.group_id as string | null) ?? null;
+  const targetExplanation = (targetEntry.explanation as string | null) ?? null;
   const targetCurrency = targetEntry.currency_code as BigBookCurrency;
   if (payload.currency_code === targetCurrency) {
     return {
@@ -111,7 +121,9 @@ async function resolveSettlementFields(
         payload.amount,
         1
       ),
-      target_kind: targetKind
+      target_kind: targetKind,
+      target_group_id: targetGroupId,
+      target_explanation: targetExplanation
     };
   }
 
@@ -126,7 +138,9 @@ async function resolveSettlementFields(
       settles_entry_id: payload.settles_entry_id,
       settlement_conversion_rate: null,
       settlement_amount_in_credit_currency: null,
-      target_kind: targetKind
+      target_kind: targetKind,
+      target_group_id: targetGroupId,
+      target_explanation: targetExplanation
     };
   }
 
@@ -138,7 +152,9 @@ async function resolveSettlementFields(
       payload.amount,
       typedRate
     ),
-    target_kind: targetKind
+    target_kind: targetKind,
+    target_group_id: targetGroupId,
+    target_explanation: targetExplanation
   };
 }
 
@@ -311,8 +327,31 @@ export async function POST(request: Request) {
     }
   }
 
+  const needsCompanions = gasFeeAmount != null || kursAmount != null;
+  const isDebtPayment =
+    settlement.target_kind === "debt" && Boolean(settlement.settles_entry_id);
+
   let groupId: string | null = null;
-  if (gasFeeAmount != null || kursAmount != null) {
+  let createdGroupId: string | null = null;
+  let attachedDebtId: string | null = null;
+
+  if (isDebtPayment && settlement.settles_entry_id) {
+    const grouped = await ensureDebtPaymentGroup(
+      supabase,
+      {
+        id: settlement.settles_entry_id,
+        group_id: settlement.target_group_id,
+        explanation: settlement.target_explanation || payload.explanation
+      },
+      actorId
+    );
+    if (!grouped.ok) {
+      return NextResponse.json({ error: grouped.error }, { status: 400 });
+    }
+    groupId = grouped.groupId;
+    createdGroupId = grouped.createdGroupId;
+    attachedDebtId = grouped.attachedDebtId;
+  } else if (needsCompanions) {
     const { data: group, error: groupError } = await supabase
       .from("business_ledger_entry_groups")
       .insert({
@@ -331,6 +370,7 @@ export async function POST(request: Request) {
       );
     }
     groupId = group.id;
+    createdGroupId = group.id;
   }
 
   const isCredit = settlement.settles_entry_id ? false : Boolean(payload.is_credit);
@@ -363,7 +403,17 @@ export async function POST(request: Request) {
 
   let createdEntryId: string;
 
-  if (groupId && (gasFeeAmount != null || kursAmount != null)) {
+  async function rollbackCreatedGroup() {
+    if (attachedDebtId && createdGroupId) {
+      await rollbackDebtPaymentGroup(supabase, createdGroupId, attachedDebtId, actorId);
+      return;
+    }
+    if (createdGroupId) {
+      await supabase.from("business_ledger_entry_groups").delete().eq("id", createdGroupId);
+    }
+  }
+
+  if (groupId && needsCompanions) {
     const companionRows: Array<Record<string, unknown>> = [];
 
     if (kursAmount != null && kursTypeId) {
@@ -420,7 +470,7 @@ export async function POST(request: Request) {
       .select("id");
 
     if (error || !inserted?.[0]) {
-      await supabase.from("business_ledger_entry_groups").delete().eq("id", groupId);
+      await rollbackCreatedGroup();
       return NextResponse.json(
         { error: error?.message ?? "Failed to create ledger entry." },
         { status: 400 }
@@ -431,6 +481,7 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.from("business_ledger_entries").insert(mainRow).select("id").single();
 
     if (error || !data) {
+      await rollbackCreatedGroup();
       return NextResponse.json({ error: error?.message ?? "Failed to create ledger entry." }, { status: 400 });
     }
     createdEntryId = data.id;
@@ -577,8 +628,98 @@ export async function DELETE(request: Request) {
   if (!id) {
     return NextResponse.json({ error: "Entry ID is required." }, { status: 400 });
   }
+  const cascadeLinked = searchParams.get("cascadeLinked") === "1";
 
   const supabase = await createClient();
+
+  const { data: target, error: targetError } = await supabase
+    .from("business_ledger_entries")
+    .select("id, is_credit, is_debt, settles_entry_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (targetError) {
+    return NextResponse.json({ error: targetError.message }, { status: 400 });
+  }
+  if (!target) {
+    return NextResponse.json({ error: "Entry not found." }, { status: 404 });
+  }
+
+  const isObligation = Boolean(target.is_credit) || Boolean(target.is_debt);
+  const obligationId = isObligation
+    ? target.id
+    : target.settles_entry_id
+      ? (target.settles_entry_id as string)
+      : null;
+
+  if (obligationId) {
+    const { data: linkedSettlements, error: linkedError } = await supabase
+      .from("business_ledger_entries")
+      .select("id")
+      .eq("settles_entry_id", obligationId);
+
+    if (linkedError) {
+      return NextResponse.json({ error: linkedError.message }, { status: 400 });
+    }
+
+    const settlementIds = (linkedSettlements ?? []).map((row) => row.id as string);
+    const isSettlementRow = Boolean(target.settles_entry_id) && !isObligation;
+    const hasLinkedSet = isSettlementRow || settlementIds.length > 0;
+
+    if (hasLinkedSet) {
+      if (!cascadeLinked) {
+        return NextResponse.json(
+          {
+            error:
+              "This credit or debt has linked settlements. Delete the linked set together, or remove settlements first."
+          },
+          { status: 400 }
+        );
+      }
+
+      // Children first — settles_entry_id is ON DELETE RESTRICT.
+      if (settlementIds.length) {
+        const { error: settleDeleteError } = await supabase
+          .from("business_ledger_entries")
+          .delete()
+          .in("id", settlementIds);
+
+        if (settleDeleteError) {
+          return NextResponse.json({ error: settleDeleteError.message }, { status: 400 });
+        }
+      }
+
+      const { data: deletedObligation, error: obligationDeleteError } = await supabase
+        .from("business_ledger_entries")
+        .delete()
+        .eq("id", obligationId)
+        .select("id")
+        .maybeSingle();
+
+      if (obligationDeleteError) {
+        if (isFkRestrictError(obligationDeleteError.message)) {
+          return NextResponse.json(
+            {
+              error:
+                "This credit or debt still has linked settlements. Refresh and try linked delete again."
+            },
+            { status: 400 }
+          );
+        }
+        return NextResponse.json({ error: obligationDeleteError.message }, { status: 400 });
+      }
+      if (!deletedObligation) {
+        return NextResponse.json({ error: "Entry not found." }, { status: 404 });
+      }
+
+      return NextResponse.json({
+        ok: true,
+        cascaded: true,
+        deleted_ids: [...settlementIds, obligationId]
+      });
+    }
+  }
+
   const { data, error } = await supabase
     .from("business_ledger_entries")
     .delete()
@@ -589,7 +730,10 @@ export async function DELETE(request: Request) {
   if (error) {
     if (isFkRestrictError(error.message)) {
       return NextResponse.json(
-        { error: "This credit has settlements. Delete them first." },
+        {
+          error:
+            "This credit or debt has linked settlements. Delete the linked set together, or remove settlements first."
+        },
         { status: 400 }
       );
     }
@@ -598,5 +742,5 @@ export async function DELETE(request: Request) {
   if (!data) {
     return NextResponse.json({ error: "Entry not found." }, { status: 404 });
   }
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, cascaded: false, deleted_ids: [id] });
 }
