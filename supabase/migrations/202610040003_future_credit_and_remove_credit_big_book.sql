@@ -649,8 +649,10 @@ drop policy if exists credit_book_attachments_admin_insert on storage.objects;
 drop policy if exists credit_book_attachments_admin_update on storage.objects;
 drop policy if exists credit_book_attachments_admin_delete on storage.objects;
 
-delete from storage.objects where bucket_id = 'credit-book-attachments';
-delete from storage.buckets where id = 'credit-book-attachments';
+-- Do not DELETE from storage.objects / storage.buckets here:
+-- Supabase raises 42501 via storage.protect_delete() ("Use the Storage API instead").
+-- Drop app policies above; remove the empty `credit-book-attachments` bucket from the
+-- Dashboard → Storage UI (or Storage API) if it still exists.
 
 drop table if exists public.credit_ledger_settlement_attachments cascade;
 drop table if exists public.credit_ledger_settlements cascade;
