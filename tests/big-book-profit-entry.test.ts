@@ -31,7 +31,6 @@ describe("buildProfitEntry / findProfitTypeId", () => {
       buildProfitEntry(
         {
           entry_date: "2026-10-01",
-          entry_sub_type_id: null,
           vendor_type_id: "vt-1",
           vendor_id: "v-1",
           action_by_id: null,
@@ -46,7 +45,6 @@ describe("buildProfitEntry / findProfitTypeId", () => {
       entry_date: "2026-10-01",
       entry_direction: "profit",
       entry_type_id: "profit-type-1",
-      entry_sub_type_id: null,
       vendor_type_id: "vt-1",
       vendor_id: "v-1",
       pocket_id: null,

@@ -12,7 +12,6 @@ type EntryPayload = {
   entry_date: string;
   entry_direction: "spending" | "profit";
   entry_type_id: string;
-  entry_sub_type_id?: string | null;
   vendor_type_id?: string | null;
   vendor_id?: string | null;
   pocket_id?: string | null;
@@ -30,7 +29,6 @@ function toEntryInsertRow(payload: EntryPayload, groupId: string, actorId: strin
     entry_date: payload.entry_date,
     entry_direction: payload.entry_direction,
     entry_type_id: payload.entry_type_id,
-    entry_sub_type_id: payload.entry_sub_type_id ?? null,
     vendor_type_id: payload.vendor_type_id ?? null,
     vendor_id: payload.vendor_id ?? null,
     pocket_id: payload.pocket_id ?? null,
@@ -170,7 +168,6 @@ export async function PATCH(request: Request) {
           entry_date: payload.entry_date,
           entry_direction: payload.entry_direction,
           entry_type_id: payload.entry_type_id,
-          entry_sub_type_id: payload.entry_sub_type_id ?? null,
           vendor_type_id: payload.vendor_type_id ?? null,
           vendor_id: payload.vendor_id ?? null,
           pocket_id: payload.pocket_id ?? null,

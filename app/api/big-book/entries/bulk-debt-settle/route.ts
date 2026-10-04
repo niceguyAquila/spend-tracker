@@ -17,7 +17,6 @@ type DebtRow = {
   entry_date: string;
   entry_direction: "spending" | "profit";
   entry_type_id: string;
-  entry_sub_type_id: string | null;
   vendor_type_id: string | null;
   vendor_id: string | null;
   action_by_id: string | null;
@@ -86,7 +85,7 @@ export async function POST(request: Request) {
     .from("business_ledger_entries")
     .select(
       `
-      id, group_id, entry_date, entry_direction, entry_type_id, entry_sub_type_id,
+      id, group_id, entry_date, entry_direction, entry_type_id,
       vendor_type_id, vendor_id, action_by_id, explanation, amount, currency_code,
       responsible_actor_id, is_debt, settles_entry_id, debt_settled_at
     `
@@ -170,7 +169,6 @@ export async function POST(request: Request) {
         entry_date: settleDate,
         entry_direction: "spending" as const,
         entry_type_id: debt.entry_type_id,
-        entry_sub_type_id: debt.entry_sub_type_id,
         vendor_type_id: debt.vendor_type_id,
         vendor_id: debt.vendor_id,
         pocket_id: null,
@@ -224,7 +222,6 @@ export async function POST(request: Request) {
       entry_date: settleDate,
       entry_direction: "spending",
       entry_type_id: primary.entry_type_id,
-      entry_sub_type_id: primary.entry_sub_type_id,
       vendor_type_id: primary.vendor_type_id,
       vendor_id: primary.vendor_id,
       pocket_id: null,

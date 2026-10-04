@@ -1,4 +1,4 @@
-// Helpers shared by the admin reference-table routes (types, sub-types, vendor
+// Helpers shared by the admin reference-table routes (types, vendor
 // types, vendors, pockets) so failures come back as sentences an admin can act
 // on instead of raw Postgres text.
 

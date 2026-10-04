@@ -12,7 +12,6 @@ const REQUIRED_HEADERS = [
 ] as const;
 
 const OPTIONAL_HEADERS = [
-  "sub_type_name",
   "vendor_type_name",
   "vendor_name",
   "pocket_name",
@@ -27,7 +26,6 @@ export const BIG_BOOK_CSV_HEADERS = [
   "entry_date",
   "entry_direction",
   "type_name",
-  "sub_type_name",
   "vendor_type_name",
   "vendor_name",
   "explanation",
@@ -54,7 +52,6 @@ export function buildBigBookImportTemplateCsv(): string {
     "2026-04-25",
     "spending",
     "Office Supplies",
-    "Stationery",
     "Merchant",
     "Rbee",
     "Printer ink",
@@ -72,7 +69,6 @@ export function buildBigBookImportTemplateCsv(): string {
     "2026-04-26",
     "spending",
     "Office Supplies",
-    "",
     "Merchant",
     "Rbee",
     "Laptop payment IDR leg",
@@ -90,7 +86,6 @@ export function buildBigBookImportTemplateCsv(): string {
     "2026-04-26",
     "spending",
     "Office Supplies",
-    "",
     "Merchant",
     "Rbee",
     "Laptop payment USDT leg",
@@ -115,7 +110,6 @@ export type ParsedBigBookCsvRow = {
   entry_date: string;
   entry_direction: AllowedDirection;
   type_name: string;
-  sub_type_name: string | null;
   vendor_type_name: string | null;
   vendor_name: string | null;
   explanation: string;
@@ -325,7 +319,6 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
     const entryDateRaw = normalizeRequired(get("entry_date"));
     const entryDirectionRaw = normalizeRequired(get("entry_direction"));
     const typeName = normalizeRequired(get("type_name"));
-    const subTypeName = normalizeOptional(get("sub_type_name"));
     const vendorTypeName = normalizeOptional(get("vendor_type_name"));
     const vendorName = normalizeOptional(get("vendor_name"));
     const explanation = normalizeRequired(get("explanation"));
@@ -398,7 +391,6 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
       entry_date: entryDate,
       entry_direction: directionParsed.data,
       type_name: typeName,
-      sub_type_name: subTypeName,
       vendor_type_name: vendorTypeName,
       vendor_name: vendorName,
       explanation,

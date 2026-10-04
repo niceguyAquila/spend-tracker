@@ -1,5 +1,5 @@
 // Shared rules for the short uppercase codes used by the reference tables
-// (types, sub-types, vendor types, vendors, pockets). Kept free of server and
+// (types, vendor types, vendors, pockets). Kept free of server and
 // validation dependencies so the settings forms can import it directly.
 
 export const ENTITY_CODE_MAX_LENGTH = 64;

@@ -12,7 +12,6 @@ export type ProfitTypeRow = {
 
 export type ProfitSourceEntry = {
   entry_date: string;
-  entry_sub_type_id?: string | null;
   vendor_type_id?: string | null;
   vendor_id?: string | null;
   action_by_id?: string | null;
@@ -24,7 +23,6 @@ export type BigBookProfitEntryPayload = {
   entry_date: string;
   entry_direction: "profit";
   entry_type_id: string;
-  entry_sub_type_id: string | null;
   vendor_type_id: string | null;
   vendor_id: string | null;
   pocket_id: null;
@@ -60,7 +58,6 @@ export function buildProfitEntry(
     entry_date: main.entry_date,
     entry_direction: "profit",
     entry_type_id: profitTypeId,
-    entry_sub_type_id: main.entry_sub_type_id ?? null,
     vendor_type_id: main.vendor_type_id ?? null,
     vendor_id: main.vendor_id ?? null,
     pocket_id: null,

@@ -30,7 +30,6 @@ type CreditRow = {
   entry_date: string;
   entry_direction: "spending" | "profit";
   entry_type_id: string;
-  entry_sub_type_id: string | null;
   vendor_type_id: string | null;
   vendor_id: string | null;
   action_by_id: string | null;
@@ -92,7 +91,6 @@ function companionLedgerRow(
     entry_date: string;
     entry_direction: "spending" | "profit";
     entry_type_id: string;
-    entry_sub_type_id: string | null;
     vendor_type_id: string | null;
     vendor_id: string | null;
     pocket_id: null;
@@ -111,7 +109,6 @@ function companionLedgerRow(
     entry_date: payload.entry_date,
     entry_direction: payload.entry_direction,
     entry_type_id: payload.entry_type_id,
-    entry_sub_type_id: payload.entry_sub_type_id,
     vendor_type_id: payload.vendor_type_id,
     vendor_id: payload.vendor_id,
     pocket_id: payload.pocket_id,
@@ -174,7 +171,7 @@ export async function POST(request: Request) {
     .from("business_ledger_entries")
     .select(
       `
-      id, entry_date, entry_direction, entry_type_id, entry_sub_type_id,
+      id, entry_date, entry_direction, entry_type_id,
       vendor_type_id, vendor_id, action_by_id, explanation, amount, currency_code,
       responsible_actor_id, is_credit, settles_entry_id, credit_settled_at
     `
@@ -327,7 +324,6 @@ export async function POST(request: Request) {
         entry_date: settleDate,
         entry_direction: "profit" as const,
         entry_type_id: credit.entry_type_id,
-        entry_sub_type_id: credit.entry_sub_type_id,
         vendor_type_id: credit.vendor_type_id,
         vendor_id: credit.vendor_id,
         pocket_id: null,
@@ -364,7 +360,6 @@ export async function POST(request: Request) {
       const profitPayload = buildProfitEntry(
         {
           entry_date: settleDate,
-          entry_sub_type_id: primary.entry_sub_type_id,
           vendor_type_id: primary.vendor_type_id,
           vendor_id: primary.vendor_id,
           action_by_id: primary.action_by_id,
@@ -397,7 +392,6 @@ export async function POST(request: Request) {
             entry_date: settleDate,
             entry_direction: "profit",
             entry_type_id: primary.entry_type_id,
-            entry_sub_type_id: primary.entry_sub_type_id,
             vendor_type_id: primary.vendor_type_id,
             vendor_id: primary.vendor_id,
             action_by_id: primary.action_by_id,
@@ -478,7 +472,6 @@ export async function POST(request: Request) {
       entry_date: settleDate,
       entry_direction: "profit",
       entry_type_id: primary.entry_type_id,
-      entry_sub_type_id: primary.entry_sub_type_id,
       vendor_type_id: primary.vendor_type_id,
       vendor_id: primary.vendor_id,
       pocket_id: null,
@@ -505,7 +498,6 @@ export async function POST(request: Request) {
       const profitPayload = buildProfitEntry(
         {
           entry_date: settleDate,
-          entry_sub_type_id: primary.entry_sub_type_id,
           vendor_type_id: primary.vendor_type_id,
           vendor_id: primary.vendor_id,
           action_by_id: primary.action_by_id,
@@ -533,7 +525,6 @@ export async function POST(request: Request) {
             entry_date: settleDate,
             entry_direction: "profit",
             entry_type_id: primary.entry_type_id,
-            entry_sub_type_id: primary.entry_sub_type_id,
             vendor_type_id: primary.vendor_type_id,
             vendor_id: primary.vendor_id,
             action_by_id: primary.action_by_id,

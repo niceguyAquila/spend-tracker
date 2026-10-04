@@ -19,21 +19,6 @@ export const bigBookTypeUpdateSchema = z.object({
   sort_order: entitySortOrderSchema()
 });
 
-export const bigBookSubTypeCreateSchema = z.object({
-  entry_type_id: z.string().uuid("Select a parent type."),
-  code: entityCodeSchema("Sub-Type code"),
-  name: entityNameSchema("Sub-Type name"),
-  sort_order: entitySortOrderSchema()
-});
-
-export const bigBookSubTypeUpdateSchema = z.object({
-  id: z.string().uuid(),
-  code: entityCodeSchema("Sub-Type code").optional(),
-  name: entityNameSchema("Sub-Type name").optional(),
-  is_active: z.boolean().optional(),
-  sort_order: entitySortOrderSchema()
-});
-
 export const bigBookVendorTypeCreateSchema = z.object({
   code: entityCodeSchema("Vendor Type code"),
   name: entityNameSchema("Vendor Type name"),
@@ -126,7 +111,6 @@ const bigBookEntryBaseSchema = z.object({
   entry_date: z.string().min(1, "Date is required"),
   entry_direction: bigBookEntryDirectionSchema,
   entry_type_id: z.string().uuid("Type is required"),
-  entry_sub_type_id: optionalUuidOrEmpty("Sub-Type must be a valid id"),
   vendor_type_id: optionalUuidOrEmpty("Vendor Type must be a valid id"),
   vendor_id: optionalUuidOrEmpty("Vendor Name must be a valid id"),
   pocket_id: optionalUuidOrEmpty("Pocket must be a valid id"),
@@ -442,7 +426,6 @@ export const bigBookLedgerSortKeySchema = z.enum([
   "entry_date",
   "entry_direction",
   "type_name",
-  "sub_type_name",
   "vendor_type_name",
   "vendor_name",
   "explanation",

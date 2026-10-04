@@ -8,7 +8,6 @@ import type {
   BigBookActorPocket,
   BigBookAllowedUserOption,
   BigBookInvoiceWallet,
-  BigBookLedgerSubType,
   BigBookLedgerType,
   BigBookLedgerTypeInvoiceProfile,
   BigBookTypeVendorTypeMap,
@@ -33,7 +32,6 @@ type StatusFilter = "all" | "active" | "inactive";
 
 type Props = {
   initialTypes: BigBookLedgerType[];
-  initialSubTypes: BigBookLedgerSubType[];
   initialVendorTypes: BigBookVendorType[];
   initialVendors: BigBookVendor[];
   initialActionBy: BigBookActionBy[];
@@ -72,7 +70,6 @@ function extractApiError(error: unknown, fallback: string) {
 
 export function BigBookSettingsPanel({
   initialTypes,
-  initialSubTypes,
   initialVendorTypes,
   initialVendors,
   initialActionBy,
@@ -102,16 +99,6 @@ export function BigBookSettingsPanel({
   });
   const [pendingActorId, setPendingActorId] = useState<string | null>(null);
   const [actorSubmitting, setActorSubmitting] = useState(false);
-
-  const [subTypeParentTypeId, setSubTypeParentTypeId] = useState<string>(() => initialTypes[0]?.id ?? "");
-  const [newSubTypeCode, setNewSubTypeCode] = useState("");
-  const [newSubTypeName, setNewSubTypeName] = useState("");
-  const [pendingAddSubTypeConfirm, setPendingAddSubTypeConfirm] = useState(false);
-  const [subTypeSubmitting, setSubTypeSubmitting] = useState(false);
-  const [pendingToggleSubType, setPendingToggleSubType] = useState<BigBookLedgerSubType | null>(null);
-  const [toggleSubTypeSubmitting, setToggleSubTypeSubmitting] = useState(false);
-  const [pendingDeleteSubType, setPendingDeleteSubType] = useState<BigBookLedgerSubType | null>(null);
-  const [subTypeDeleting, setSubTypeDeleting] = useState(false);
 
   const [newVendorTypeCode, setNewVendorTypeCode] = useState("");
   const [newVendorTypeName, setNewVendorTypeName] = useState("");
@@ -148,16 +135,10 @@ export function BigBookSettingsPanel({
   const [pocketDeleting, setPocketDeleting] = useState(false);
 
   const typeEditor = useEntityEditor<BigBookLedgerType>();
-  const subTypeEditor = useEntityEditor<BigBookLedgerSubType>();
   const vendorTypeEditor = useEntityEditor<BigBookVendorType>();
   const vendorEditor = useEntityEditor<BigBookVendor>();
   const actionByEditor = useEntityEditor<BigBookActionBy>();
   const pocketEditor = useEntityEditor<BigBookActorPocket>();
-
-  const subTypesForSelectedType = useMemo(
-    () => initialSubTypes.filter((row) => row.entry_type_id === subTypeParentTypeId),
-    [initialSubTypes, subTypeParentTypeId]
-  );
 
   const vendorsForSelectedType = useMemo(
     () => initialVendors.filter((row) => row.vendor_type_id === vendorParentTypeId),
@@ -188,8 +169,6 @@ export function BigBookSettingsPanel({
 
   const [typeQuery, setTypeQuery] = useState("");
   const [typeStatusFilter, setTypeStatusFilter] = useState<StatusFilter>("all");
-  const [subTypeQuery, setSubTypeQuery] = useState("");
-  const [subTypeStatusFilter, setSubTypeStatusFilter] = useState<StatusFilter>("all");
   const [vendorTypeQuery, setVendorTypeQuery] = useState("");
   const [vendorTypeStatusFilter, setVendorTypeStatusFilter] = useState<StatusFilter>("all");
   const [vendorQuery, setVendorQuery] = useState("");
@@ -211,19 +190,6 @@ export function BigBookSettingsPanel({
       );
     });
   }, [initialTypes, typeQuery, typeStatusFilter]);
-
-  const filteredSubTypes = useMemo(() => {
-    const needle = subTypeQuery.trim().toLowerCase();
-    return subTypesForSelectedType.filter((row) => {
-      if (subTypeStatusFilter === "active" && !row.is_active) return false;
-      if (subTypeStatusFilter === "inactive" && row.is_active) return false;
-      if (!needle) return true;
-      return (
-        row.name.toLowerCase().includes(needle) ||
-        row.code.toLowerCase().includes(needle)
-      );
-    });
-  }, [subTypesForSelectedType, subTypeQuery, subTypeStatusFilter]);
 
   const filteredVendorTypes = useMemo(() => {
     const needle = vendorTypeQuery.trim().toLowerCase();
@@ -278,7 +244,6 @@ export function BigBookSettingsPanel({
   }, [pocketsForSelectedActor, pocketQuery, pocketStatusFilter]);
 
   const typePagination = useTablePagination(filteredTypes.length, 10);
-  const subTypePagination = useTablePagination(filteredSubTypes.length, 10);
   const vendorTypePagination = useTablePagination(filteredVendorTypes.length, 10);
   const vendorPagination = useTablePagination(filteredVendors.length, 10);
   const actionByPagination = useTablePagination(filteredActionBy.length, 10);
@@ -291,11 +256,6 @@ export function BigBookSettingsPanel({
     typePagination.setPage(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeQuery, typeStatusFilter]);
-
-  useEffect(() => {
-    subTypePagination.setPage(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subTypeQuery, subTypeStatusFilter, subTypeParentTypeId]);
 
   useEffect(() => {
     vendorTypePagination.setPage(0);
@@ -321,10 +281,6 @@ export function BigBookSettingsPanel({
     () => sliceForPage(filteredTypes, typePagination.page, typePagination.pageSize),
     [filteredTypes, typePagination.page, typePagination.pageSize]
   );
-  const pagedSubTypes = useMemo(
-    () => sliceForPage(filteredSubTypes, subTypePagination.page, subTypePagination.pageSize),
-    [filteredSubTypes, subTypePagination.page, subTypePagination.pageSize]
-  );
   const pagedVendorTypes = useMemo(
     () => sliceForPage(filteredVendorTypes, vendorTypePagination.page, vendorTypePagination.pageSize),
     [filteredVendorTypes, vendorTypePagination.page, vendorTypePagination.pageSize]
@@ -347,10 +303,6 @@ export function BigBookSettingsPanel({
     toggleTypeSubmitting ||
     typeEditor.submitting ||
     actorSubmitting ||
-    subTypeSubmitting ||
-    toggleSubTypeSubmitting ||
-    subTypeDeleting ||
-    subTypeEditor.submitting ||
     vendorTypeSubmitting ||
     toggleVendorTypeSubmitting ||
     vendorTypeEditor.submitting ||
@@ -469,97 +421,6 @@ export function BigBookSettingsPanel({
     }
   }
 
-  async function addSubType() {
-    if (!subTypeParentTypeId) {
-      setError("Select a parent type first.");
-      return;
-    }
-    setSubTypeSubmitting(true);
-    setError(null);
-    setMessage(null);
-    try {
-      const response = await secureFetch("/api/big-book/sub-types", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          entry_type_id: subTypeParentTypeId,
-          code: normalizeEntityCode(newSubTypeCode),
-          name: newSubTypeName.trim()
-        })
-      });
-      if (handleUnauthorizedResponse(response)) return;
-      const data = await response.json();
-      if (!response.ok) {
-        setError(extractApiError(data.error, "Failed to add sub-type."));
-        return;
-      }
-      setMessage("Sub-Type added.");
-      setPendingAddSubTypeConfirm(false);
-      setNewSubTypeCode("");
-      setNewSubTypeName("");
-      triggerRefresh();
-    } catch {
-      setError("Failed to add sub-type due to a network error.");
-    } finally {
-      setSubTypeSubmitting(false);
-    }
-  }
-
-  async function toggleSubType() {
-    if (!pendingToggleSubType) return;
-    setToggleSubTypeSubmitting(true);
-    setError(null);
-    setMessage(null);
-    try {
-      const response = await secureFetch("/api/big-book/sub-types", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: pendingToggleSubType.id,
-          is_active: !pendingToggleSubType.is_active
-        })
-      });
-      if (handleUnauthorizedResponse(response)) return;
-      const data = await response.json();
-      if (!response.ok) {
-        setError(extractApiError(data.error, "Failed to update sub-type."));
-        return;
-      }
-      setMessage(`Sub-Type ${pendingToggleSubType.is_active ? "deactivated" : "activated"}.`);
-      setPendingToggleSubType(null);
-      triggerRefresh();
-    } catch {
-      setError("Failed to update sub-type due to a network error.");
-    } finally {
-      setToggleSubTypeSubmitting(false);
-    }
-  }
-
-  async function deleteSubType() {
-    if (!pendingDeleteSubType) return;
-    setSubTypeDeleting(true);
-    setError(null);
-    setMessage(null);
-    try {
-      const response = await secureFetch(
-        `/api/big-book/sub-types?id=${pendingDeleteSubType.id}`,
-        { method: "DELETE" }
-      );
-      if (handleUnauthorizedResponse(response)) return;
-      const data = await response.json();
-      if (!response.ok) {
-        setError(extractApiError(data.error, "Failed to delete sub-type."));
-        return;
-      }
-      setMessage("Sub-Type deleted.");
-      setPendingDeleteSubType(null);
-      triggerRefresh();
-    } catch {
-      setError("Failed to delete sub-type due to a network error.");
-    } finally {
-      setSubTypeDeleting(false);
-    }
-  }
 
   async function addVendorType() {
     setVendorTypeSubmitting(true);
@@ -1065,169 +926,6 @@ export function BigBookSettingsPanel({
 
       <BigBookTypeInvoiceProfilesSection types={initialTypes} initialProfiles={initialTypeInvoiceProfiles} />
 
-      <section
-        className="card relative"
-        aria-busy={subTypeSubmitting || toggleSubTypeSubmitting || subTypeDeleting || subTypeEditor.submitting}
-      >
-        <BlockingOverlay
-          active={subTypeSubmitting || toggleSubTypeSubmitting || subTypeDeleting || subTypeEditor.submitting}
-          label="Processing sub-types..."
-        />
-        <h2 className="text-lg font-semibold">Sub-Type Management</h2>
-        <p className="mt-1 text-sm text-muted">
-          Manage sub-types per parent type. Sub-Types are optional on ledger entries and can be left empty.
-        </p>
-        <div className="mt-4 grid grid-cols-1 gap-2 lg:grid-cols-4">
-          <select
-            className="field"
-            value={subTypeParentTypeId}
-            onChange={(event) => setSubTypeParentTypeId(event.target.value)}
-            aria-label="Parent type for sub-types"
-          >
-            <option value="" disabled>
-              Select parent type
-            </option>
-            {typesForSelect.map((type) => (
-              <option key={type.id} value={type.id}>
-                {type.name} {type.is_active ? "" : "(inactive)"}
-              </option>
-            ))}
-          </select>
-          <input
-            className="field"
-            placeholder="Code (e.g. RENT)"
-            maxLength={ENTITY_CODE_MAX_LENGTH}
-            value={newSubTypeCode}
-            onChange={(event) => setNewSubTypeCode(normalizeEntityCode(event.target.value))}
-          />
-          <input
-            className="field"
-            placeholder="Sub-Type Name"
-            maxLength={100}
-            value={newSubTypeName}
-            onChange={(event) => setNewSubTypeName(event.target.value)}
-          />
-          <button
-            className="btn"
-            disabled={
-              !subTypeParentTypeId ||
-              newSubTypeCode.trim().length < 2 ||
-              newSubTypeName.trim().length < 2 ||
-              subTypeSubmitting
-            }
-            onClick={() => setPendingAddSubTypeConfirm(true)}
-          >
-            Add Sub-Type
-          </button>
-        </div>
-        <p className="mt-2 text-xs text-muted">{ENTITY_CODE_HINT}</p>
-        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <label className="text-sm text-muted sm:col-span-2">
-            <span className="mb-1 block">Search</span>
-            <input
-              className="field w-full"
-              placeholder="Search by name or code..."
-              value={subTypeQuery}
-              onChange={(event) => setSubTypeQuery(event.target.value)}
-              disabled={!subTypeParentTypeId}
-            />
-          </label>
-          <label className="text-sm text-muted">
-            <span className="mb-1 block">Status</span>
-            <select
-              className="field w-full"
-              value={subTypeStatusFilter}
-              onChange={(event) => setSubTypeStatusFilter(event.target.value as StatusFilter)}
-              disabled={!subTypeParentTypeId}
-            >
-              <option value="all">All</option>
-              <option value="active">Active only</option>
-              <option value="inactive">Inactive only</option>
-            </select>
-          </label>
-        </div>
-        <div className="mt-4 overflow-x-auto">
-          <table className="data-table data-table-zebra min-w-[720px]">
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Name</th>
-                <th>Sort</th>
-                <th>Status</th>
-                <th className="text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {!subTypeParentTypeId ? (
-                <TableEmptyState colSpan={5} message="Select a parent type to view its sub-types." />
-              ) : pagedSubTypes.length ? (
-                pagedSubTypes.map((subType) => (
-                  <tr key={subType.id} className="align-middle">
-                    <td className="px-3 py-2 font-mono text-xs">{subType.code}</td>
-                    <td className="px-3 py-2 font-medium">{subType.name}</td>
-                    <td className="px-3 py-2 text-xs text-[rgb(var(--text-muted))]">{subType.sort_order}</td>
-                    <td className="px-3 py-2">
-                      <span
-                        className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${
-                          subType.is_active
-                            ? "bg-[rgb(var(--success)/0.15)] text-[rgb(var(--success))]"
-                            : "bg-[rgb(var(--surface-muted))] text-muted"
-                        }`}
-                      >
-                        {subType.is_active ? "Active" : "Inactive"}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <div className="flex flex-wrap items-center justify-end gap-2">
-                        <button
-                          className="btn-secondary btn-sm"
-                          onClick={() => subTypeEditor.start(subType)}
-                          disabled={toggleSubTypeSubmitting || subTypeDeleting || subTypeEditor.submitting}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="btn-secondary btn-sm"
-                          onClick={() => setPendingToggleSubType(subType)}
-                          disabled={toggleSubTypeSubmitting || subTypeDeleting || subTypeEditor.submitting}
-                        >
-                          {subType.is_active ? "Deactivate" : "Activate"}
-                        </button>
-                        <button
-                          className="btn-secondary btn-sm !border-[rgb(var(--danger)/0.35)] !text-[rgb(var(--danger))] hover:!bg-[rgb(var(--danger)/0.12)]"
-                          onClick={() => setPendingDeleteSubType(subType)}
-                          disabled={toggleSubTypeSubmitting || subTypeDeleting || subTypeEditor.submitting}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <TableEmptyState
-                  colSpan={5}
-                  message={
-                    subTypesForSelectedType.length
-                      ? "No sub-types match the current filters."
-                      : "No sub-types for this type yet."
-                  }
-                />
-              )}
-            </tbody>
-          </table>
-        </div>
-        <TablePaginationBar
-          totalCount={filteredSubTypes.length}
-          page={subTypePagination.page}
-          setPage={subTypePagination.setPage}
-          pageSize={subTypePagination.pageSize}
-          setPageSize={subTypePagination.setPageSize}
-          pageCount={subTypePagination.pageCount}
-          rangeLabel={subTypePagination.rangeLabel}
-          show={Boolean(subTypeParentTypeId)}
-        />
-      </section>
 
       <section
         className="card relative"
@@ -1919,43 +1617,6 @@ export function BigBookSettingsPanel({
         onConfirm={toggleType}
       />
 
-      <ConfirmDialog
-        open={pendingAddSubTypeConfirm}
-        onOpenChange={setPendingAddSubTypeConfirm}
-        title="Add new sub-type?"
-        description="The new sub-type will be available under the selected parent type."
-        confirmLabel="Add Sub-Type"
-        confirming={subTypeSubmitting}
-        closeOnBackdrop={false}
-        onConfirm={addSubType}
-      />
-
-      <ConfirmDialog
-        open={Boolean(pendingToggleSubType)}
-        onOpenChange={(open) => {
-          if (!open && !toggleSubTypeSubmitting) setPendingToggleSubType(null);
-        }}
-        title={pendingToggleSubType?.is_active ? "Deactivate sub-type?" : "Activate sub-type?"}
-        description="Changing active state affects whether this sub-type can be selected in new records."
-        confirmLabel={pendingToggleSubType?.is_active ? "Deactivate" : "Activate"}
-        confirming={toggleSubTypeSubmitting}
-        closeOnBackdrop={false}
-        onConfirm={toggleSubType}
-      />
-
-      <ConfirmDialog
-        open={Boolean(pendingDeleteSubType)}
-        onOpenChange={(open) => {
-          if (!open && !subTypeDeleting) setPendingDeleteSubType(null);
-        }}
-        title="Delete sub-type?"
-        description="This will permanently remove the sub-type. Existing entries that reference it will have their sub-type cleared."
-        confirmLabel="Delete"
-        confirming={subTypeDeleting}
-        variant="danger"
-        closeOnBackdrop={false}
-        onConfirm={deleteSubType}
-      />
 
       <ConfirmDialog
         open={pendingAddVendorTypeConfirm}
@@ -2101,12 +1762,6 @@ export function BigBookSettingsPanel({
         onSave={() => saveEntityEdit(typeEditor, "/api/big-book/types", "Type")}
       />
 
-      <EntityEditDialog
-        editor={subTypeEditor}
-        entityLabel="Sub-Type"
-        description="Existing records keep pointing at this sub-type; only its code and name change."
-        onSave={() => saveEntityEdit(subTypeEditor, "/api/big-book/sub-types", "Sub-Type")}
-      />
 
       <EntityEditDialog
         editor={vendorTypeEditor}

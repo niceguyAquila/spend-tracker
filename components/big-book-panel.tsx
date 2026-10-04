@@ -13,7 +13,6 @@ import type {
   BigBookEntry,
   BigBookEntryGroup,
   BigBookLedgerRow,
-  BigBookLedgerSubType,
   BigBookLedgerType,
   BigBookSettlementTargetRef,
   BigBookTypeVendorTypeMap,
@@ -80,7 +79,6 @@ import { TableEmptyState } from "@/components/ui/table-empty-state";
 
 type Props = {
   initialTypes: BigBookLedgerType[];
-  initialSubTypes: BigBookLedgerSubType[];
   initialVendorTypes: BigBookVendorType[];
   initialVendors: BigBookVendor[];
   initialActionBy: BigBookActionBy[];
@@ -304,7 +302,6 @@ function toEntryPayload(form: EntryFormState) {
     entry_date: form.entry_date,
     entry_direction: form.entry_direction,
     entry_type_id: form.entry_type_id,
-    entry_sub_type_id: form.entry_sub_type_id || null,
     vendor_type_id: form.vendor_type_id || null,
     vendor_id: form.vendor_id || null,
     pocket_id: form.pocket_id || null,
@@ -323,7 +320,6 @@ function entryFormFromEntry(entry: BigBookEntry): GroupEntryFormState {
     entry_date: entry.entry_date,
     entry_direction: entry.entry_direction,
     entry_type_id: entry.entry_type_id,
-    entry_sub_type_id: entry.entry_sub_type_id ?? "",
     vendor_type_id: entry.vendor_type_id ?? "",
     vendor_id: entry.vendor_id ?? "",
     pocket_id: entry.pocket_id ?? "",
@@ -372,7 +368,6 @@ function toggleExpandedIndex(prev: Set<number>, index: number) {
 
 export function BigBookPanel({
   initialTypes,
-  initialSubTypes,
   initialVendorTypes,
   initialVendors,
   initialActionBy,
@@ -455,7 +450,6 @@ export function BigBookPanel({
     entry_date: "",
     entry_direction: "spending",
     entry_type_id: "",
-    entry_sub_type_id: "",
     vendor_type_id: "",
     vendor_id: "",
     pocket_id: "",
@@ -1268,7 +1262,6 @@ export function BigBookPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...entryForm,
-          entry_sub_type_id: entryForm.entry_sub_type_id || null,
           vendor_type_id: entryForm.vendor_type_id || null,
           vendor_id: entryForm.vendor_id || null,
           pocket_id: entryForm.pocket_id || null,
@@ -1711,7 +1704,6 @@ export function BigBookPanel({
         body: JSON.stringify({
           ...editForm,
           id: editingEntryId,
-          entry_sub_type_id: editForm.entry_sub_type_id || null,
           vendor_type_id: editForm.vendor_type_id || null,
           vendor_id: editForm.vendor_id || null,
           pocket_id: editForm.pocket_id || null,
@@ -1857,7 +1849,6 @@ export function BigBookPanel({
       entry_date: today,
       entry_direction: payingDebt ? "spending" : "profit",
       entry_type_id: row.entry_type_id,
-      entry_sub_type_id: row.entry_sub_type_id ?? "",
       vendor_type_id: row.vendor_type_id ?? "",
       vendor_id: row.vendor_id ?? "",
       pocket_id: "",
@@ -2019,7 +2010,6 @@ export function BigBookPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...settlementForm,
-          entry_sub_type_id: settlementForm.entry_sub_type_id || null,
           vendor_type_id: settlementForm.vendor_type_id || null,
           vendor_id: settlementForm.vendor_id || null,
           pocket_id: settlementForm.pocket_id || null,
@@ -2989,7 +2979,6 @@ export function BigBookPanel({
               value={entryForm}
               onChange={setEntryForm}
               types={initialTypes}
-              subTypes={initialSubTypes}
               vendorTypes={initialVendorTypes}
               vendors={initialVendors}
               actionByOptions={initialActionBy}
@@ -3087,7 +3076,6 @@ export function BigBookPanel({
                             )
                           }
                           types={initialTypes}
-                          subTypes={initialSubTypes}
                           vendorTypes={initialVendorTypes}
                           vendors={initialVendors}
                           actionByOptions={initialActionBy}
@@ -3345,7 +3333,6 @@ export function BigBookPanel({
                           )
                         }
                         types={initialTypes}
-                        subTypes={initialSubTypes}
                         vendorTypes={initialVendorTypes}
                         vendors={initialVendors}
                         actionByOptions={initialActionBy}
@@ -3381,7 +3368,6 @@ export function BigBookPanel({
             value={editForm}
             onChange={setEditForm}
             types={initialTypes}
-            subTypes={initialSubTypes}
             vendorTypes={initialVendorTypes}
             vendors={initialVendors}
             actionByOptions={initialActionBy}
@@ -3629,7 +3615,6 @@ export function BigBookPanel({
                 setSettlementForm(next);
               }}
               types={initialTypes}
-              subTypes={initialSubTypes}
               vendorTypes={initialVendorTypes}
               vendors={initialVendors}
               actionByOptions={initialActionBy}
