@@ -14,6 +14,7 @@ export type SettingsTabIconName =
   | "actors"
   | "type-vendor-map"
   | "invoice-presets"
+  | "history"
   | "danger-zone";
 
 export const DANGER_ZONE_TAB_ID = "danger-zone" as const;

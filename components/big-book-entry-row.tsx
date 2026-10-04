@@ -2,7 +2,12 @@
 
 import { memo } from "react";
 import type { BigBookCreditStatus, BigBookDebtStatus, BigBookEntry } from "@/lib/types";
-import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
+import {
+  formatAmount,
+  formatDateDisplay,
+  formatDateTimeDisplay,
+  getAmountColorClass
+} from "@/lib/display-format";
 import { LinkifyText } from "@/lib/linkify-text";
 
 const CREDIT_STATUS_LABELS: Record<BigBookCreditStatus, string> = {
@@ -213,7 +218,7 @@ function BigBookEntryRowInner({
         )}
       </td>
       <td className="overflow-hidden px-3 py-2">
-        <div className="relative">
+        <div className="relative flex justify-start">
           <button
             className="btn-secondary btn-sm"
             aria-label="Open actions menu"
@@ -225,6 +230,16 @@ function BigBookEntryRowInner({
             Actions
           </button>
         </div>
+      </td>
+      <td className="overflow-hidden break-words px-3 py-2">
+        {entry.updater_display_name && entry.updater_display_name !== "-"
+          ? entry.updater_display_name
+          : entry.creator_display_name && entry.creator_display_name !== "-"
+            ? entry.creator_display_name
+            : <span className="text-xs text-muted">-</span>}
+      </td>
+      <td className="overflow-hidden break-words px-3 py-2 whitespace-nowrap">
+        {formatDateTimeDisplay(entry.updated_at || entry.created_at)}
       </td>
     </tr>
   );

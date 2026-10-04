@@ -121,6 +121,20 @@ export type BigBookEntryGroup = {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+  updater_display_name: string;
+};
+
+export type BigBookEntryAuditAction = "insert" | "update" | "delete";
+
+export type BigBookEntryAuditLog = {
+  id: string;
+  entry_id: string;
+  action: BigBookEntryAuditAction;
+  changed_by: string | null;
+  changed_at: string;
+  old_row: Record<string, unknown> | null;
+  new_row: Record<string, unknown> | null;
+  changer_display_name: string;
 };
 
 export type BigBookCreditStatus = "open" | "settled";
@@ -136,6 +150,7 @@ export type BigBookSettlementRef = {
   settlement_amount_in_credit_currency: number | null;
   settlement_note: string | null;
   explanation: string;
+  updated_at: string;
 };
 
 export type BigBookSettlementTargetRef = {

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAdminApi } from "@/lib/auth-api";
 import { assertCsrfAndOrigin } from "@/lib/security/origin";
 import { bigBookCreditSettleSchema } from "@/lib/validation/big-book";
+import { resolveOptimisticMiss } from "@/lib/db/optimistic-lock";
 
 export async function PATCH(request: Request) {
   if (!(await assertCsrfAndOrigin(request))) {
@@ -20,12 +21,12 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { id, settled, note } = parsed.data;
+  const { id, settled, note, expected_updated_at } = parsed.data;
   const supabase = await createClient();
 
   const { data: entry, error: lookupError } = await supabase
     .from("business_ledger_entries")
-    .select("id, is_credit, is_debt")
+    .select("id, is_credit, is_debt, updated_at")
     .eq("id", id)
     .maybeSingle();
 
@@ -80,18 +81,25 @@ export async function PATCH(request: Request) {
           updated_by: actorId
         };
 
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from("business_ledger_entries")
     .update(closureFields)
-    .eq("id", id);
+    .eq("id", id)
+    .eq("updated_at", expected_updated_at)
+    .select("id, updated_at")
+    .maybeSingle();
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+  if (!updated) {
+    return resolveOptimisticMiss({ existing: entry });
   }
 
   return NextResponse.json({
     ok: true,
     settled,
-    kind: isDebt ? "debt" : "credit"
+    kind: isDebt ? "debt" : "credit",
+    updated_at: updated.updated_at
   });
 }

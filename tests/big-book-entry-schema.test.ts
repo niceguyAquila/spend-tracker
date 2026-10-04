@@ -11,6 +11,7 @@ const TYPE_ID = "11111111-1111-1111-1111-111111111111";
 const ACTOR_ID = "22222222-2222-2222-2222-222222222222";
 const CREDIT_ID = "33333333-3333-3333-3333-333333333333";
 const ENTRY_ID = "44444444-4444-4444-4444-444444444444";
+const EXPECTED_UPDATED_AT = "2026-08-01T12:00:00.000Z";
 
 // Mirrors what the Big Book panel actually posts, including the `null` notes it
 // sends for fields that do not apply to the current entry.
@@ -106,8 +107,17 @@ describe("big book entry schema", () => {
   });
 
   it("accepts an update payload", () => {
-    const parsed = bigBookEntryUpdateSchema.safeParse({ ...clientPayload, id: ENTRY_ID });
+    const parsed = bigBookEntryUpdateSchema.safeParse({
+      ...clientPayload,
+      id: ENTRY_ID,
+      expected_updated_at: EXPECTED_UPDATED_AT
+    });
     expect(parsed.success).toBe(true);
+  });
+
+  it("requires expected_updated_at on update payloads", () => {
+    const parsed = bigBookEntryUpdateSchema.safeParse({ ...clientPayload, id: ENTRY_ID });
+    expect(parsed.success).toBe(false);
   });
 
   it("normalizes empty and null notes to null", () => {
@@ -169,6 +179,7 @@ describe("big book entry schema", () => {
     const parsed = bigBookEntryUpdateSchema.safeParse({
       ...clientPayload,
       id: ENTRY_ID,
+      expected_updated_at: EXPECTED_UPDATED_AT,
       currency_code: "USDT",
       gas_fee_amount: 1.33
     });
@@ -239,6 +250,7 @@ describe("big book entry schema", () => {
     const parsed = bigBookEntryUpdateSchema.safeParse({
       ...clientPayload,
       id: ENTRY_ID,
+      expected_updated_at: EXPECTED_UPDATED_AT,
       entry_direction: "profit",
       currency_code: "USDT",
       kurs_rate: 0.999423,
@@ -254,6 +266,7 @@ describe("big book entry schema", () => {
   it("accepts a credit settle payload with a null note", () => {
     const parsed = bigBookCreditSettleSchema.safeParse({
       id: CREDIT_ID,
+      expected_updated_at: EXPECTED_UPDATED_AT,
       settled: true,
       note: null
     });

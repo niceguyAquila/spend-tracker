@@ -34,6 +34,7 @@ import {
   BigBookAttachment,
   BigBookCreditStatus,
   BigBookEntry,
+  BigBookEntryAuditLog,
   BigBookEntryGroup,
   BigBookLedgerRow,
   BigBookLedgerType,
@@ -690,6 +691,7 @@ type RawBigBookSettlementChildRow = {
   settlement_amount_in_credit_currency: number | string | null;
   settlement_note: string | null;
   explanation: string;
+  updated_at: string;
 };
 
 type RawBigBookSettlementParentRow = {
@@ -733,7 +735,7 @@ async function attachBigBookCreditSummaries(
       ? supabase
           .from("business_ledger_entries")
           .select(
-            "id, settles_entry_id, entry_date, amount, currency_code, settlement_conversion_rate, settlement_amount_in_credit_currency, settlement_note, explanation"
+            "id, settles_entry_id, entry_date, amount, currency_code, settlement_conversion_rate, settlement_amount_in_credit_currency, settlement_note, explanation, updated_at"
           )
           .in("settles_entry_id", obligationIds)
           .order("entry_date", { ascending: false })
@@ -770,7 +772,8 @@ async function attachBigBookCreditSummaries(
       settlement_amount_in_credit_currency:
         row.settlement_amount_in_credit_currency == null ? null : amountInObligation,
       settlement_note: row.settlement_note ?? null,
-      explanation: row.explanation
+      explanation: row.explanation,
+      updated_at: row.updated_at
     });
     settlementsByObligationId.set(row.settles_entry_id, list);
   }
@@ -1282,7 +1285,10 @@ export async function getBigBookLedgerRowsPaged(
       created_by: group.created_by ?? null,
       updated_by: group.updated_by ?? null,
       created_at: group.created_at,
-      updated_at: group.updated_at
+      updated_at: group.updated_at,
+      updater_display_name: group.updated_by
+        ? (actorMap.get(group.updated_by) ?? group.updated_by)
+        : "-"
     });
   }
 
@@ -1312,6 +1318,56 @@ export async function getBigBookLedgerRowsPaged(
   }
 
   return { rows, totalCount, totals };
+}
+
+export async function getBigBookEntryAuditLogs(options?: {
+  entryId?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ rows: BigBookEntryAuditLog[]; totalCount: number }> {
+  const supabase = await createClient();
+  const limit = Math.min(Math.max(options?.limit ?? 50, 1), 200);
+  const offset = Math.max(options?.offset ?? 0, 0);
+
+  let countQuery = supabase
+    .from("business_ledger_entry_audit_logs")
+    .select("id", { count: "exact", head: true });
+  let dataQuery = supabase
+    .from("business_ledger_entry_audit_logs")
+    .select("id, entry_id, action, changed_by, changed_at, old_row, new_row")
+    .order("changed_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (options?.entryId) {
+    countQuery = countQuery.eq("entry_id", options.entryId);
+    dataQuery = dataQuery.eq("entry_id", options.entryId);
+  }
+
+  const [countResult, dataResult] = await Promise.all([countQuery, dataQuery]);
+  if (countResult.error) throw countResult.error;
+  if (dataResult.error) throw dataResult.error;
+
+  const rawRows = dataResult.data ?? [];
+  const actorIds = rawRows
+    .map((row) => row.changed_by as string | null)
+    .filter((id): id is string => Boolean(id));
+  const actorMap = await resolveDisplayNameMap(supabase, actorIds);
+
+  return {
+    totalCount: countResult.count ?? 0,
+    rows: rawRows.map((row) => ({
+      id: row.id as string,
+      entry_id: row.entry_id as string,
+      action: row.action as BigBookEntryAuditLog["action"],
+      changed_by: (row.changed_by as string | null) ?? null,
+      changed_at: row.changed_at as string,
+      old_row: (row.old_row as Record<string, unknown> | null) ?? null,
+      new_row: (row.new_row as Record<string, unknown> | null) ?? null,
+      changer_display_name: row.changed_by
+        ? (actorMap.get(row.changed_by as string) ?? (row.changed_by as string))
+        : "-"
+    }))
+  };
 }
 
 export async function getBigBookActorCurrencyMetrics(): Promise<BigBookActorCurrencyMetrics[]> {
