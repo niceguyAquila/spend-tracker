@@ -136,7 +136,7 @@ function BigBookEntryRowInner({
       <td className="overflow-hidden break-words px-3 py-2">
         {entry.is_credit ? (
           <div className="space-y-1">
-            {entry.is_future_credit ? (
+            {entry.is_future_credit && (entry.credit_status ?? "open") !== "settled" ? (
               <span className="inline-flex rounded bg-[rgb(var(--warning)/0.18)] px-2 py-0.5 text-xs font-medium text-[rgb(var(--warning))]">
                 Future Credit
               </span>

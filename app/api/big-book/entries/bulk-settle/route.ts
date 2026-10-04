@@ -7,7 +7,10 @@ import {
   computeSettlementAmountInCreditCurrency,
   computeUsdtSettleAmountWithProfit
 } from "@/lib/big-book/credit";
-import { buildGasFeeGroupLabel } from "@/lib/big-book/gas-fee-entry";
+import {
+  ensureBulkCreditSettlementGroup,
+  rollbackCreditSettlementGroup
+} from "@/lib/big-book/credit-settlement-group";
 import {
   buildKursEntry,
   findKursTypeId,
@@ -27,6 +30,7 @@ type CreditCurrency = "IDR" | "MYR" | "USDT" | "TRX";
 
 type CreditRow = {
   id: string;
+  group_id: string | null;
   entry_date: string;
   entry_direction: "spending" | "profit";
   entry_type_id: string;
@@ -172,7 +176,7 @@ export async function POST(request: Request) {
     .from("business_ledger_entries")
     .select(
       `
-      id, entry_date, entry_direction, entry_type_id,
+      id, group_id, entry_date, entry_direction, entry_type_id,
       vendor_type_id, vendor_id, action_by_id, explanation, amount, currency_code,
       responsible_actor_id, is_credit, is_future_credit, settles_entry_id, credit_settled_at
     `
@@ -268,33 +272,37 @@ export async function POST(request: Request) {
   const settlementIds: string[] = [];
   const closedCreditIds: string[] = [];
   const companionIds: string[] = [];
-  let groupId: string | null = null;
 
-  const needsGroup = profitAmount != null || wantsKurs;
-  if (needsGroup) {
-    const labelSource =
-      customExplanation?.trim() ||
-      (credits.length === 1
-        ? `Settlement for: ${primary.explanation}`
-        : `Bulk settlement for ${credits.length} open credits`);
-    const { data: group, error: groupError } = await supabase
-      .from("business_ledger_entry_groups")
-      .insert({
-        label: buildGasFeeGroupLabel(labelSource),
-        remark: null,
-        created_by: actorId,
-        updated_by: actorId
-      })
-      .select("id")
-      .single();
+  const labelSource =
+    customExplanation?.trim() ||
+    (credits.length === 1
+      ? `Settlement for: ${primary.explanation}`
+      : `Bulk settlement for ${credits.length} open credits`);
 
-    if (groupError || !group) {
-      return NextResponse.json(
-        { error: groupError?.message ?? "Failed to create companion entry group." },
-        { status: 400 }
-      );
-    }
-    groupId = group.id;
+  const grouped = await ensureBulkCreditSettlementGroup(
+    supabase,
+    credits.map((credit) => ({
+      id: credit.id,
+      group_id: credit.group_id,
+      explanation: credit.explanation
+    })),
+    labelSource,
+    actorId
+  );
+  if (!grouped.ok) {
+    return NextResponse.json({ error: grouped.error }, { status: 400 });
+  }
+  const groupId = grouped.groupId;
+  const createdGroupId = grouped.createdGroupId;
+  const attachedCreditIds = grouped.attachedCreditIds;
+
+  async function rollbackCreatedGroup() {
+    await rollbackCreditSettlementGroup(
+      supabase,
+      createdGroupId,
+      attachedCreditIds,
+      actorId
+    );
   }
 
   const insertRows: LedgerInsertRow[] = [];
@@ -414,9 +422,7 @@ export async function POST(request: Request) {
       .select("id, settles_entry_id, entry_type_id");
 
     if (insertError || !inserted?.length) {
-      if (groupId) {
-        await supabase.from("business_ledger_entry_groups").delete().eq("id", groupId);
-      }
+      await rollbackCreatedGroup();
       return NextResponse.json(
         { error: insertError?.message ?? "Failed to create settlement entries." },
         { status: 400 }
@@ -547,9 +553,7 @@ export async function POST(request: Request) {
       .select("id, settles_entry_id");
 
     if (insertError || !inserted?.length) {
-      if (groupId) {
-        await supabase.from("business_ledger_entry_groups").delete().eq("id", groupId);
-      }
+      await rollbackCreatedGroup();
       return NextResponse.json(
         { error: insertError?.message ?? "Failed to create settlement entry." },
         { status: 400 }

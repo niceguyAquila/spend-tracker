@@ -136,16 +136,24 @@ describe("big book bulk settle route", () => {
     });
 
     updateMock.mockReturnValue({
-      in: vi.fn(() => ({
-        eq: vi.fn(() => ({
-          is: vi.fn(() => ({
-            select: vi.fn().mockResolvedValue({
-              data: [{ id: CREDIT_A }, { id: CREDIT_B }],
-              error: null
-            })
+      in: vi.fn((column: string, ids: string[]) => {
+        void column;
+        const attachSelect = vi.fn().mockResolvedValue({
+          data: ids.map((id) => ({ id })),
+          error: null
+        });
+        return {
+          select: attachSelect,
+          eq: vi.fn(() => ({
+            is: vi.fn(() => ({
+              select: vi.fn().mockResolvedValue({
+                data: [{ id: CREDIT_A }, { id: CREDIT_B }],
+                error: null
+              })
+            }))
           }))
-        }))
-      }))
+        };
+      })
     });
   });
 
@@ -166,13 +174,19 @@ describe("big book bulk settle route", () => {
     expect(data.mode).toBe("single");
     expect(data.settlement_ids).toEqual(["settle-1"]);
     expect(data.settled_count).toBe(2);
+    expect(data.group_id).toBe("group-1");
+    expect(groupInsertMock).toHaveBeenCalled();
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ group_id: "group-1", updated_by: "auth-user-1" })
+    );
     expect(insertMock).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({
           amount: 150,
           settles_entry_id: CREDIT_A,
           currency_code: "USDT",
-          is_credit: false
+          is_credit: false,
+          group_id: "group-1"
         })
       ])
     );
