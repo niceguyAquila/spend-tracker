@@ -17,6 +17,7 @@ type SummableEntry = {
 
 export type GroupSummableEntry = SummableEntry & {
   is_future_credit?: boolean;
+  is_debt?: boolean;
   settles_entry_id?: string | null;
 };
 
@@ -55,13 +56,15 @@ export function summarizeCurrencies(entries: SummableEntry[]): BigBookCurrencyTo
 }
 
 /**
- * Group header totals. Future Credit + settlement pairs only count settlement
- * rows so the vendor payment is not double-counted with the obligation.
+ * Group header totals. Debt / Future Credit + settlement pairs only count
+ * settlement rows so the payment is not double-counted with the obligation.
+ * Open debt / Future Credit groups with no payment still sum the obligations.
  */
 export function summarizeGroupCurrencies(entries: GroupSummableEntry[]): BigBookCurrencyTotal[] {
   const hasFutureCredit = entries.some((entry) => Boolean(entry.is_future_credit));
+  const hasDebt = entries.some((entry) => Boolean(entry.is_debt));
   const hasSettlement = entries.some((entry) => Boolean(entry.settles_entry_id));
-  if (hasFutureCredit && hasSettlement) {
+  if ((hasFutureCredit || hasDebt) && hasSettlement) {
     return summarizeCurrencies(entries.filter((entry) => Boolean(entry.settles_entry_id)));
   }
   return summarizeCurrencies(entries);

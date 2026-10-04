@@ -13,6 +13,11 @@ import {
   classifyLedgerGroupTone,
   ledgerGroupToneClass
 } from "@/lib/big-book/ledger-group-tone";
+import {
+  deriveGroupStatusBadge,
+  GROUP_STATUS_BADGE_LABELS,
+  groupStatusBadgeClass
+} from "@/lib/big-book/group-status-badge";
 
 const NET_AMOUNT_FORMAT = { minimumFractionDigits: 2, maximumFractionDigits: 4 } as const;
 
@@ -51,7 +56,7 @@ function BigBookGroupHeaderRowInner({
   onDelete,
   children
 }: Props) {
-  const { dateLabel, totals, toneClass } = useMemo(() => {
+  const { dateLabel, totals, toneClass, statusBadge } = useMemo(() => {
     const dates = entries.map((entry) => entry.entry_date).sort();
     const dateFrom = dates[0];
     const dateTo = dates[dates.length - 1];
@@ -61,13 +66,15 @@ function BigBookGroupHeaderRowInner({
           ? formatDateDisplay(dateFrom)
           : `${formatDateDisplay(dateFrom)} – ${formatDateDisplay(dateTo)}`,
       totals: summarizeGroupCurrencies(entries),
-      toneClass: ledgerGroupToneClass(classifyLedgerGroupTone(entries))
+      toneClass: ledgerGroupToneClass(classifyLedgerGroupTone(entries)),
+      statusBadge: deriveGroupStatusBadge(entries)
     };
   }, [entries]);
 
   const menuId = `group:${group.id}`;
   const menuOpen = openActionMenu?.id === menuId;
   const itemCount = entries.length;
+  const remainingTrailingColSpan = Math.max(0, trailingColSpan - 1);
 
   return (
     <>
@@ -134,7 +141,26 @@ function BigBookGroupHeaderRowInner({
             <span className="text-xs text-muted">-</span>
           )}
         </td>
-        <td className="px-3 py-2" colSpan={Math.max(1, trailingColSpan)} aria-hidden="true" />
+        <td className="overflow-hidden break-words px-3 py-2">
+          {statusBadge ? (
+            <span
+              className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${groupStatusBadgeClass(
+                statusBadge
+              )}`}
+            >
+              {GROUP_STATUS_BADGE_LABELS[statusBadge]}
+            </span>
+          ) : (
+            <span className="text-xs text-muted">-</span>
+          )}
+        </td>
+        {remainingTrailingColSpan > 0 ? (
+          <td
+            className="px-3 py-2"
+            colSpan={remainingTrailingColSpan}
+            aria-hidden="true"
+          />
+        ) : null}
         <td className="px-3 py-2">
           <div className="flex flex-col items-start gap-1.5">
             {itemCount > 0 ? (
