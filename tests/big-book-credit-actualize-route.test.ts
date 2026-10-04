@@ -10,11 +10,6 @@ const updateEqIdMock = vi.fn(() => ({ eq: updateEqUpdatedAtMock }));
 const lookupMaybeSingleMock = vi.fn();
 const lookupEqMock = vi.fn(() => ({ maybeSingle: lookupMaybeSingleMock }));
 const lookupSelectMock = vi.fn(() => ({ eq: lookupEqMock }));
-const settleCountMock = vi.fn();
-const settleHeadEqMock = vi.fn(() => settleCountMock());
-const settleSelectMock = vi.fn(() => ({
-  eq: settleHeadEqMock
-}));
 const requireAdminApiMock = vi.fn();
 const assertCsrfAndOriginMock = vi.fn();
 
@@ -32,11 +27,7 @@ vi.mock("@/lib/supabase/server", () => ({
     from: vi.fn((table: string) => {
       if (table === "business_ledger_entries") {
         return {
-          select: (...args: unknown[]) => {
-            const options = args[1] as { count?: string; head?: boolean } | undefined;
-            if (options?.head) return settleSelectMock();
-            return lookupSelectMock();
-          },
+          select: lookupSelectMock,
           update: updateMock
         };
       }
@@ -70,7 +61,6 @@ describe("big book credit actualize route", () => {
       },
       error: null
     });
-    settleCountMock.mockResolvedValue({ count: 0, error: null });
   });
 
   it("actualizes Future Credit to Credit", async () => {
@@ -99,7 +89,7 @@ describe("big book credit actualize route", () => {
     });
   });
 
-  it("rejects demotion when settlements exist", async () => {
+  it("allows demotion to Future Credit even when settlements exist", async () => {
     lookupMaybeSingleMock.mockResolvedValue({
       data: {
         id: ENTRY_ID,
@@ -111,7 +101,6 @@ describe("big book credit actualize route", () => {
       },
       error: null
     });
-    settleCountMock.mockResolvedValue({ count: 2, error: null });
 
     const { PATCH } = await import("@/app/api/big-book/entries/actualize/route");
     const request = new Request("https://app.localhost/api/big-book/entries/actualize", {
@@ -126,8 +115,15 @@ describe("big book credit actualize route", () => {
 
     const response = await PATCH(request);
     const data = await response.json();
-    expect(response.status).toBe(400);
-    expect(String(data.error)).toMatch(/settlements exist/i);
-    expect(updateMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(data).toEqual({
+      ok: true,
+      actualized: false,
+      updated_at: EXPECTED_UPDATED_AT
+    });
+    expect(updateMock).toHaveBeenCalledWith({
+      is_future_credit: true,
+      updated_by: "auth-user-1"
+    });
   });
 });

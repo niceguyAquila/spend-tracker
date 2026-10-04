@@ -38,7 +38,7 @@ export function BigBookOutstandingTabs({
   detailFilters,
   onChanged,
   title = "Outstanding by Vendor / Group and Actor",
-  description = "Credit can be settled or invoiced. Future Credit must be actualized before settle. Debt payments create Out ledger entries."
+  description = "Credit and Future Credit can be settled or invoiced. Future Credit stays out of cash totals until Actualize. Debt payments create Out ledger entries."
 }: Props) {
   const [outstandingTab, setOutstandingTab] = useState<OutstandingTabId>("credit");
 
@@ -74,8 +74,8 @@ export function BigBookOutstandingTabs({
         <div className="mt-4">
           <h3 className="text-base font-semibold">Outstanding Future Credit by Vendor and Actor</h3>
           <p className="mt-1 text-sm text-muted">
-            Obligations expected later — excluded from cash totals until Actualize moves them to
-            Credit. Settle stays unavailable here.
+            Obligations expected later — excluded from cash totals until Actualize. Settlements
+            (inflow) are allowed without actualizing first.
           </p>
           <BigBookVendorActorOutstandingFutureTable
             rows={vendorActorOutstandingFuture}

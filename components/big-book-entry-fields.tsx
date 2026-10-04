@@ -646,7 +646,7 @@ export function BigBookEntryFields({
           {
             kind: "future_credit" as const,
             title: "Future Credit",
-            hint: "Expected later — excluded from totals until actualized"
+            hint: "Expected later — excluded from cash totals until actualized; settlements still allowed"
           },
           {
             kind: "debt" as const,

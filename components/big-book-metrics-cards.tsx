@@ -187,8 +187,8 @@ export function BigBookMetricsCardsView({
           <h3 className="text-base font-semibold">Outstanding Credit & Debt Totals</h3>
           <p className="mt-1 text-sm text-muted">
             Open (unsettled) balances by currency. Credit uses the usual signed color; Future Credit is
-            shown in warning amber (excluded from cash totals until actualized); debt is red as outflow
-            liability.
+            shown in warning amber (excluded from cash totals until actualized, but still settleable);
+            debt is red as outflow liability.
           </p>
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
             <article className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4">

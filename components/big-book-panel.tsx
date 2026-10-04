@@ -1935,11 +1935,6 @@ export function BigBookPanel({
   }
 
   function openRecordSettlement(row: BigBookEntry) {
-    if (row.is_future_credit) {
-      setError("Actualize this Future Credit before recording a settlement.");
-      setOpenActionMenu(null);
-      return;
-    }
     setOpenActionMenu(null);
     setSettlementTarget(row);
     setSettlementAttachmentFiles([]);
@@ -1979,10 +1974,6 @@ export function BigBookPanel({
   async function setCreditActualized(row: BigBookEntry, actualized: boolean) {
     setOpenActionMenu(null);
     if (!row.is_credit) return;
-    if (!actualized && row.settlements.length > 0) {
-      setError("Cannot mark as Future Credit after settlements exist. Remove settlements first.");
-      return;
-    }
     setEntrySubmitting(true);
     setError(null);
     setMessage(null);
@@ -2935,8 +2926,7 @@ export function BigBookPanel({
                 ) : null}
                 {targetRow.is_credit &&
                 !targetRow.is_future_credit &&
-                targetRow.credit_status !== "settled" &&
-                targetRow.settlements.length === 0 ? (
+                targetRow.credit_status !== "settled" ? (
                   <button
                     className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
                     role="menuitem"
@@ -2945,8 +2935,7 @@ export function BigBookPanel({
                     Mark as Future Credit
                   </button>
                 ) : null}
-                {(targetRow.is_debt ||
-                  (targetRow.is_credit && !targetRow.is_future_credit)) ? (
+                {targetRow.is_debt || targetRow.is_credit ? (
                   <button
                     className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
                     role="menuitem"
@@ -2955,9 +2944,7 @@ export function BigBookPanel({
                     {targetRow.is_debt ? "Record payment" : "Record settlement"}
                   </button>
                 ) : null}
-                {targetRow.is_credit &&
-                !targetRow.is_future_credit &&
-                targetRow.credit_status !== "settled" ? (
+                {targetRow.is_credit && targetRow.credit_status !== "settled" ? (
                   <button
                     className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
                     role="menuitem"

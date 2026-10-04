@@ -60,26 +60,6 @@ export async function PATCH(request: Request) {
     });
   }
 
-  // Demoting Credit → Future Credit is only allowed when no settlements exist yet.
-  if (wantFuture) {
-    const { count, error: settleCountError } = await supabase
-      .from("business_ledger_entries")
-      .select("id", { count: "exact", head: true })
-      .eq("settles_entry_id", id);
-    if (settleCountError) {
-      return NextResponse.json({ error: settleCountError.message }, { status: 400 });
-    }
-    if ((count ?? 0) > 0) {
-      return NextResponse.json(
-        {
-          error:
-            "Cannot mark as Future Credit after settlements exist. Remove settlements first."
-        },
-        { status: 400 }
-      );
-    }
-  }
-
   const { data: updated, error } = await supabase
     .from("business_ledger_entries")
     .update({

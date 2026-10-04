@@ -162,7 +162,7 @@ export type BigBookSettlementTargetRef = {
   vendor_name: string | null;
   /** True when the settlement target is a debt obligation (pay outflow). */
   is_debt: boolean;
-  /** True when the settlement target is Future Credit (must actualize before settle). */
+  /** True when the settlement target is Future Credit (still settleable; excluded from cash totals until actualized). */
   is_future_credit: boolean;
   credit_status: BigBookCreditStatus | null;
   credit_settled_at: string | null;
