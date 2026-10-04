@@ -259,7 +259,10 @@ as $$
   order by t.name, e.currency_code;
 $$;
 
--- Outstanding credits RPC — include Future Credit count for UI differentiation
+-- Outstanding credits RPC — include Future Credit count for UI differentiation.
+-- DROP required: Postgres cannot change RETURNS TABLE shape via CREATE OR REPLACE.
+drop function if exists public.get_big_book_vendor_actor_outstanding(uuid[], uuid[], uuid[], text[], date, date);
+
 create or replace function public.get_big_book_vendor_actor_outstanding(
   p_actor_ids uuid[] default null,
   p_vendor_ids uuid[] default null,
@@ -320,6 +323,9 @@ as $$
     coalesce(v.name, '(No vendor)'),
     a.display_name;
 $$;
+
+revoke all on function public.get_big_book_vendor_actor_outstanding(uuid[], uuid[], uuid[], text[], date, date) from anon;
+grant execute on function public.get_big_book_vendor_actor_outstanding(uuid[], uuid[], uuid[], text[], date, date) to authenticated;
 
 -- Ledger page — exclude future credit from cash totals
 create or replace function public.get_big_book_ledger_page(
