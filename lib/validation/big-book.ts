@@ -514,15 +514,37 @@ export const bigBookCreditsPickerQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50)
 });
 
-export const bigBookVendorActorOutstandingEntriesQuerySchema = z.object({
-  actorId: z.string().uuid(),
-  currency: bigBookCurrencySchema,
-  vendorId: z.union([z.string().uuid(), z.literal("none")]).default("none"),
-  dateFrom: optionalString,
-  dateTo: optionalString,
-  /** `future` = Future Credit only; default `credit` = actualized Credit only. */
-  creditKind: z.enum(["credit", "future"]).optional().default("credit")
-});
+export const bigBookVendorActorOutstandingEntriesQuerySchema = z
+  .object({
+    actorId: z.string().uuid(),
+    currency: bigBookCurrencySchema,
+    vendorId: z.union([z.string().uuid(), z.literal("none")]).optional(),
+    /** Ledger type id for Future Credit buckets (`none` = null type). */
+    typeId: z.union([z.string().uuid(), z.literal("none")]).optional(),
+    dateFrom: optionalString,
+    dateTo: optionalString,
+    /** `future` = Future Credit only; default `credit` = actualized Credit only. */
+    creditKind: z.enum(["credit", "future"]).optional().default("credit")
+  })
+  .superRefine((value, ctx) => {
+    if (value.creditKind === "future") {
+      if (!value.typeId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "typeId is required for Future Credit outstanding detail.",
+          path: ["typeId"]
+        });
+      }
+      return;
+    }
+    if (!value.vendorId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "vendorId is required for Credit outstanding detail.",
+        path: ["vendorId"]
+      });
+    }
+  });
 
 /** Outstanding debt detail rows are keyed by group (or standalone entry id). */
 export const bigBookVendorActorOutstandingDebtEntriesQuerySchema = z

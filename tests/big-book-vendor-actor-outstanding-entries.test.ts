@@ -154,15 +154,18 @@ describe("getBigBookVendorActorOutstandingEntries", () => {
     expect(callsRef.lte).toContainEqual(["entry_date", "2026-01-31"]);
   });
 
-  it("filters Future Credit when futureOnly is true", async () => {
+  it("filters Future Credit by type when futureOnly is true", async () => {
+    const TYPE_ID = "55555555-5555-4555-8555-555555555555";
     const { getBigBookVendorActorOutstandingEntries } = await import("@/lib/db/queries");
     await getBigBookVendorActorOutstandingEntries({
-      vendorId: VENDOR_ID,
+      typeId: TYPE_ID,
       actorId: ACTOR_ID,
       currency: "MYR",
       futureOnly: true
     });
 
     expect(callsRef.eq).toContainEqual(["is_future_credit", true]);
+    expect(callsRef.eq).toContainEqual(["entry_type_id", TYPE_ID]);
+    expect(callsRef.is).not.toContainEqual(["vendor_id", null]);
   });
 });

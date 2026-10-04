@@ -21,30 +21,23 @@ export type BigBookMetricsBundle = {
 
 const SUPPORTED_CURRENCIES: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR", "USDT", "TRX"];
 const DEBT_AMOUNT_CLASS = "text-[rgb(var(--danger))]";
-const WARNING_AMOUNT_CLASS = "text-[rgb(var(--warning))]";
 
 function TotalsBox({
   label,
   value,
   breakdown,
-  forceNegativeColor,
-  forceWarningColor
+  forceNegativeColor
 }: {
   label: string;
   value: number;
   breakdown?: Array<{ label: string; value: number }>;
   forceNegativeColor?: boolean;
-  forceWarningColor?: boolean;
 }) {
-  const valueClass = forceWarningColor
+  const valueClass = forceNegativeColor
     ? value !== 0
-      ? WARNING_AMOUNT_CLASS
+      ? DEBT_AMOUNT_CLASS
       : "text-muted"
-    : forceNegativeColor
-      ? value !== 0
-        ? DEBT_AMOUNT_CLASS
-        : "text-muted"
-      : getAmountColorClass(value);
+    : getAmountColorClass(value);
   return (
     <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2">
       <p className="text-xs uppercase text-[rgb(var(--text-muted))]">{label}</p>
@@ -58,15 +51,11 @@ function TotalsBox({
               <span>{item.label}</span>
               <span
                 className={
-                  forceWarningColor
+                  forceNegativeColor
                     ? item.value !== 0
-                      ? WARNING_AMOUNT_CLASS
+                      ? DEBT_AMOUNT_CLASS
                       : "text-muted"
-                    : forceNegativeColor
-                      ? item.value !== 0
-                        ? DEBT_AMOUNT_CLASS
-                        : "text-muted"
-                      : getAmountColorClass(item.value)
+                    : getAmountColorClass(item.value)
                 }
               >
                 {formatAmount(item.value, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
@@ -186,9 +175,9 @@ export function BigBookMetricsCardsView({
         <div className="mt-6 rounded-lg border border-[rgb(var(--border))] border-l-[3px] border-l-[rgb(var(--primary))] bg-[rgb(var(--surface-muted))]/70 p-4">
           <h3 className="text-base font-semibold">Outstanding Credit & Debt Totals</h3>
           <p className="mt-1 text-sm text-muted">
-            Open (unsettled) balances by currency. Credit uses the usual signed color; Future Credit is
-            shown in warning amber (excluded from cash totals until actualized, but still settleable);
-            debt is red as outflow liability.
+            Open (unsettled) balances by currency. Credit and Future Credit amounts use inflow blue;
+            Future Credit stays out of cash totals until actualized but is still settleable. Debt is
+            red as outflow liability.
           </p>
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
             <article className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4">
@@ -216,7 +205,6 @@ export function BigBookMetricsCardsView({
                       key={total.currency}
                       label={`${total.currency} · ${total.openCount} open`}
                       value={total.outstanding}
-                      forceWarningColor
                     />
                   ))
                 ) : (
