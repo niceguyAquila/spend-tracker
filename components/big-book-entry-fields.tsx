@@ -221,7 +221,8 @@ export function BigBookEntryFields({
       is_credit: next === "credit" || next === "future_credit",
       is_future_credit: next === "future_credit",
       is_debt: next === "debt",
-      entry_direction: next === "debt" ? "spending" : value.entry_direction,
+      entry_direction:
+        next === "debt" ? "spending" : next === "future_credit" ? "profit" : value.entry_direction,
       settles_entry_id: "",
       settlement_conversion_rate: "",
       settlement_note: "",
@@ -234,6 +235,9 @@ export function BigBookEntryFields({
   }
   const cashFlowLockedOut =
     settlementKind === "debt" || Boolean(settlesEntry?.is_debt);
+  const cashFlowLockedIn =
+    settlementKind === "future_credit" || Boolean(settlesEntry?.is_future_credit);
+  const cashFlowLocked = cashFlowLockedOut || cashFlowLockedIn;
   // Cross-currency settlement: admin enters company rate under Amount.
   // Convention: rate = credit_currency units per 1 settlement_currency unit;
   // settlement_amount = credit_amount / rate.
@@ -377,12 +381,16 @@ export function BigBookEntryFields({
         Cash Flow *
         <select
           className="field mt-1"
-          value={cashFlowLockedOut ? "spending" : value.entry_direction}
-          disabled={cashFlowLockedOut}
+          value={
+            cashFlowLockedOut ? "spending" : cashFlowLockedIn ? "profit" : value.entry_direction
+          }
+          disabled={cashFlowLocked}
           title={
             cashFlowLockedOut
               ? "Debt and debt payments always use Cash Flow Out."
-              : undefined
+              : cashFlowLockedIn
+                ? "Future Credit and its settlements always use Cash Flow In."
+                : undefined
           }
           onChange={(event) => {
             const nextDirection = event.target.value as "spending" | "profit";
@@ -399,6 +407,8 @@ export function BigBookEntryFields({
         </select>
         {cashFlowLockedOut ? (
           <span className="mt-1 block text-xs text-muted">Locked to Out for Debt.</span>
+        ) : cashFlowLockedIn ? (
+          <span className="mt-1 block text-xs text-muted">Locked to In for Future Credit.</span>
         ) : null}
       </label>
       <label className="text-sm">
