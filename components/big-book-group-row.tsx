@@ -8,7 +8,7 @@ import {
   formatDateTimeDisplay,
   getAmountColorClass
 } from "@/lib/display-format";
-import { summarizeCurrencies } from "@/lib/big-book/totals";
+import { summarizeGroupCurrencies } from "@/lib/big-book/totals";
 import {
   classifyLedgerGroupTone,
   ledgerGroupToneClass
@@ -60,7 +60,7 @@ function BigBookGroupHeaderRowInner({
         dateFrom === dateTo
           ? formatDateDisplay(dateFrom)
           : `${formatDateDisplay(dateFrom)} – ${formatDateDisplay(dateTo)}`,
-      totals: summarizeCurrencies(entries),
+      totals: summarizeGroupCurrencies(entries),
       toneClass: ledgerGroupToneClass(classifyLedgerGroupTone(entries))
     };
   }, [entries]);

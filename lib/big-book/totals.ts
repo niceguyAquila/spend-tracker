@@ -15,6 +15,11 @@ type SummableEntry = {
   entry_direction: "spending" | "profit";
 };
 
+export type GroupSummableEntry = SummableEntry & {
+  is_future_credit?: boolean;
+  settles_entry_id?: string | null;
+};
+
 // Amounts carry up to 4 decimals. Rounding the accumulated value at 8 decimals
 // keeps repeated float addition from surfacing artefacts like 1234.5600000000002.
 export function roundBigBookAmount(value: number) {
@@ -47,4 +52,17 @@ export function summarizeCurrencies(entries: SummableEntry[]): BigBookCurrencyTo
     const profit = roundBigBookAmount(totals.profit);
     return [{ currency, spending, profit, net: roundBigBookAmount(profit - spending) }];
   });
+}
+
+/**
+ * Group header totals. Future Credit + settlement pairs only count settlement
+ * rows so the vendor payment is not double-counted with the obligation.
+ */
+export function summarizeGroupCurrencies(entries: GroupSummableEntry[]): BigBookCurrencyTotal[] {
+  const hasFutureCredit = entries.some((entry) => Boolean(entry.is_future_credit));
+  const hasSettlement = entries.some((entry) => Boolean(entry.settles_entry_id));
+  if (hasFutureCredit && hasSettlement) {
+    return summarizeCurrencies(entries.filter((entry) => Boolean(entry.settles_entry_id)));
+  }
+  return summarizeCurrencies(entries);
 }
