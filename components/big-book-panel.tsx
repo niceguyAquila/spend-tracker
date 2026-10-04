@@ -207,7 +207,8 @@ const LEDGER_COLUMN_COUNT = LEDGER_COLUMN_KEYS.length;
 // Group header rows mirror the ledger layout so totals land in Amount and the
 // group label lines up with Explanation. Date is filled; Cash Flow…Action By
 // show "-" because members may differ. Trailing colspan covers columns between
-// Amount and Actions (Credit / Remark / Attachments).
+// Amount and Actions (Credit / Remark / Attachments); the group row renders
+// Credit itself (status badge) and colspan the remainder.
 const LEDGER_AMOUNT_COLUMN_INDEX = LEDGER_COLUMN_KEYS.indexOf("amount");
 const LEDGER_ACTIONS_COLUMN_INDEX = LEDGER_COLUMN_KEYS.indexOf("actions");
 const GROUP_ROW_TRAILING_COLSPAN = Math.max(

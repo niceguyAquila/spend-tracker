@@ -16,7 +16,11 @@ function groupEntry(
   amount: number,
   currency_code: GroupEntry["currency_code"],
   entry_direction: GroupEntry["entry_direction"],
-  flags: { is_future_credit?: boolean; settles_entry_id?: string | null } = {}
+  flags: {
+    is_future_credit?: boolean;
+    is_debt?: boolean;
+    settles_entry_id?: string | null;
+  } = {}
 ): GroupEntry {
   return { amount, currency_code, entry_direction, ...flags };
 }
@@ -123,5 +127,35 @@ describe("summarizeGroupCurrencies", () => {
       groupEntry(10_000, "MYR", "profit", { is_future_credit: true })
     ]);
     expect(totals).toEqual([{ currency: "MYR", spending: 0, profit: 60_000, net: 60_000 }]);
+  });
+
+  it("counts only settlement rows for debt + settlement groups", () => {
+    const totals = summarizeGroupCurrencies([
+      groupEntry(100_000, "IDR", "spending", { is_debt: true }),
+      groupEntry(120_000, "IDR", "spending", { is_debt: true }),
+      groupEntry(169_024.5, "IDR", "spending", { is_debt: true }),
+      groupEntry(389_024.5, "IDR", "spending", { settles_entry_id: "debt-1" })
+    ]);
+    expect(totals).toEqual([
+      { currency: "IDR", spending: 389_024.5, profit: 0, net: -389_024.5 }
+    ]);
+  });
+
+  it("still sums open debt groups without settlements", () => {
+    const totals = summarizeGroupCurrencies([
+      groupEntry(100_000, "IDR", "spending", { is_debt: true }),
+      groupEntry(50_000, "IDR", "spending", { is_debt: true })
+    ]);
+    expect(totals).toEqual([
+      { currency: "IDR", spending: 150_000, profit: 0, net: -150_000 }
+    ]);
+  });
+
+  it("uses settlement currency only when debt currency differs", () => {
+    const totals = summarizeGroupCurrencies([
+      groupEntry(50_000, "MYR", "spending", { is_debt: true }),
+      groupEntry(95, "USDT", "spending", { settles_entry_id: "debt-1" })
+    ]);
+    expect(totals).toEqual([{ currency: "USDT", spending: 95, profit: 0, net: -95 }]);
   });
 });
