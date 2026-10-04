@@ -1983,6 +1983,7 @@ export function BigBookPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: row.id,
+          expected_updated_at: row.updated_at,
           entry_date: row.entry_date,
           entry_direction: row.entry_direction,
           entry_type_id: row.entry_type_id,
