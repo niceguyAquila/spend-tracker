@@ -14,6 +14,10 @@ import {
   rollbackDebtPaymentGroup
 } from "@/lib/big-book/debt-payment-group";
 import {
+  ensureCreditSettlementGroup,
+  rollbackCreditSettlementGroup
+} from "@/lib/big-book/credit-settlement-group";
+import {
   buildKursEntry,
   findKursTypeId,
   KURS_TYPE_MISSING_ERROR,
@@ -350,10 +354,13 @@ export async function POST(request: Request) {
   const needsCompanions = gasFeeAmount != null || kursAmount != null;
   const isDebtPayment =
     settlement.target_kind === "debt" && Boolean(settlement.settles_entry_id);
+  const isCreditSettlement =
+    settlement.target_kind === "credit" && Boolean(settlement.settles_entry_id);
 
   let groupId: string | null = null;
   let createdGroupId: string | null = null;
   let attachedDebtId: string | null = null;
+  let attachedCreditId: string | null = null;
 
   if (isDebtPayment && settlement.settles_entry_id) {
     const grouped = await ensureDebtPaymentGroup(
@@ -371,6 +378,22 @@ export async function POST(request: Request) {
     groupId = grouped.groupId;
     createdGroupId = grouped.createdGroupId;
     attachedDebtId = grouped.attachedDebtId;
+  } else if (isCreditSettlement && settlement.settles_entry_id) {
+    const grouped = await ensureCreditSettlementGroup(
+      supabase,
+      {
+        id: settlement.settles_entry_id,
+        group_id: settlement.target_group_id,
+        explanation: settlement.target_explanation || payload.explanation
+      },
+      actorId
+    );
+    if (!grouped.ok) {
+      return NextResponse.json({ error: grouped.error }, { status: 400 });
+    }
+    groupId = grouped.groupId;
+    createdGroupId = grouped.createdGroupId;
+    attachedCreditId = grouped.attachedCreditId;
   } else if (needsCompanions) {
     const { data: group, error: groupError } = await supabase
       .from("business_ledger_entry_groups")
@@ -427,6 +450,10 @@ export async function POST(request: Request) {
   async function rollbackCreatedGroup() {
     if (attachedDebtId && createdGroupId) {
       await rollbackDebtPaymentGroup(supabase, createdGroupId, attachedDebtId, actorId);
+      return;
+    }
+    if (attachedCreditId && createdGroupId) {
+      await rollbackCreditSettlementGroup(supabase, createdGroupId, attachedCreditId, actorId);
       return;
     }
     if (createdGroupId) {

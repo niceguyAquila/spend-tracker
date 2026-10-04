@@ -1208,10 +1208,28 @@ describe("big book entries route", () => {
         id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         is_credit: true,
         settles_entry_id: null,
-        currency_code: "USDT"
+        currency_code: "USDT",
+        group_id: null,
+        explanation: "Open credit"
       },
       error: null
     });
+    updateEqIdMock.mockImplementation(() => ({
+      eq: updateEqUpdatedAtMock,
+      error: null,
+      is: vi.fn(() => ({
+        select: vi.fn().mockResolvedValue({
+          data: [{ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }],
+          error: null
+        })
+      })),
+      then(
+        onFulfilled: (value: unknown) => unknown,
+        onRejected?: (reason: unknown) => unknown
+      ) {
+        return Promise.resolve({ error: null }).then(onFulfilled, onRejected);
+      }
+    }));
 
     const { POST } = await import("@/app/api/big-book/entries/route");
     const request = new Request("https://app.localhost/api/big-book/entries", {
@@ -1236,10 +1254,14 @@ describe("big book entries route", () => {
     expect(response.status).toBe(200);
     expect(data.settlement_amount_in_credit_currency).toBe(1500);
     expect(data.credit_closed).toBe(false);
+    expect(groupInsertMock).toHaveBeenCalled();
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ group_id: "group-1", updated_by: "auth-user-1" })
+    );
     expect(insertMock.mock.calls[0][0]).toMatchObject({
-      settlement_amount_in_credit_currency: 1500
+      settlement_amount_in_credit_currency: 1500,
+      group_id: "group-1"
     });
-    expect(updateMock).not.toHaveBeenCalled();
   });
 
   it("stamps the parent credit when close_credit is true", async () => {
@@ -1248,7 +1270,9 @@ describe("big book entries route", () => {
         id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         is_credit: true,
         settles_entry_id: null,
-        currency_code: "USDT"
+        currency_code: "USDT",
+        group_id: "existing-credit-group",
+        explanation: "Open credit"
       },
       error: null
     });
@@ -1277,6 +1301,10 @@ describe("big book entries route", () => {
     const data = await response.json();
     expect(response.status).toBe(200);
     expect(data.credit_closed).toBe(true);
+    expect(groupInsertMock).not.toHaveBeenCalled();
+    expect(insertMock.mock.calls[0][0]).toMatchObject({
+      group_id: "existing-credit-group"
+    });
     expect(updateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         credit_settled_by: "auth-user-1",
@@ -1285,8 +1313,75 @@ describe("big book entries route", () => {
       })
     );
     expect(updateEqIdMock).toHaveBeenCalledWith("id", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
-    const closePayload = updateMock.mock.calls[0][0];
+    const closePayload = updateMock.mock.calls.find(
+      (call) => call[0] && typeof call[0] === "object" && "credit_settled_at" in call[0]
+    )?.[0] as { credit_settled_at?: string };
     expect(typeof closePayload.credit_settled_at).toBe("string");
+  });
+
+  it("groups a credit settlement with the credit when the credit has no group", async () => {
+    creditLookupMaybeSingleMock.mockResolvedValueOnce({
+      data: {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        is_credit: true,
+        is_debt: false,
+        settles_entry_id: null,
+        currency_code: "USDT",
+        group_id: null,
+        explanation: "Future inbound"
+      },
+      error: null
+    });
+    updateEqIdMock.mockImplementation(() => ({
+      eq: updateEqUpdatedAtMock,
+      error: null,
+      is: vi.fn(() => ({
+        select: vi.fn().mockResolvedValue({
+          data: [{ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }],
+          error: null
+        })
+      })),
+      then(
+        onFulfilled: (value: unknown) => unknown,
+        onRejected?: (reason: unknown) => unknown
+      ) {
+        return Promise.resolve({ error: null }).then(onFulfilled, onRejected);
+      }
+    }));
+
+    const { POST } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_date: "2026-05-01",
+        entry_direction: "profit",
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        explanation: "Settlement for: Future inbound",
+        amount: 200,
+        currency_code: "USDT",
+        remark: "",
+        responsible_actor_id: "22222222-2222-4222-8222-222222222222",
+        settles_entry_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        settlement_conversion_rate: 1,
+        close_credit: true
+      })
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+    expect(response.status).toBe(200);
+    expect(data.credit_closed).toBe(true);
+    expect(groupInsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({ label: "Future inbound" })
+    );
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ group_id: "group-1", updated_by: "auth-user-1" })
+    );
+    expect(insertMock.mock.calls[0][0]).toMatchObject({
+      group_id: "group-1",
+      settles_entry_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    });
   });
 
   it("rejects deleting a credit/debt with settlements unless cascadeLinked is set", async () => {
