@@ -38,6 +38,10 @@ import {
 import { BigBookGroupHeaderRow } from "@/components/big-book-group-row";
 import { BigBookEntryRow } from "@/components/big-book-entry-row";
 import { LinkifyText } from "@/lib/linkify-text";
+import {
+  classifyLedgerGroupTone,
+  ledgerGroupToneClass
+} from "@/lib/big-book/ledger-group-tone";
 
 // Heavy form UI only needed when a create/edit/settlement modal opens.
 const BigBookEntryFields = dynamic(
@@ -2204,8 +2208,8 @@ export function BigBookPanel({
     Boolean(settlementForm) &&
     willCreateGasFeeEntry(settlementForm!.currency_code, settlementForm!.gas_fee_amount);
 
-  function renderEntryRow(entry: BigBookEntry, isGroupMember: boolean) {
-    // Group members get magenta `.group-child` styling from globals.css;
+  function renderEntryRow(entry: BigBookEntry, isGroupMember: boolean, groupToneClass = "") {
+    // Group members get `.group-child` (+ optional tone) styling from globals.css;
     // stripeClass is only applied for ungrouped rows.
     const stripe = isGroupMember
       ? ""
@@ -2215,6 +2219,7 @@ export function BigBookPanel({
         key={entry.id}
         entry={entry}
         isGroupMember={isGroupMember}
+        groupToneClass={groupToneClass}
         stripeClass={stripe}
         highlighted={focusedEntryId === entry.id}
         selected={selectedEntryIds.has(entry.id)}
@@ -2634,10 +2639,14 @@ export function BigBookPanel({
                       <td className="px-3 py-2"><div className="h-8 w-20 rounded bg-[rgb(var(--surface-muted))]" /></td>
                     </tr>
                   ))
-                : ledgerRows.map((row) =>
-                    row.kind === "entry" ? (
-                      renderEntryRow(row.entry, false)
-                    ) : (
+                : ledgerRows.map((row) => {
+                    if (row.kind === "entry") {
+                      return renderEntryRow(row.entry, false);
+                    }
+                    const groupToneClass = ledgerGroupToneClass(
+                      classifyLedgerGroupTone(row.entries)
+                    );
+                    return (
                       <BigBookGroupHeaderRow
                         key={`group-${row.group.id}`}
                         group={row.group}
@@ -2654,10 +2663,12 @@ export function BigBookPanel({
                         onUngroup={() => setPendingUngroup(row.group)}
                         onDelete={() => setPendingDeleteGroup({ group: row.group, entries: row.entries })}
                       >
-                        {row.entries.map((entry) => renderEntryRow(entry, true))}
+                        {row.entries.map((entry) =>
+                          renderEntryRow(entry, true, groupToneClass)
+                        )}
                       </BigBookGroupHeaderRow>
-                    )
-                  )}
+                    );
+                  })}
               {!ledgerRows.length && !entriesLoading ? (
                 <TableEmptyState
                   colSpan={LEDGER_COLUMN_COUNT}
