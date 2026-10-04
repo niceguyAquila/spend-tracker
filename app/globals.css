@@ -24,6 +24,8 @@
     --warning: 217 119 6;
     --info: 37 99 235;
     --stripe: 241 245 249;
+    /* Soft muted amber for Debt obligation ledger rows (not bright yellow) */
+    --debt-row: 250 240 210;
   }
 
   .dark {
@@ -46,6 +48,7 @@
     --warning: 251 191 36;
     --info: 96 165 250;
     --stripe: 30 41 59;
+    --debt-row: 58 48 22;
   }
 
   body {
@@ -58,6 +61,10 @@
 @layer utilities {
   .text-muted {
     color: rgb(var(--text-muted));
+  }
+
+  .bg-debt-row {
+    background-color: rgb(var(--debt-row));
   }
 }
 

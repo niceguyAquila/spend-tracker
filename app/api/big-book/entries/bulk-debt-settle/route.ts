@@ -6,12 +6,14 @@ import {
   computeSettlementAmountFromCredit,
   computeSettlementAmountInCreditCurrency
 } from "@/lib/big-book/credit";
+import { ensureDebtPaymentGroup } from "@/lib/big-book/debt-payment-group";
 import { bigBookBulkDebtSettleSchema } from "@/lib/validation/big-book";
 
 type DebtCurrency = "IDR" | "MYR" | "USDT" | "TRX";
 
 type DebtRow = {
   id: string;
+  group_id: string | null;
   entry_date: string;
   entry_direction: "spending" | "profit";
   entry_type_id: string;
@@ -84,7 +86,7 @@ export async function POST(request: Request) {
     .from("business_ledger_entries")
     .select(
       `
-      id, entry_date, entry_direction, entry_type_id, entry_sub_type_id,
+      id, group_id, entry_date, entry_direction, entry_type_id, entry_sub_type_id,
       vendor_type_id, vendor_id, action_by_id, explanation, amount, currency_code,
       responsible_actor_id, is_debt, settles_entry_id, debt_settled_at
     `
@@ -143,9 +145,18 @@ export async function POST(request: Request) {
   const settlementIds: string[] = [];
   const closedDebtIds: string[] = [];
   const insertRows: LedgerInsertRow[] = [];
+  const groupIdsByDebtId = new Map<string, string>();
 
   if (mode === "per_debt") {
     for (const debt of debts) {
+      const grouped = await ensureDebtPaymentGroup(supabase, debt, actorId);
+      if (!grouped.ok) {
+        return NextResponse.json({ error: grouped.error }, { status: 400 });
+      }
+      groupIdsByDebtId.set(debt.id, grouped.groupId);
+      // Keep in-memory debt.group_id current for any later reuse in this request.
+      debt.group_id = grouped.groupId;
+
       const settleCurrency = requestedCurrency ?? debt.currency_code;
       const rateResult = resolveConversionRate(settleCurrency, debt.currency_code, requestedRate);
       const debtAmount = Math.abs(Number(debt.amount));
@@ -155,7 +166,7 @@ export async function POST(request: Request) {
           : computeSettlementAmountFromCredit(debtAmount, rateResult.rate);
 
       insertRows.push({
-        group_id: null,
+        group_id: grouped.groupId,
         entry_date: settleDate,
         entry_direction: "spending" as const,
         entry_type_id: debt.entry_type_id,
@@ -184,6 +195,13 @@ export async function POST(request: Request) {
       });
     }
   } else {
+    const grouped = await ensureDebtPaymentGroup(supabase, primary, actorId);
+    if (!grouped.ok) {
+      return NextResponse.json({ error: grouped.error }, { status: 400 });
+    }
+    groupIdsByDebtId.set(primary.id, grouped.groupId);
+    primary.group_id = grouped.groupId;
+
     const rateResult = resolveConversionRate(settlementCurrency, debtCurrency, requestedRate);
     const totalDebtAmount = debts.reduce((sum, row) => sum + Math.abs(Number(row.amount)), 0);
     const defaultSettlementAmount =
@@ -202,7 +220,7 @@ export async function POST(request: Request) {
         : `Bulk debt payment for ${debts.length} open debts`);
 
     insertRows.push({
-      group_id: null,
+      group_id: grouped.groupId,
       entry_date: settleDate,
       entry_direction: "spending",
       entry_type_id: primary.entry_type_id,
@@ -274,6 +292,7 @@ export async function POST(request: Request) {
     mode,
     settlement_ids: settlementIds,
     closed_debt_ids: closedDebtIds,
+    group_ids: Object.fromEntries(groupIdsByDebtId),
     settled_count: debtIds.length
   });
 }

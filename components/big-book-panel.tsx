@@ -129,6 +129,51 @@ function extractApiError(error: unknown, fallback: string) {
   return fallback;
 }
 
+type LinkedDeleteInfo = {
+  linked: boolean;
+  kind: "credit" | "debt";
+  obligationLabel: string;
+  settlementCount: number;
+};
+
+function describeLinkedDelete(info: LinkedDeleteInfo) {
+  const noun = info.kind === "debt" ? "debt" : "credit";
+  const paymentNoun = info.kind === "debt" ? "payment" : "settlement";
+  const paymentNounPlural = info.kind === "debt" ? "payments" : "settlements";
+  const countLabel =
+    info.settlementCount === 1
+      ? `1 linked ${paymentNoun}`
+      : `${info.settlementCount} linked ${paymentNounPlural}`;
+  return `This will permanently remove the ${noun} "${info.obligationLabel}" and ${countLabel}, including attachments.`;
+}
+
+function linkedDeleteInfoForEntry(
+  entry: BigBookEntry,
+  findParent: (id: string) => BigBookEntry | null
+): LinkedDeleteInfo | null {
+  if (entry.is_credit || entry.is_debt) {
+    const count = entry.settlements?.length ?? 0;
+    if (count === 0) return null;
+    return {
+      linked: true,
+      kind: entry.is_debt ? "debt" : "credit",
+      obligationLabel: entry.explanation,
+      settlementCount: count
+    };
+  }
+  if (entry.settles_entry_id && entry.settles_entry) {
+    const parent = findParent(entry.settles_entry_id);
+    const count = Math.max(1, parent?.settlements?.length ?? 1);
+    return {
+      linked: true,
+      kind: entry.settles_entry.is_debt ? "debt" : "credit",
+      obligationLabel: entry.settles_entry.explanation,
+      settlementCount: count
+    };
+  }
+  return null;
+}
+
 function arraysEqual(left: string[], right: string[]) {
   if (left.length !== right.length) return false;
   return left.every((value, index) => value === right[index]);
@@ -1346,18 +1391,33 @@ export function BigBookPanel({
   async function deleteEntry() {
     if (!pendingDeleteEntry) return;
     const deletingEntryId = pendingDeleteEntry.id;
+    const linkedInfo = linkedDeleteInfoForEntry(pendingDeleteEntry, findEntryById);
     setEntryDeleting(true);
     setError(null);
     setMessage(null);
     try {
-      const response = await secureFetch(`/api/big-book/entries?id=${pendingDeleteEntry.id}`, { method: "DELETE" });
+      const cascadeQuery = linkedInfo ? "&cascadeLinked=1" : "";
+      const response = await secureFetch(
+        `/api/big-book/entries?id=${pendingDeleteEntry.id}${cascadeQuery}`,
+        { method: "DELETE" }
+      );
       if (handleUnauthorizedResponse(response)) return;
       const data = await response.json();
       if (!response.ok) {
         setError(data.error ?? "Failed to delete ledger entry.");
         return;
       }
-      setMessage("Ledger entry deleted.");
+      setMessage(linkedInfo ? "Credit/debt and linked settlements deleted." : "Ledger entry deleted.");
+      const deletedIds = new Set<string>(
+        Array.isArray(data.deleted_ids) ? data.deleted_ids : [deletingEntryId]
+      );
+      if (linkedInfo) {
+        // Linked deletes can remove the obligation plus several settlements —
+        // refresh from the server rather than patching optimistic deltas.
+        setPendingDeleteEntry(null);
+        triggerRefresh();
+        return;
+      }
       const wasStandalone = ledgerRows.some(
         (row) => row.kind === "entry" && row.entry.id === deletingEntryId
       );
@@ -1365,10 +1425,12 @@ export function BigBookPanel({
         prev
           .map((row) =>
             row.kind === "group"
-              ? { ...row, entries: row.entries.filter((item) => item.id !== deletingEntryId) }
+              ? { ...row, entries: row.entries.filter((item) => !deletedIds.has(item.id)) }
               : row
           )
-          .filter((row) => (row.kind === "entry" ? row.entry.id !== deletingEntryId : row.entries.length > 0))
+          .filter((row) =>
+            row.kind === "entry" ? !deletedIds.has(row.entry.id) : row.entries.length > 0
+          )
       );
       if (wasStandalone) {
         setTotalCount((prev) => Math.max(0, prev - 1));
@@ -2023,17 +2085,20 @@ export function BigBookPanel({
     setError(null);
     setMessage(null);
     try {
-      const response = await secureFetch(`/api/big-book/entries?id=${pendingDeleteSettlementId}`, {
-        method: "DELETE"
-      });
+      // Settlement deletes always cascade the parent credit/debt + all siblings.
+      const response = await secureFetch(
+        `/api/big-book/entries?id=${pendingDeleteSettlementId}&cascadeLinked=1`,
+        { method: "DELETE" }
+      );
       if (handleUnauthorizedResponse(response)) return;
       const data = await response.json();
       if (!response.ok) {
         setError(extractApiError(data.error, "Failed to delete the settlement."));
         return;
       }
-      setMessage("Settlement deleted.");
+      setMessage("Credit/debt and linked settlements deleted.");
       setPendingDeleteSettlementId(null);
+      setSettlementHistoryEntryId(null);
       triggerRefresh();
     } catch {
       setError("Failed to delete the settlement due to a network error.");
@@ -3384,8 +3449,21 @@ export function BigBookPanel({
         onOpenChange={(open) => {
           if (!open && !entryDeleting) setPendingDeleteEntry(null);
         }}
-        title="Delete ledger entry?"
-        description="This will permanently remove the selected entry and all its attachments."
+        title={
+          pendingDeleteEntry && linkedDeleteInfoForEntry(pendingDeleteEntry, findEntryById)
+            ? "Delete credit/debt and linked settlements?"
+            : "Delete ledger entry?"
+        }
+        description={
+          pendingDeleteEntry
+            ? (() => {
+                const linked = linkedDeleteInfoForEntry(pendingDeleteEntry, findEntryById);
+                return linked
+                  ? describeLinkedDelete(linked)
+                  : "This will permanently remove the selected entry and all its attachments.";
+              })()
+            : ""
+        }
         confirmLabel="Delete"
         confirming={entryDeleting}
         variant="danger"
@@ -3819,8 +3897,17 @@ export function BigBookPanel({
         onOpenChange={(open) => {
           if (!open && !settlementDeleting) setPendingDeleteSettlementId(null);
         }}
-        title="Delete settlement?"
-        description="This will permanently remove the settlement entry. The parent credit's open/settled status is unchanged."
+        title="Delete credit/debt and linked settlements?"
+        description={
+          settlementHistoryEntry
+            ? describeLinkedDelete({
+                linked: true,
+                kind: settlementHistoryEntry.is_debt ? "debt" : "credit",
+                obligationLabel: settlementHistoryEntry.explanation,
+                settlementCount: Math.max(1, settlementHistoryEntry.settlements.length)
+              })
+            : "This will permanently remove the obligation and all linked settlements/payments, including attachments."
+        }
         confirmLabel="Delete"
         confirming={settlementDeleting}
         variant="danger"

@@ -60,12 +60,14 @@ function BigBookEntryRowInner({
   onViewAttachment,
   onToggleActionMenu
 }: BigBookEntryRowProps) {
+  const rowToneClass = highlighted
+    ? " bg-[rgb(var(--info)/0.12)] ring-1 ring-inset ring-[rgb(var(--info))]"
+    : entry.is_debt
+      ? " bg-debt-row"
+      : ` ${stripeClass}`;
+
   return (
-    <tr
-      className={`border-b border-[rgb(var(--border))] align-top ${stripeClass}${
-        highlighted ? " bg-[rgb(var(--info)/0.12)] ring-1 ring-inset ring-[rgb(var(--info))]" : ""
-      }`}
-    >
+    <tr className={`border-b border-[rgb(var(--border))] align-top${rowToneClass}`}>
       <td className="overflow-hidden px-3 py-2">
         {isGroupMember ? null : (
           <input
