@@ -38,6 +38,7 @@ type CreditRow = {
   currency_code: CreditCurrency;
   responsible_actor_id: string;
   is_credit: boolean;
+  is_future_credit: boolean;
   settles_entry_id: string | null;
   credit_settled_at: string | null;
 };
@@ -173,7 +174,7 @@ export async function POST(request: Request) {
       `
       id, entry_date, entry_direction, entry_type_id,
       vendor_type_id, vendor_id, action_by_id, explanation, amount, currency_code,
-      responsible_actor_id, is_credit, settles_entry_id, credit_settled_at
+      responsible_actor_id, is_credit, is_future_credit, settles_entry_id, credit_settled_at
     `
     )
     .in("id", creditIds);
@@ -194,6 +195,15 @@ export async function POST(request: Request) {
     if (!credit.is_credit) {
       return NextResponse.json(
         { error: "All selected entries must be open credits." },
+        { status: 400 }
+      );
+    }
+    if (credit.is_future_credit) {
+      return NextResponse.json(
+        {
+          error:
+            "Future Credit must be actualized before settlement. Actualize selected credits and try again."
+        },
         { status: 400 }
       );
     }

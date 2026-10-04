@@ -14,7 +14,7 @@ const themeInitScript = `
 
 export const metadata: Metadata = {
   title: "Accounting",
-  description: "Transaction Big Book and Credit Big Book",
+  description: "Transaction Big Book",
   robots: {
     index: false,
     follow: false,

@@ -10,6 +10,7 @@ type ScanRow = {
   entry_direction: "spending" | "profit";
   pocket_id: string | null;
   is_credit: boolean;
+  is_future_credit?: boolean;
   is_debt?: boolean;
 };
 
@@ -196,6 +197,30 @@ describe("getBigBookLedgerRowsPaged totals", () => {
     expect(totals.grandEntryCount).toBe(2);
     // Debt exclusion is not pocket exclusion.
     expect(totals.grandPocketExcludedCount).toBe(0);
+  });
+
+  it("excludes future credit obligations from cash totals until actualized", async () => {
+    scanRowsRef.rows = [
+      scanRow({ id: "cash-in", amount: 100, entry_direction: "profit" }),
+      scanRow({
+        id: "future-credit",
+        amount: 500,
+        entry_direction: "profit",
+        is_credit: true,
+        is_future_credit: true
+      }),
+      scanRow({
+        id: "actualized-credit",
+        amount: 50,
+        entry_direction: "profit",
+        is_credit: true,
+        is_future_credit: false
+      })
+    ];
+
+    const totals = await loadTotals();
+    expect(netFor(totals, "grandTotals", "IDR")).toBe(150);
+    expect(totals.grandEntryCount).toBe(3);
   });
 
   it("separates inflow from outflow across currencies", async () => {

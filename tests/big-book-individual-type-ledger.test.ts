@@ -22,6 +22,7 @@ const baseEntry: BigBookEntry = {
   remark: null,
   responsible_actor_id: "actor-1",
   is_credit: false,
+  is_future_credit: false,
   is_debt: false,
   settles_entry_id: null,
   settlement_conversion_rate: null,

@@ -65,11 +65,12 @@ export type VendorActorOutstandingCreditInput = {
   vendor_type_name: string | null;
   actor_code: "A" | "B";
   actor_display_name: string;
+  is_future_credit?: boolean;
 };
 
 /**
  * Aggregate open credit balances by vendor + actor + currency.
- * Callers must pass only open credits (credit_settled_at is null).
+ * Callers must pass only open credits (credit_settled_at is null), including Future Credit.
  */
 export function aggregateVendorActorOutstanding(
   credits: VendorActorOutstandingCreditInput[]
@@ -82,10 +83,12 @@ export function aggregateVendorActorOutstanding(
 
     const vendorKey = credit.vendor_id ?? "none";
     const key = `${vendorKey}:${credit.responsible_actor_id}:${credit.currency_code}`;
+    const futureDelta = credit.is_future_credit ? 1 : 0;
     const existing = byKey.get(key);
     if (existing) {
       existing.outstanding += amount;
       existing.open_credit_count += 1;
+      existing.open_future_credit_count += futureDelta;
       continue;
     }
 
@@ -100,7 +103,8 @@ export function aggregateVendorActorOutstanding(
       actor_display_name: credit.actor_display_name,
       currency: credit.currency_code,
       outstanding: amount,
-      open_credit_count: 1
+      open_credit_count: 1,
+      open_future_credit_count: futureDelta
     });
   }
 

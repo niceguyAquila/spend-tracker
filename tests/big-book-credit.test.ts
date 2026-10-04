@@ -90,6 +90,7 @@ describe("aggregateVendorActorOutstanding", () => {
     expect(kiloUsdt).toMatchObject({
       outstanding: 1000,
       open_credit_count: 1,
+      open_future_credit_count: 0,
       actor_display_name: "Actor A"
     });
 
@@ -137,7 +138,46 @@ describe("aggregateVendorActorOutstanding", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       outstanding: 150,
-      open_credit_count: 2
+      open_credit_count: 2,
+      open_future_credit_count: 0
+    });
+  });
+
+  it("counts future credits inside the same outstanding bucket", () => {
+    const rows = aggregateVendorActorOutstanding([
+      {
+        id: "c1",
+        responsible_actor_id: "actor-a",
+        vendor_id: "vendor-1",
+        vendor_type_id: "type-1",
+        currency_code: "MYR",
+        amount: 100,
+        vendor_name: "Rbee",
+        vendor_type_name: "Merchant",
+        actor_code: "A",
+        actor_display_name: "Actor A",
+        is_future_credit: true
+      },
+      {
+        id: "c2",
+        responsible_actor_id: "actor-a",
+        vendor_id: "vendor-1",
+        vendor_type_id: "type-1",
+        currency_code: "MYR",
+        amount: 40,
+        vendor_name: "Rbee",
+        vendor_type_name: "Merchant",
+        actor_code: "A",
+        actor_display_name: "Actor A",
+        is_future_credit: false
+      }
+    ]);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      outstanding: 140,
+      open_credit_count: 2,
+      open_future_credit_count: 1
     });
   });
 });

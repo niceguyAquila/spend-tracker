@@ -6,7 +6,7 @@ export default function HomePage() {
       <section className="card w-full max-w-content-narrow text-center">
         <h1 className="mb-2 text-2xl font-semibold">Accounting</h1>
         <p className="mb-5 text-sm text-muted">
-          Transaction Big Book and Credit Big Book for finance operations.
+          Transaction Big Book for finance operations.
         </p>
         <Link href="/dashboard" className="btn inline-block">
           Open Dashboard

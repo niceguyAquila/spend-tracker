@@ -26,6 +26,7 @@ export type LedgerScanRow = {
   entry_direction: "spending" | "profit";
   pocket_id?: string | null;
   is_credit?: boolean;
+  is_future_credit?: boolean;
   is_debt?: boolean;
   explanation?: string | null;
   entry_type_id?: string | null;

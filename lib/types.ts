@@ -162,6 +162,8 @@ export type BigBookSettlementTargetRef = {
   vendor_name: string | null;
   /** True when the settlement target is a debt obligation (pay outflow). */
   is_debt: boolean;
+  /** True when the settlement target is Future Credit (must actualize before settle). */
+  is_future_credit: boolean;
   credit_status: BigBookCreditStatus | null;
   credit_settled_at: string | null;
   debt_status: BigBookDebtStatus | null;
@@ -184,6 +186,8 @@ export type BigBookEntry = {
   remark: string | null;
   responsible_actor_id: string;
   is_credit: boolean;
+  /** True when credit is not yet actualized (excluded from cash totals). Implies is_credit. */
+  is_future_credit: boolean;
   is_debt: boolean;
   settles_entry_id: string | null;
   settlement_conversion_rate: number | null;
@@ -301,6 +305,8 @@ export type BigBookVendorActorOutstandingRow = {
   currency: BigBookCashflowCurrency;
   outstanding: number;
   open_credit_count: number;
+  /** Subset of open_credit_count that are Future Credit (not yet actualized). */
+  open_future_credit_count: number;
 };
 
 export type BigBookVendorActorOutstandingDebtRow = {
@@ -330,6 +336,7 @@ export type BigBookVendorActorOutstandingEntry = {
   amount: number;
   currency_code: BigBookCashflowCurrency;
   remark: string | null;
+  is_future_credit: boolean;
 };
 
 export type BigBookVendorActorOutstandingEntriesResult = {
@@ -340,146 +347,4 @@ export type BigBookVendorActorOutstandingEntriesResult = {
 export type BigBookVendorActorOutstandingDebtEntriesResult = {
   rows: BigBookVendorActorOutstandingEntry[];
   totalCount: number;
-};
-
-export type CreditBookLedgerType = {
-  id: string;
-  code: string;
-  name: string;
-  is_active: boolean;
-  sort_order: number;
-  created_at: string;
-  updated_at: string;
-};
-
-export type CreditBookActor = {
-  id: string;
-  actor_code: "A" | "B";
-  display_name: string;
-  user_id: string | null;
-};
-
-export type CreditBookAttachment = {
-  id: string;
-  ledger_entry_id: string;
-  storage_path: string;
-  file_name: string;
-  mime_type: string;
-  file_size: number;
-  uploaded_by: string | null;
-  created_at: string;
-};
-
-export type CreditBookSettlementAttachment = {
-  id: string;
-  settlement_id: string;
-  storage_path: string;
-  file_name: string;
-  mime_type: string;
-  file_size: number;
-  uploaded_by: string | null;
-  created_at: string;
-};
-
-export type CreditBookSettlement = {
-  id: string;
-  entry_id: string;
-  settlement_date: string;
-  amount: number;
-  settlement_currency_code: "IDR" | "MYR" | "USDT" | "TRX";
-  conversion_rate: number;
-  amount_in_entry_currency: number;
-  note: string | null;
-  created_by: string | null;
-  updated_by: string | null;
-  created_at: string;
-  updated_at: string;
-  creator_display_name: string;
-  updater_display_name: string;
-  attachments: CreditBookSettlementAttachment[];
-};
-
-export type CreditBookEntryStatus = "open" | "partial" | "settled";
-
-export type CreditBookEntry = {
-  id: string;
-  entry_date: string;
-  entry_direction: "credit" | "debt";
-  entry_type_id: string;
-  explanation: string;
-  amount: number;
-  currency_code: "IDR" | "MYR" | "USDT" | "TRX";
-  remark: string | null;
-  responsible_actor_id: string;
-  created_by: string | null;
-  updated_by: string | null;
-  created_at: string;
-  updated_at: string;
-  type_name: string;
-  type_code: string;
-  actor_code: "A" | "B";
-  actor_display_name: string;
-  creator_display_name: string;
-  updater_display_name: string;
-  attachments: CreditBookAttachment[];
-  total_settled: number;
-  outstanding: number;
-  status: CreditBookEntryStatus;
-  settlements: CreditBookSettlement[];
-};
-
-export type CreditBookAllowedUserOption = {
-  id: string;
-  display_name: string;
-  email: string;
-};
-
-export type CreditBookActorCurrencyMetrics = {
-  actor_id: string;
-  actor_code: "A" | "B";
-  actor_display_name: string;
-  totals: {
-    IDR: number;
-    MYR: number;
-    USDT: number;
-    TRX: number;
-  };
-};
-
-export type CreditBookActorOutstandingMetrics = {
-  actor_id: string;
-  actor_code: "A" | "B";
-  actor_display_name: string;
-  totals: {
-    IDR: number;
-    MYR: number;
-    USDT: number;
-    TRX: number;
-  };
-};
-
-export type CreditBookCashflowCurrency = "IDR" | "MYR" | "USDT" | "TRX";
-
-export type CreditBookTypeCashflowRow = {
-  row_key: string;
-  actor_id: string;
-  actor_display_name: string;
-  type_id: string;
-  type_code: string;
-  type_name: string;
-  inflow: number;
-  outflow: number;
-  net: number;
-  outstanding: number;
-};
-
-export type CreditBookTypeCashflowByCurrency = {
-  currency: CreditBookCashflowCurrency;
-  rows: CreditBookTypeCashflowRow[];
-  combined: {
-    inflow: number;
-    outflow: number;
-    net: number;
-    outstanding: number;
-  };
 };

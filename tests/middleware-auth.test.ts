@@ -189,7 +189,7 @@ describe("middleware auth gate", () => {
     });
 
     const { middleware } = await import("@/middleware");
-    const request = new NextRequest("https://example.com/api/credit-big-book/export");
+    const request = new NextRequest("https://example.com/api/big-book/export");
     const response = await middleware(request);
 
     expect(response.status).toBe(401);

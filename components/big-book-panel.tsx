@@ -241,6 +241,7 @@ const GROUP_MENU_PREFIX = "group:";
 
 const CREDIT_FLAG_OPTIONS = [
   { value: "credit", label: "Credit" },
+  { value: "future_credit", label: "Future Credit" },
   { value: "settlement", label: "Settlement" },
   { value: "none", label: "Not credit-related" }
 ];
@@ -261,9 +262,11 @@ function toCreditPayload(form: EntryFormState, settlesEntry: BigBookSettlementTa
   const settlesEntryId = form.settles_entry_id || null;
   if (!settlesEntryId) {
     const isCredit = form.is_credit && !form.is_debt;
+    const isFutureCredit = isCredit && form.is_future_credit;
     const isDebt = form.is_debt && !form.is_credit;
     return {
       is_credit: isCredit,
+      is_future_credit: isFutureCredit,
       is_debt: isDebt,
       settles_entry_id: null,
       settlement_conversion_rate: null,
@@ -280,6 +283,7 @@ function toCreditPayload(form: EntryFormState, settlesEntry: BigBookSettlementTa
   const settlingDebt = Boolean(settlesEntry?.is_debt);
   return {
     is_credit: false,
+    is_future_credit: false,
     is_debt: false,
     settles_entry_id: settlesEntryId,
     settlement_conversion_rate: rate,
@@ -302,6 +306,7 @@ function settlementTargetFromEntry(entry: BigBookEntry): BigBookSettlementTarget
     currency_code: entry.currency_code,
     vendor_name: entry.vendor_name,
     is_debt: entry.is_debt,
+    is_future_credit: Boolean(entry.is_future_credit),
     credit_status: entry.is_credit ? entry.credit_status ?? "open" : null,
     credit_settled_at: entry.credit_settled_at,
     debt_status: entry.is_debt ? entry.debt_status ?? "open" : null,
@@ -311,6 +316,7 @@ function settlementTargetFromEntry(entry: BigBookEntry): BigBookSettlementTarget
 
 function toEntryPayload(form: EntryFormState) {
   const isCredit = form.is_credit && !form.is_debt;
+  const isFutureCredit = isCredit && form.is_future_credit;
   const isDebt = form.is_debt && !form.is_credit;
   return {
     entry_date: form.entry_date,
@@ -326,6 +332,7 @@ function toEntryPayload(form: EntryFormState) {
     remark: form.remark,
     responsible_actor_id: form.responsible_actor_id,
     is_credit: isCredit,
+    is_future_credit: isFutureCredit,
     is_debt: isDebt
   };
 }
@@ -349,6 +356,7 @@ function entryFormFromEntry(entry: BigBookEntry): GroupEntryFormState {
     remark: entry.remark ?? "",
     responsible_actor_id: entry.responsible_actor_id,
     is_credit: entry.is_credit,
+    is_future_credit: Boolean(entry.is_future_credit),
     is_debt: entry.is_debt,
     settles_entry_id: entry.settles_entry_id ?? "",
     settlement_conversion_rate:
@@ -491,6 +499,7 @@ export function BigBookPanel({
     remark: "",
     responsible_actor_id: "",
     is_credit: false,
+    is_future_credit: false,
     is_debt: false,
     settles_entry_id: "",
     settlement_conversion_rate: "",
@@ -1247,6 +1256,7 @@ export function BigBookPanel({
       // via `triggerRefresh` reconciles right after. Open debt is obligation-only.
       for (const payload of payloadEntries) {
         if ("is_debt" in payload && payload.is_debt) continue;
+        if ("is_future_credit" in payload && payload.is_future_credit) continue;
         const actor = initialActors.find((row) => row.id === payload.responsible_actor_id);
         applyMetricDelta(
           payload.responsible_actor_id,
@@ -1364,7 +1374,7 @@ export function BigBookPanel({
       const createdDelta =
         entryForm.entry_direction === "spending" ? -amountValue : amountValue;
       // Open debt is obligation-only and must not move Grand Total / actor nets.
-      if (!entryForm.is_debt) {
+      if (!entryForm.is_debt && !entryForm.is_future_credit) {
         applyMetricDelta(
           entryForm.responsible_actor_id,
           createdActor?.display_name ?? "Unknown Actor",
@@ -1916,6 +1926,11 @@ export function BigBookPanel({
   }
 
   function openRecordSettlement(row: BigBookEntry) {
+    if (row.is_future_credit) {
+      setError("Actualize this Future Credit before recording a settlement.");
+      setOpenActionMenu(null);
+      return;
+    }
     setOpenActionMenu(null);
     setSettlementTarget(row);
     setSettlementAttachmentFiles([]);
@@ -1940,6 +1955,7 @@ export function BigBookPanel({
       remark: "",
       responsible_actor_id: row.responsible_actor_id,
       is_credit: false,
+      is_future_credit: false,
       is_debt: false,
       settles_entry_id: row.id,
       settlement_conversion_rate: "1",
@@ -1949,6 +1965,71 @@ export function BigBookPanel({
       close_debt: payingDebt,
       debt_settlement_note: ""
     });
+  }
+
+  async function setCreditActualized(row: BigBookEntry, actualized: boolean) {
+    setOpenActionMenu(null);
+    if (!row.is_credit) return;
+    if (!actualized && row.settlements.length > 0) {
+      setError("Cannot mark as Future Credit after settlements exist. Remove settlements first.");
+      return;
+    }
+    setEntrySubmitting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await secureFetch("/api/big-book/entries", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: row.id,
+          expected_updated_at: row.updated_at,
+          entry_date: row.entry_date,
+          entry_direction: row.entry_direction,
+          entry_type_id: row.entry_type_id,
+          vendor_type_id: row.vendor_type_id,
+          vendor_id: row.vendor_id,
+          pocket_id: row.pocket_id,
+          action_by_id: row.action_by_id,
+          explanation: row.explanation,
+          amount: row.amount,
+          currency_code: row.currency_code,
+          remark: row.remark ?? "",
+          responsible_actor_id: row.responsible_actor_id,
+          is_credit: true,
+          is_future_credit: !actualized,
+          is_debt: false,
+          settles_entry_id: null,
+          settlement_conversion_rate: null,
+          settlement_note: "",
+          close_credit: false,
+          credit_settlement_note: null,
+          close_debt: false,
+          debt_settlement_note: null
+        })
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(extractApiError(data.error, "Failed to update credit actualization."));
+        return;
+      }
+      // Actualize adds cash impact; undo removes it.
+      const signed = row.entry_direction === "spending" ? -row.amount : row.amount;
+      applyMetricDelta(
+        row.responsible_actor_id,
+        row.actor_display_name,
+        row.currency_code,
+        actualized ? signed : -signed,
+        row.pocket_id
+      );
+      setMessage(actualized ? "Future Credit actualized to Credit." : "Credit marked as Future Credit.");
+      triggerRefresh();
+    } catch {
+      setError("Failed to update credit actualization due to a network error.");
+    } finally {
+      setEntrySubmitting(false);
+    }
   }
 
   function openCreditClosureDialog(
@@ -2834,7 +2915,29 @@ export function BigBookPanel({
                 >
                   Manage attachments
                 </button>
-                {targetRow.is_credit || targetRow.is_debt ? (
+                {targetRow.is_credit && targetRow.is_future_credit ? (
+                  <button
+                    className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
+                    role="menuitem"
+                    onClick={() => void setCreditActualized(targetRow, true)}
+                  >
+                    Actualize credit
+                  </button>
+                ) : null}
+                {targetRow.is_credit &&
+                !targetRow.is_future_credit &&
+                targetRow.credit_status !== "settled" &&
+                targetRow.settlements.length === 0 ? (
+                  <button
+                    className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
+                    role="menuitem"
+                    onClick={() => void setCreditActualized(targetRow, false)}
+                  >
+                    Mark as Future Credit
+                  </button>
+                ) : null}
+                {(targetRow.is_debt ||
+                  (targetRow.is_credit && !targetRow.is_future_credit)) ? (
                   <button
                     className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
                     role="menuitem"
@@ -2843,7 +2946,9 @@ export function BigBookPanel({
                     {targetRow.is_debt ? "Record payment" : "Record settlement"}
                   </button>
                 ) : null}
-                {targetRow.is_credit && targetRow.credit_status !== "settled" ? (
+                {targetRow.is_credit &&
+                !targetRow.is_future_credit &&
+                targetRow.credit_status !== "settled" ? (
                   <button
                     className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
                     role="menuitem"

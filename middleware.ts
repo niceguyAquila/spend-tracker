@@ -21,7 +21,6 @@ const PROTECTED_PREFIXES = [
   "/dashboard",
   "/api/admin",
   "/api/big-book",
-  "/api/credit-big-book",
   "/api/auth/debug"
 ];
 
