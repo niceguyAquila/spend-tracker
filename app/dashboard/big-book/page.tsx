@@ -5,7 +5,6 @@ import {
   getBigBookActorPocketMetrics,
   getBigBookActorPockets,
   getBigBookLedgerRowsPaged,
-  getBigBookLedgerSubTypes,
   getBigBookLedgerTypes,
   getBigBookTypeVendorTypeMaps,
   getBigBookVendorActorOutstanding,
@@ -62,10 +61,9 @@ export default async function BigBookPage({ searchParams }: BigBookPageProps) {
       })
     );
 
-    const [types, subTypes, vendorTypes, vendors, actionBy, pockets, actors, typeVendorTypeMaps, entriesPage] =
+    const [types, vendorTypes, vendors, actionBy, pockets, actors, typeVendorTypeMaps, entriesPage] =
       await Promise.all([
         perfTimed("getBigBookLedgerTypes", () => getBigBookLedgerTypes({ includeInactive: true })),
-        perfTimed("getBigBookLedgerSubTypes", () => getBigBookLedgerSubTypes({ includeInactive: true })),
         perfTimed("getBigBookVendorTypes", () => getBigBookVendorTypes({ includeInactive: true })),
         perfTimed("getBigBookVendors", () => getBigBookVendors({ includeInactive: true })),
         perfTimed("getBigBookActionBy", () => getBigBookActionBy({ includeInactive: true })),
@@ -89,7 +87,6 @@ export default async function BigBookPage({ searchParams }: BigBookPageProps) {
         <BigBookPanel
           key={entryId ?? "ledger"}
           initialTypes={types}
-          initialSubTypes={subTypes}
           initialVendorTypes={vendorTypes}
           initialVendors={vendors}
           initialActionBy={actionBy}

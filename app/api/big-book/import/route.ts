@@ -49,7 +49,6 @@ export async function POST(request: Request) {
   const [
     { data: types, error: typesError },
     { data: actors, error: actorsError },
-    { data: subTypes, error: subTypesError },
     { data: vendorTypes, error: vendorTypesError },
     { data: vendors, error: vendorsError },
     { data: pockets, error: pocketsError },
@@ -57,10 +56,6 @@ export async function POST(request: Request) {
   ] = await Promise.all([
     supabase.from("business_ledger_types").select("id,name").eq("is_active", true),
     supabase.from("big_book_actors").select("id,display_name"),
-    supabase
-      .from("business_ledger_sub_types")
-      .select("id,name,entry_type_id")
-      .eq("is_active", true),
     supabase.from("business_ledger_vendor_types").select("id,name").eq("is_active", true),
     supabase
       .from("business_ledger_vendors")
@@ -76,7 +71,6 @@ export async function POST(request: Request) {
   if (
     typesError ||
     actorsError ||
-    subTypesError ||
     vendorTypesError ||
     vendorsError ||
     pocketsError ||
@@ -87,7 +81,6 @@ export async function POST(request: Request) {
         error:
           typesError?.message ??
           actorsError?.message ??
-          subTypesError?.message ??
           vendorTypesError?.message ??
           vendorsError?.message ??
           pocketsError?.message ??
@@ -100,14 +93,6 @@ export async function POST(request: Request) {
 
   const typeNameToId: NameToIdMap = new Map((types ?? []).map((row) => [normalizeLookupKey(row.name), row.id]));
   const actorNameToId: NameToIdMap = new Map((actors ?? []).map((row) => [normalizeLookupKey(row.display_name), row.id]));
-  // sub-type lookup is keyed by `${entry_type_id}::${lower(sub_type_name)}`
-  // because sub-type names are unique only within a given parent type.
-  const subTypeKeyToId: NameToIdMap = new Map(
-    (subTypes ?? []).map((row) => [
-      `${row.entry_type_id}::${normalizeLookupKey(row.name)}`,
-      row.id
-    ])
-  );
   const vendorTypeNameToId: NameToIdMap = new Map(
     (vendorTypes ?? []).map((row) => [normalizeLookupKey(row.name), row.id])
   );
@@ -132,22 +117,6 @@ export async function POST(request: Request) {
     const lineNumber = index + 2;
     const entryTypeId = typeNameToId.get(normalizeLookupKey(row.type_name));
     const actorId = actorNameToId.get(normalizeLookupKey(row.actor_name));
-    let entrySubTypeId: string | null = null;
-    if (row.sub_type_name) {
-      if (!entryTypeId) {
-        // skip — we'll already report the type_name error below
-      } else {
-        const subKey = `${entryTypeId}::${normalizeLookupKey(row.sub_type_name)}`;
-        const matchedId = subTypeKeyToId.get(subKey);
-        if (!matchedId) {
-          validationErrors.push(
-            `Row ${lineNumber}: sub_type_name '${row.sub_type_name}' is not available under type '${row.type_name}'.`
-          );
-        } else {
-          entrySubTypeId = matchedId;
-        }
-      }
-    }
 
     let vendorTypeId: string | null = null;
     let vendorId: string | null = null;
@@ -213,7 +182,6 @@ export async function POST(request: Request) {
       entry_date: row.entry_date,
       entry_direction: row.entry_direction,
       entry_type_id: entryTypeId ?? "",
-      entry_sub_type_id: entrySubTypeId,
       vendor_type_id: vendorTypeId,
       vendor_id: vendorId,
       pocket_id: pocketId,
@@ -319,7 +287,6 @@ export async function POST(request: Request) {
         entry_date: row.entry_date,
         entry_direction: row.entry_direction,
         entry_type_id: row.entry_type_id,
-        entry_sub_type_id: row.entry_sub_type_id,
         vendor_type_id: row.vendor_type_id,
         vendor_id: row.vendor_id,
         pocket_id: row.pocket_id,

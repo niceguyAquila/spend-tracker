@@ -36,7 +36,6 @@ import {
   BigBookEntry,
   BigBookEntryGroup,
   BigBookLedgerRow,
-  BigBookLedgerSubType,
   BigBookLedgerType,
   BigBookLedgerTypeInvoiceProfile,
   BigBookSettlementRef,
@@ -60,7 +59,6 @@ import {
   CreditBookAttachment,
   CreditBookEntry,
   CreditBookEntryStatus,
-  CreditBookLedgerSubType,
   CreditBookLedgerType,
   CreditBookSettlement,
   CreditBookSettlementAttachment,
@@ -119,33 +117,6 @@ export async function getBigBookLedgerTypeByCode(
   };
 }
 
-export async function getBigBookLedgerSubTypes(options?: {
-  typeId?: string;
-  includeInactive?: boolean;
-}): Promise<BigBookLedgerSubType[]> {
-  const supabase = await createClient();
-  let query = supabase
-    .from("business_ledger_sub_types")
-    .select("id, entry_type_id, code, name, is_active, sort_order, created_at, updated_at")
-    .order("entry_type_id", { ascending: true })
-    .order("sort_order", { ascending: true })
-    .order("name", { ascending: true });
-
-  if (options?.typeId) {
-    query = query.eq("entry_type_id", options.typeId);
-  }
-  if (!options?.includeInactive) {
-    query = query.eq("is_active", true);
-  }
-
-  const { data, error } = await query;
-  if (error) throw error;
-
-  return (data ?? []).map((row) => ({
-    ...row,
-    sort_order: Number(row.sort_order)
-  }));
-}
 
 export async function getBigBookVendorTypes(options?: {
   includeInactive?: boolean;
@@ -401,9 +372,8 @@ export type BigBookEntryFilters = {
 };
 
 const BIG_BOOK_ENTRY_SELECT = `
-  id, group_id, entry_date, entry_direction, entry_type_id, entry_sub_type_id, vendor_type_id, vendor_id, pocket_id, action_by_id, explanation, amount, currency_code, remark, responsible_actor_id, is_credit, is_debt, settles_entry_id, settlement_conversion_rate, settlement_amount_in_credit_currency, settlement_note, credit_settled_at, credit_settled_by, credit_settlement_note, debt_settled_at, debt_settled_by, debt_settlement_note, created_by, updated_by, created_at, updated_at,
+  id, group_id, entry_date, entry_direction, entry_type_id, vendor_type_id, vendor_id, pocket_id, action_by_id, explanation, amount, currency_code, remark, responsible_actor_id, is_credit, is_debt, settles_entry_id, settlement_conversion_rate, settlement_amount_in_credit_currency, settlement_note, credit_settled_at, credit_settled_by, credit_settlement_note, debt_settled_at, debt_settled_by, debt_settlement_note, created_by, updated_by, created_at, updated_at,
   business_ledger_types(id, code, name),
-  business_ledger_sub_types(id, code, name),
   business_ledger_vendor_types(id, code, name),
   business_ledger_vendors(id, code, name),
   big_book_actor_pockets(id, code, name),
@@ -588,7 +558,6 @@ type RawBigBookEntryRow = {
   entry_date: string;
   entry_direction: string;
   entry_type_id: string;
-  entry_sub_type_id: string | null;
   vendor_type_id: string | null;
   vendor_id: string | null;
   pocket_id: string | null;
@@ -615,7 +584,6 @@ type RawBigBookEntryRow = {
   created_at: string;
   updated_at: string;
   business_ledger_types: { id: string; code: string; name: string } | { id: string; code: string; name: string }[] | null;
-  business_ledger_sub_types: { id: string; code: string; name: string } | { id: string; code: string; name: string }[] | null;
   business_ledger_vendor_types: { id: string; code: string; name: string } | { id: string; code: string; name: string }[] | null;
   business_ledger_vendors: { id: string; code: string; name: string } | { id: string; code: string; name: string }[] | null;
   big_book_actor_pockets: { id: string; code: string; name: string } | { id: string; code: string; name: string }[] | null;
@@ -628,9 +596,6 @@ function mapBigBookEntryRow(row: RawBigBookEntryRow, actorMap: Map<string, strin
   const type = Array.isArray(row.business_ledger_types)
     ? row.business_ledger_types[0]
     : row.business_ledger_types;
-  const subType = Array.isArray(row.business_ledger_sub_types)
-    ? row.business_ledger_sub_types[0]
-    : row.business_ledger_sub_types;
   const vendorType = Array.isArray(row.business_ledger_vendor_types)
     ? row.business_ledger_vendor_types[0]
     : row.business_ledger_vendor_types;
@@ -658,7 +623,6 @@ function mapBigBookEntryRow(row: RawBigBookEntryRow, actorMap: Map<string, strin
     entry_date: row.entry_date,
     entry_direction: row.entry_direction as "spending" | "profit",
     entry_type_id: row.entry_type_id,
-    entry_sub_type_id: row.entry_sub_type_id ?? null,
     vendor_type_id: row.vendor_type_id ?? null,
     vendor_id: row.vendor_id ?? null,
     pocket_id: row.pocket_id ?? null,
@@ -690,8 +654,6 @@ function mapBigBookEntryRow(row: RawBigBookEntryRow, actorMap: Map<string, strin
     updated_at: row.updated_at,
     type_name: type?.name ?? "-",
     type_code: type?.code ?? "-",
-    sub_type_name: subType?.name ?? null,
-    sub_type_code: subType?.code ?? null,
     vendor_type_name: vendorType?.name ?? null,
     vendor_name: vendor?.name ?? null,
     pocket_name: pocket?.name ?? null,
@@ -969,11 +931,6 @@ async function loadLedgerSortNameLookups(
       lookups.typeNameById = new Map(rows.map((row) => [row.id, row.name]));
       break;
     }
-    case "sub_type_name": {
-      const rows = await getBigBookLedgerSubTypes({ includeInactive: true });
-      lookups.subTypeNameById = new Map(rows.map((row) => [row.id, row.name]));
-      break;
-    }
     case "vendor_type_name": {
       const rows = await getBigBookVendorTypes({ includeInactive: true });
       lookups.vendorTypeNameById = new Map(rows.map((row) => [row.id, row.name]));
@@ -1147,7 +1104,7 @@ export async function getBigBookLedgerRowsPaged(
           let query = supabase
             .from("business_ledger_entries")
             .select(
-              "id, group_id, entry_date, created_at, amount, currency_code, entry_direction, pocket_id, is_credit, is_debt, explanation, entry_type_id, entry_sub_type_id, vendor_type_id, vendor_id, action_by_id, responsible_actor_id"
+              "id, group_id, entry_date, created_at, amount, currency_code, entry_direction, pocket_id, is_credit, is_debt, explanation, entry_type_id, vendor_type_id, vendor_id, action_by_id, responsible_actor_id"
             )
             .order("entry_date", { ascending: false })
             .order("created_at", { ascending: false })
@@ -2234,33 +2191,6 @@ export async function getCreditBookLedgerTypeByCode(
   };
 }
 
-export async function getCreditBookLedgerSubTypes(options?: {
-  typeId?: string;
-  includeInactive?: boolean;
-}): Promise<CreditBookLedgerSubType[]> {
-  const supabase = await createClient();
-  let query = supabase
-    .from("credit_ledger_sub_types")
-    .select("id, entry_type_id, code, name, is_active, sort_order, created_at, updated_at")
-    .order("entry_type_id", { ascending: true })
-    .order("sort_order", { ascending: true })
-    .order("name", { ascending: true });
-
-  if (options?.typeId) {
-    query = query.eq("entry_type_id", options.typeId);
-  }
-  if (!options?.includeInactive) {
-    query = query.eq("is_active", true);
-  }
-
-  const { data, error } = await query;
-  if (error) throw error;
-
-  return (data ?? []).map((row) => ({
-    ...row,
-    sort_order: Number(row.sort_order)
-  }));
-}
 
 export async function getCreditBookActors(): Promise<CreditBookActor[]> {
   const supabase = await createClient();
@@ -2427,9 +2357,8 @@ export async function getCreditBookEntries(
     .from("credit_ledger_entries")
     .select(
       `
-      id, entry_date, entry_direction, entry_type_id, entry_sub_type_id, explanation, amount, currency_code, remark, responsible_actor_id, created_by, updated_by, created_at, updated_at,
+      id, entry_date, entry_direction, entry_type_id, explanation, amount, currency_code, remark, responsible_actor_id, created_by, updated_by, created_at, updated_at,
       credit_ledger_types(id, code, name),
-      credit_ledger_sub_types(id, code, name),
       credit_book_actors(id, actor_code, display_name),
       credit_ledger_attachments(id, ledger_entry_id, storage_path, file_name, mime_type, file_size, uploaded_by, created_at)
     `
@@ -2482,9 +2411,6 @@ export async function getCreditBookEntries(
     const type = Array.isArray(row.credit_ledger_types)
       ? row.credit_ledger_types[0]
       : row.credit_ledger_types;
-    const subType = Array.isArray(row.credit_ledger_sub_types)
-      ? row.credit_ledger_sub_types[0]
-      : row.credit_ledger_sub_types;
     const actor = Array.isArray(row.credit_book_actors)
       ? row.credit_book_actors[0]
       : row.credit_book_actors;
@@ -2508,7 +2434,6 @@ export async function getCreditBookEntries(
       entry_date: row.entry_date,
       entry_direction: row.entry_direction as "credit" | "debt",
       entry_type_id: row.entry_type_id,
-      entry_sub_type_id: row.entry_sub_type_id ?? null,
       explanation: row.explanation,
       amount,
       currency_code: row.currency_code,
@@ -2520,8 +2445,6 @@ export async function getCreditBookEntries(
       updated_at: row.updated_at,
       type_name: type?.name ?? "-",
       type_code: type?.code ?? "-",
-      sub_type_name: subType?.name ?? null,
-      sub_type_code: subType?.code ?? null,
       actor_code: (actor?.actor_code ?? "A") as "A" | "B",
       actor_display_name: actor?.display_name ?? "-",
       creator_display_name: row.created_by ? (actorMap.get(row.created_by) ?? row.created_by) : "-",
@@ -2582,9 +2505,8 @@ export async function getCreditBookEntriesPaged(
     .from("credit_ledger_entries")
     .select(
       `
-      id, entry_date, entry_direction, entry_type_id, entry_sub_type_id, explanation, amount, currency_code, remark, responsible_actor_id, created_by, updated_by, created_at, updated_at,
+      id, entry_date, entry_direction, entry_type_id, explanation, amount, currency_code, remark, responsible_actor_id, created_by, updated_by, created_at, updated_at,
       credit_ledger_types(id, code, name),
-      credit_ledger_sub_types(id, code, name),
       credit_book_actors(id, actor_code, display_name),
       credit_ledger_attachments(id, ledger_entry_id, storage_path, file_name, mime_type, file_size, uploaded_by, created_at)
     `,
@@ -2640,9 +2562,6 @@ export async function getCreditBookEntriesPaged(
     const type = Array.isArray(row.credit_ledger_types)
       ? row.credit_ledger_types[0]
       : row.credit_ledger_types;
-    const subType = Array.isArray(row.credit_ledger_sub_types)
-      ? row.credit_ledger_sub_types[0]
-      : row.credit_ledger_sub_types;
     const actor = Array.isArray(row.credit_book_actors)
       ? row.credit_book_actors[0]
       : row.credit_book_actors;
@@ -2666,7 +2585,6 @@ export async function getCreditBookEntriesPaged(
       entry_date: row.entry_date,
       entry_direction: row.entry_direction as "credit" | "debt",
       entry_type_id: row.entry_type_id,
-      entry_sub_type_id: row.entry_sub_type_id ?? null,
       explanation: row.explanation,
       amount,
       currency_code: row.currency_code,
@@ -2678,8 +2596,6 @@ export async function getCreditBookEntriesPaged(
       updated_at: row.updated_at,
       type_name: type?.name ?? "-",
       type_code: type?.code ?? "-",
-      sub_type_name: subType?.name ?? null,
-      sub_type_code: subType?.code ?? null,
       actor_code: (actor?.actor_code ?? "A") as "A" | "B",
       actor_display_name: actor?.display_name ?? "-",
       creator_display_name: row.created_by ? (actorMap.get(row.created_by) ?? row.created_by) : "-",

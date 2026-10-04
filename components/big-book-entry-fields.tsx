@@ -5,7 +5,6 @@ import type {
   BigBookActionBy,
   BigBookActor,
   BigBookActorPocket,
-  BigBookLedgerSubType,
   BigBookLedgerType,
   BigBookSettlementTargetRef,
   BigBookTypeVendorTypeMap,
@@ -28,7 +27,6 @@ export type EntryFormState = {
   entry_date: string;
   entry_direction: "spending" | "profit";
   entry_type_id: string;
-  entry_sub_type_id: string;
   vendor_type_id: string;
   vendor_id: string;
   pocket_id: string;
@@ -101,7 +99,6 @@ export function createEmptyEntryForm(options: {
     entry_date: options.today,
     entry_direction: "spending",
     entry_type_id: options.defaultTypeId,
-    entry_sub_type_id: "",
     vendor_type_id: mappedVendorTypeId,
     vendor_id: "",
     pocket_id: "",
@@ -130,7 +127,6 @@ type Props = {
   value: EntryFormState;
   onChange: (next: EntryFormState) => void;
   types: BigBookLedgerType[];
-  subTypes: BigBookLedgerSubType[];
   vendorTypes: BigBookVendorType[];
   vendors: BigBookVendor[];
   actionByOptions: BigBookActionBy[];
@@ -268,8 +264,7 @@ export function BigBookEntryFields({
     const nextMappedVendorTypeId = mappedVendorTypeIdForType(nextTypeId, typeVendorTypeMaps);
     patch({
       entry_type_id: nextTypeId,
-      entry_sub_type_id: "",
-      vendor_type_id: nextMappedVendorTypeId,
+        vendor_type_id: nextMappedVendorTypeId,
       vendor_id: ""
     });
   }
@@ -592,7 +587,6 @@ export function BigBookEntryFields({
           ))}
         </select>
       </label>
-      {/* Sub-Type and Vendor Name are hidden for now; values remain stored and linked. */}
       <label className="text-sm">
         <span className="inline-flex items-center gap-1.5">
           Vendor Type

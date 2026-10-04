@@ -1,7 +1,6 @@
 import {
   getCreditBookActors,
   getCreditBookAllowedUsers,
-  getCreditBookLedgerSubTypes,
   getCreditBookLedgerTypes
 } from "@/lib/db/queries";
 import { CreditBigBookSettingsPanel } from "@/components/credit-big-book-settings-panel";
@@ -10,9 +9,8 @@ import { SetupRequiredCard } from "@/components/ui/setup-required-card";
 
 export default async function CreditBigBookSettingsPage() {
   try {
-    const [types, subTypes, actors, allowedUsers] = await Promise.all([
+    const [types, actors, allowedUsers] = await Promise.all([
       getCreditBookLedgerTypes({ includeInactive: true }),
-      getCreditBookLedgerSubTypes({ includeInactive: true }),
       getCreditBookActors(),
       getCreditBookAllowedUsers()
     ]);
@@ -21,11 +19,10 @@ export default async function CreditBigBookSettingsPage() {
       <div className="space-y-6">
         <PageHeader
           title="Credit Big Book Settings"
-          description="Manage types, sub-types, and global Actor A/B mapping."
+          description="Manage types and global Actor A/B mapping."
         />
         <CreditBigBookSettingsPanel
           initialTypes={types}
-          initialSubTypes={subTypes}
           initialActors={actors}
           allowedUsers={allowedUsers}
         />

@@ -17,7 +17,6 @@ describe("parseBigBookCsv", () => {
     expect(result.errors).toEqual([]);
     expect(result.rows).toHaveLength(2);
     expect(result.rows[0].currency_code).toBe("IDR");
-    expect(result.rows[0].sub_type_name).toBeNull();
     expect(result.rows[0].vendor_type_name).toBeNull();
     expect(result.rows[0].vendor_name).toBeNull();
     expect(result.rows[0].pocket_name).toBeNull();
@@ -26,7 +25,6 @@ describe("parseBigBookCsv", () => {
     expect(result.rows[0].group_remark).toBeNull();
     expect(result.rows[0].is_credit).toBe(false);
     expect(result.rows[1].remark).toBeNull();
-    expect(result.rows[1].sub_type_name).toBeNull();
     expect(result.rows[1].is_credit).toBe(false);
   });
 
@@ -54,25 +52,12 @@ describe("parseBigBookCsv", () => {
     expect(result.errors.some((item) => item.includes("is_credit must be true/false"))).toBe(true);
   });
 
-  it("parses optional sub_type_name when present", () => {
-    const csv = [
-      "entry_date,entry_direction,type_name,sub_type_name,explanation,amount,currency_code,remark,actor_name",
-      "2026-04-25,spending,Office Supplies,Stationery,Printer ink,350000,IDR,Restock,Actor A",
-      "2026-04-26,profit,Sales Revenue,,Daily settlement,1250.5,USDT,,Actor B"
-    ].join("\n");
-
-    const result = parseBigBookCsv(csv);
-    expect(result.errors).toEqual([]);
-    expect(result.rows).toHaveLength(2);
-    expect(result.rows[0].sub_type_name).toBe("Stationery");
-    expect(result.rows[1].sub_type_name).toBeNull();
-  });
 
   it("parses optional vendor fields when present", () => {
     const csv = [
-      "entry_date,entry_direction,type_name,sub_type_name,vendor_type_name,vendor_name,explanation,amount,currency_code,remark,actor_name",
-      "2026-04-25,spending,Office Supplies,Stationery,Merchant,Rbee,Printer ink,350000,IDR,Restock,Actor A",
-      "2026-04-26,profit,Sales Revenue,,Partner,,Daily settlement,1250.5,USDT,,Actor B"
+      "entry_date,entry_direction,type_name,vendor_type_name,vendor_name,explanation,amount,currency_code,remark,actor_name",
+      "2026-04-25,spending,Office Supplies,Merchant,Rbee,Printer ink,350000,IDR,Restock,Actor A",
+      "2026-04-26,profit,Sales Revenue,Partner,,Daily settlement,1250.5,USDT,,Actor B"
     ].join("\n");
 
     const result = parseBigBookCsv(csv);
@@ -177,7 +162,6 @@ describe("buildBigBookImportTemplateCsv", () => {
       entry_date: "2026-04-25",
       entry_direction: "spending",
       type_name: "Office Supplies",
-      sub_type_name: "Stationery",
       vendor_type_name: "Merchant",
       vendor_name: "Rbee",
       explanation: "Printer ink",
@@ -249,14 +233,14 @@ describe("parseBigBookCsv Excel compatibility", () => {
 
   it("parses semicolon-delimited CSV from Excel locales", () => {
     const csv = [
-      "entry_date;entry_direction;type_name;sub_type_name;explanation;amount;currency_code;remark;actor_name",
-      "2026-04-25;spending;Office Supplies;Stationery;Printer ink;350000;IDR;Restock;Actor A"
+      "entry_date;entry_direction;type_name;explanation;amount;currency_code;remark;actor_name",
+      "2026-04-25;spending;Office Supplies;Printer ink;350000;IDR;Restock;Actor A"
     ].join("\n");
 
     const result = parseBigBookCsv(csv);
     expect(result.errors).toEqual([]);
     expect(result.rows).toHaveLength(1);
-    expect(result.rows[0].sub_type_name).toBe("Stationery");
+    expect(result.rows[0].type_name).toBe("Office Supplies");
   });
 
   it("keeps multi-line quoted fields on a single row", () => {

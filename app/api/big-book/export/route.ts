@@ -19,8 +19,6 @@ function exportSortValue(entry: BigBookEntry, sortBy: BigBookLedgerSortKey): str
       return entry.entry_direction || null;
     case "type_name":
       return entry.type_name?.trim() || null;
-    case "sub_type_name":
-      return entry.sub_type_name?.trim() || null;
     case "vendor_type_name":
       return entry.vendor_type_name?.trim() || null;
     case "vendor_name":
@@ -134,7 +132,6 @@ export async function GET(request: Request) {
         entry.entry_date,
         entry.entry_direction,
         entry.type_name,
-        entry.sub_type_name ?? "",
         entry.vendor_type_name ?? "",
         entry.vendor_name ?? "",
         entry.explanation,

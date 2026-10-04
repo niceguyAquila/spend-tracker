@@ -18,7 +18,6 @@ const clientPayload = {
   entry_date: "2026-08-01",
   entry_direction: "spending",
   entry_type_id: TYPE_ID,
-  entry_sub_type_id: null,
   vendor_type_id: null,
   vendor_id: null,
   pocket_id: null,

@@ -84,7 +84,6 @@ export async function POST(request: Request) {
       entry_date: payload.entry_date,
       entry_direction: payload.entry_direction,
       entry_type_id: payload.entry_type_id,
-      entry_sub_type_id: payload.entry_sub_type_id ?? null,
       explanation: payload.explanation,
       amount: payload.amount,
       currency_code: payload.currency_code,
@@ -124,7 +123,6 @@ export async function PATCH(request: Request) {
     .from("credit_ledger_entries")
     .update({
       ...payload,
-      entry_sub_type_id: payload.entry_sub_type_id ?? null,
       remark: payload.remark || null,
       updated_by: authCheck.user.id
     })

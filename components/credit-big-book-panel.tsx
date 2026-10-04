@@ -7,7 +7,6 @@ import type {
   CreditBookActorOutstandingMetrics,
   CreditBookEntry,
   CreditBookEntryStatus,
-  CreditBookLedgerSubType,
   CreditBookLedgerType
 } from "@/lib/types";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
@@ -33,7 +32,6 @@ import { TableEmptyState } from "@/components/ui/table-empty-state";
 
 type Props = {
   initialTypes: CreditBookLedgerType[];
-  initialSubTypes: CreditBookLedgerSubType[];
   initialActors: CreditBookActor[];
   initialEntries: CreditBookEntry[];
   initialTotalCount: number;
@@ -45,7 +43,6 @@ type EntryFormState = {
   entry_date: string;
   entry_direction: "debt" | "credit";
   entry_type_id: string;
-  entry_sub_type_id: string;
   explanation: string;
   amount: string;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
@@ -124,7 +121,6 @@ function formatStatusLabel(status: CreditBookEntryStatus) {
 
 export function CreditBigBookPanel({
   initialTypes,
-  initialSubTypes,
   initialActors,
   initialEntries,
   initialTotalCount,
@@ -177,7 +173,6 @@ export function CreditBigBookPanel({
     entry_date: "",
     entry_direction: "debt",
     entry_type_id: "",
-    entry_sub_type_id: "",
     explanation: "",
     amount: "",
     currency_code: "IDR",
@@ -250,31 +245,12 @@ export function CreditBigBookPanel({
     entry_date: today,
     entry_direction: "debt",
     entry_type_id: activeTypes[0]?.id ?? initialTypes[0]?.id ?? "",
-    entry_sub_type_id: "",
     explanation: "",
     amount: "",
     currency_code: "IDR",
     remark: "",
     responsible_actor_id: sortedActors[0]?.id ?? initialActors[0]?.id ?? ""
   });
-
-  const activeSubTypes = useMemo(() => initialSubTypes.filter((row) => row.is_active), [initialSubTypes]);
-  const subTypesForCreateForm = useMemo(
-    () =>
-      sortByDisplayLabel(
-        activeSubTypes.filter((row) => row.entry_type_id === entryForm.entry_type_id),
-        (row) => row.name
-      ),
-    [activeSubTypes, entryForm.entry_type_id]
-  );
-  const subTypesForEditForm = useMemo(
-    () =>
-      sortByDisplayLabel(
-        activeSubTypes.filter((row) => row.entry_type_id === editForm.entry_type_id),
-        (row) => row.name
-      ),
-    [activeSubTypes, editForm.entry_type_id]
-  );
 
   const ledgerPagination = useTablePagination(totalCount);
 
@@ -599,7 +575,6 @@ export function CreditBigBookPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...entryForm,
-          entry_sub_type_id: entryForm.entry_sub_type_id || null,
           amount: amountValue
         })
       });
@@ -651,7 +626,7 @@ export function CreditBigBookPanel({
         explanation: "",
         amount: "",
         remark: "",
-        ...(keepModalOpen ? {} : { currency_code: "IDR", entry_sub_type_id: "" })
+        ...(keepModalOpen ? {} : { currency_code: "IDR" })
       }));
       triggerRefresh();
     } catch {
@@ -792,7 +767,6 @@ export function CreditBigBookPanel({
       entry_date: row.entry_date,
       entry_direction: row.entry_direction,
       entry_type_id: row.entry_type_id,
-      entry_sub_type_id: row.entry_sub_type_id ?? "",
       explanation: row.explanation,
       amount: formatAmountInput(String(row.amount)),
       currency_code: row.currency_code,
@@ -820,7 +794,6 @@ export function CreditBigBookPanel({
         body: JSON.stringify({
           id: editingEntryId,
           ...editForm,
-          entry_sub_type_id: editForm.entry_sub_type_id || null,
           amount: amountValue
         })
       });
@@ -1235,14 +1208,13 @@ export function CreditBigBookPanel({
             if (openSettlementMenu) setOpenSettlementMenu(null);
           }}
         >
-          <table className="data-table data-table-sticky-head min-w-[1440px]">
+          <table className="data-table data-table-sticky-head min-w-[1320px]">
             <thead>
               <tr>
                 <th className="px-3 py-2">Date</th>
                 <th className="px-3 py-2">Cash Flow</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2">Type</th>
-                <th className="px-3 py-2">Sub-Type</th>
                 <th className="px-3 py-2">Explanation</th>
                 <th className="px-3 py-2">Amount</th>
                 <th className="px-3 py-2">Actor</th>
@@ -1264,7 +1236,6 @@ export function CreditBigBookPanel({
                       <td className="px-3 py-2"><div className="h-5 w-14 rounded-full bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-5 w-16 rounded-full bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-28 rounded bg-[rgb(var(--surface-muted))]" /></td>
-                      <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-56 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-28 rounded bg-[rgb(var(--surface-muted))]" /></td>
@@ -1305,13 +1276,6 @@ export function CreditBigBookPanel({
                         </span>
                       </td>
                       <td className="px-3 py-2">{row.type_name}</td>
-                      <td className="px-3 py-2">
-                        {row.sub_type_name ? (
-                          row.sub_type_name
-                        ) : (
-                          <span className="text-xs text-muted">-</span>
-                        )}
-                      </td>
                       <td className="px-3 py-2">{row.explanation}</td>
                       <td className="px-3 py-2">
                         <span className={getAmountColorClass(row.entry_direction === "debt" ? -row.amount : row.amount)}>
@@ -1391,7 +1355,7 @@ export function CreditBigBookPanel({
                     </tr>
                   ))}
               {!entries.length && !entriesLoading ? (
-                <TableEmptyState colSpan={12} message="No records match the current filters." />
+                <TableEmptyState colSpan={11} message="No records match the current filters." />
               ) : null}
             </tbody>
           </table>
@@ -1714,31 +1678,12 @@ export function CreditBigBookPanel({
                   setEntryForm((prev) => ({
                     ...prev,
                     entry_type_id: event.target.value,
-                    entry_sub_type_id: ""
                   }))
                 }
               >
                 {activeTypes.map((type) => (
                   <option key={type.id} value={type.id}>
                     {type.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-sm">
-              Sub-Type
-              <select
-                className="field mt-1"
-                value={entryForm.entry_sub_type_id}
-                onChange={(event) =>
-                  setEntryForm((prev) => ({ ...prev, entry_sub_type_id: event.target.value }))
-                }
-                disabled={!subTypesForCreateForm.length}
-              >
-                <option value="">(none)</option>
-                {subTypesForCreateForm.map((subType) => (
-                  <option key={subType.id} value={subType.id}>
-                    {subType.name}
                   </option>
                 ))}
               </select>
@@ -1956,31 +1901,12 @@ export function CreditBigBookPanel({
                   setEditForm((prev) => ({
                     ...prev,
                     entry_type_id: event.target.value,
-                    entry_sub_type_id: ""
                   }))
                 }
               >
                 {activeTypes.map((type) => (
                   <option key={type.id} value={type.id}>
                     {type.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-sm">
-              Sub-Type
-              <select
-                className="field mt-1"
-                value={editForm.entry_sub_type_id}
-                onChange={(event) =>
-                  setEditForm((prev) => ({ ...prev, entry_sub_type_id: event.target.value }))
-                }
-                disabled={!subTypesForEditForm.length}
-              >
-                <option value="">(none)</option>
-                {subTypesForEditForm.map((subType) => (
-                  <option key={subType.id} value={subType.id}>
-                    {subType.name}
                   </option>
                 ))}
               </select>

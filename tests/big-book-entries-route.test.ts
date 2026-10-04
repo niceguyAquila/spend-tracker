@@ -183,7 +183,6 @@ describe("big book entries route", () => {
     expect(data.id).toBe("entry-1");
     expect(insertMock).toHaveBeenCalledTimes(1);
     expect(insertMock.mock.calls[0][0]).toMatchObject({
-      entry_sub_type_id: null,
       vendor_type_id: null,
       vendor_id: null,
       pocket_id: null,
@@ -201,7 +200,6 @@ describe("big book entries route", () => {
         entry_date: "2026-04-23",
         entry_direction: "profit",
         entry_type_id: "11111111-1111-4111-8111-111111111111",
-        entry_sub_type_id: "44444444-4444-4444-8444-444444444444",
         vendor_type_id: "66666666-6666-4666-8666-666666666666",
         vendor_id: "77777777-7777-4777-8777-777777777777",
         action_by_id: "99999999-9999-4999-8999-999999999999",
@@ -244,7 +242,6 @@ describe("big book entries route", () => {
       pocket_id: null,
       is_credit: false,
       explanation: "Gas fee — Vendor payout",
-      entry_sub_type_id: "44444444-4444-4444-8444-444444444444",
       vendor_id: "77777777-7777-4777-8777-777777777777",
       action_by_id: "99999999-9999-4999-8999-999999999999"
     });
@@ -292,7 +289,6 @@ describe("big book entries route", () => {
         entry_date: "2026-04-23",
         entry_direction: "profit",
         entry_type_id: "11111111-1111-4111-8111-111111111111",
-        entry_sub_type_id: "44444444-4444-4444-8444-444444444444",
         vendor_type_id: "66666666-6666-4666-8666-666666666666",
         vendor_id: "77777777-7777-4777-8777-777777777777",
         action_by_id: "99999999-9999-4999-8999-999999999999",
@@ -400,30 +396,6 @@ describe("big book entries route", () => {
     });
   });
 
-  it("persists entry_sub_type_id on create when provided", async () => {
-    const { POST } = await import("@/app/api/big-book/entries/route");
-    const request = new Request("https://app.localhost/api/big-book/entries", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        entry_date: "2026-04-23",
-        entry_direction: "spending",
-        entry_type_id: "11111111-1111-4111-8111-111111111111",
-        entry_sub_type_id: "44444444-4444-4444-8444-444444444444",
-        explanation: "Operational cloud cost",
-        amount: 1240.5,
-        currency_code: "USDT",
-        remark: "",
-        responsible_actor_id: "22222222-2222-4222-8222-222222222222"
-      })
-    });
-
-    const response = await POST(request);
-    expect(response.status).toBe(200);
-    expect(insertMock.mock.calls[0][0]).toMatchObject({
-      entry_sub_type_id: "44444444-4444-4444-8444-444444444444"
-    });
-  });
 
   it("persists vendor fields on create when provided", async () => {
     const { POST } = await import("@/app/api/big-book/entries/route");
@@ -502,32 +474,6 @@ describe("big book entries route", () => {
     });
   });
 
-  it("persists entry_sub_type_id on patch when provided", async () => {
-    const { PATCH } = await import("@/app/api/big-book/entries/route");
-    const request = new Request("https://app.localhost/api/big-book/entries", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: "55555555-5555-4555-8555-555555555555",
-        entry_date: "2026-04-23",
-        entry_direction: "spending",
-        entry_type_id: "11111111-1111-4111-8111-111111111111",
-        entry_sub_type_id: "44444444-4444-4444-8444-444444444444",
-        explanation: "Operational cloud cost",
-        amount: 1240.5,
-        currency_code: "USDT",
-        remark: "",
-        responsible_actor_id: "22222222-2222-4222-8222-222222222222"
-      })
-    });
-
-    const response = await PATCH(request);
-    expect(response.status).toBe(200);
-    expect(updateMock).toHaveBeenCalledTimes(1);
-    expect(updateMock.mock.calls[0][0]).toMatchObject({
-      entry_sub_type_id: "44444444-4444-4444-8444-444444444444"
-    });
-  });
 
   it("persists vendor fields on patch when provided", async () => {
     const { PATCH } = await import("@/app/api/big-book/entries/route");

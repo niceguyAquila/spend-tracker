@@ -11,8 +11,6 @@ const REQUIRED_HEADERS = [
   "actor_name"
 ] as const;
 
-const OPTIONAL_HEADERS = ["sub_type_name"] as const;
-
 type AllowedCurrency = "IDR" | "MYR" | "USDT" | "TRX";
 type AllowedDirection = "credit" | "debt";
 
@@ -20,7 +18,6 @@ export type ParsedCreditBigBookCsvRow = {
   entry_date: string;
   entry_direction: AllowedDirection;
   type_name: string;
-  sub_type_name: string | null;
   explanation: string;
   amount: number;
   currency_code: AllowedCurrency;
@@ -149,13 +146,11 @@ export function parseCreditBigBookCsv(content: string): ParseCreditBigBookCsvRes
   for (let index = 0; index < dataRows.length; index += 1) {
     const lineNumber = index + 2;
     const values = dataRows[index];
-    const get = (header: (typeof REQUIRED_HEADERS)[number] | (typeof OPTIONAL_HEADERS)[number]) =>
-      values[headerMap.get(header) ?? -1];
+    const get = (header: (typeof REQUIRED_HEADERS)[number]) => values[headerMap.get(header) ?? -1];
 
     const entryDateRaw = normalizeRequired(get("entry_date"));
     const entryDirectionRaw = normalizeRequired(get("entry_direction"));
     const typeName = normalizeRequired(get("type_name"));
-    const subTypeName = normalizeOptional(get("sub_type_name"));
     const explanation = normalizeRequired(get("explanation"));
     const amountRaw = normalizeRequired(get("amount"));
     const currencyRaw = normalizeRequired(get("currency_code")).toUpperCase();
@@ -195,7 +190,6 @@ export function parseCreditBigBookCsv(content: string): ParseCreditBigBookCsvRes
       entry_date: entryDate,
       entry_direction: directionParsed.data,
       type_name: typeName,
-      sub_type_name: subTypeName,
       explanation,
       amount,
       currency_code: currencyParsed.data,

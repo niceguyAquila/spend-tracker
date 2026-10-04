@@ -14,25 +14,10 @@ describe("parseCreditBigBookCsv", () => {
     expect(result.rows).toHaveLength(2);
     expect(result.rows[0].currency_code).toBe("IDR");
     expect(result.rows[0].entry_direction).toBe("debt");
-    expect(result.rows[0].sub_type_name).toBeNull();
     expect(result.rows[1].entry_direction).toBe("credit");
     expect(result.rows[1].remark).toBeNull();
-    expect(result.rows[1].sub_type_name).toBeNull();
   });
 
-  it("parses optional sub_type_name when present", () => {
-    const csv = [
-      "entry_date,entry_direction,type_name,sub_type_name,explanation,amount,currency_code,remark,actor_name",
-      "2026-04-25,debt,Payable,Invoice,Vendor invoice,350000,IDR,Restock,Actor A",
-      "2026-04-26,credit,Receivable,,Customer payment,1250.5,USDT,,Actor B"
-    ].join("\n");
-
-    const result = parseCreditBigBookCsv(csv);
-    expect(result.errors).toEqual([]);
-    expect(result.rows).toHaveLength(2);
-    expect(result.rows[0].sub_type_name).toBe("Invoice");
-    expect(result.rows[1].sub_type_name).toBeNull();
-  });
 
   it("parses dates in YYYY-MMM-DD format", () => {
     const csv = [
