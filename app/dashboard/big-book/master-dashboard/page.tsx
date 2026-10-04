@@ -134,10 +134,11 @@ export default async function BigBookMasterDashboardPage({ searchParams }: BigBo
         </section>
 
         <section className="card">
-          <h2 className="text-lg font-semibold">Outstanding Debt by Vendor and Actor</h2>
+          <h2 className="text-lg font-semibold">Outstanding Debt by Grouped Transaction and Actor</h2>
           <p className="mt-1 text-sm text-muted">
-            Who we owe: actor (owes) to vendor (owed), per currency. Outstanding is the total of debts
-            not yet marked settled. Amounts are shown in red. Filters above also apply here.
+            Open debts by grouped transaction and actor, per currency. Ungrouped debts appear as their
+            own row. Outstanding is the total of debts not yet marked settled. Amounts are shown in
+            red. Filters above also apply here.
           </p>
           <BigBookVendorActorOutstandingDebtTable
             rows={vendorActorOutstandingDebt}

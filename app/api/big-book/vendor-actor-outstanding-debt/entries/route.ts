@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/auth-api";
 import { getBigBookVendorActorOutstandingDebtEntries } from "@/lib/db/queries";
-import { bigBookVendorActorOutstandingEntriesQuerySchema } from "@/lib/validation/big-book";
+import { bigBookVendorActorOutstandingDebtEntriesQuerySchema } from "@/lib/validation/big-book";
 
 export async function GET(request: Request) {
   const authCheck = await requireAdminApi();
@@ -10,10 +10,11 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const parsed = bigBookVendorActorOutstandingEntriesQuerySchema.safeParse({
+  const parsed = bigBookVendorActorOutstandingDebtEntriesQuerySchema.safeParse({
     actorId: searchParams.get("actorId") ?? "",
     currency: searchParams.get("currency") ?? "",
-    vendorId: searchParams.get("vendorId") ?? "none",
+    groupId: searchParams.get("groupId") ?? "none",
+    entryId: searchParams.get("entryId") ?? undefined,
     dateFrom: searchParams.get("dateFrom") ?? "",
     dateTo: searchParams.get("dateTo") ?? ""
   });
@@ -23,7 +24,8 @@ export async function GET(request: Request) {
 
   try {
     const result = await getBigBookVendorActorOutstandingDebtEntries({
-      vendorId: parsed.data.vendorId === "none" ? null : parsed.data.vendorId,
+      groupId: parsed.data.groupId === "none" ? null : parsed.data.groupId,
+      entryId: parsed.data.entryId ?? null,
       actorId: parsed.data.actorId,
       currency: parsed.data.currency,
       dateFrom: parsed.data.dateFrom,

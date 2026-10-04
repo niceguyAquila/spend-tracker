@@ -219,11 +219,11 @@ export function BigBookMetricsCardsView({
         </section>
 
         <section className="card min-w-0 overflow-hidden">
-          <h2 className="text-lg font-semibold">Outstanding Debt by Vendor and Actor (All Time)</h2>
+          <h2 className="text-lg font-semibold">Outstanding Debt by Grouped Transaction and Actor (All Time)</h2>
           <p className="mt-1 text-sm text-muted">
-            Total of open debts (we owe the counterparty, not yet settled) by vendor and actor, per
-            currency. Amounts are shown in red. Record payment creates an Out ledger entry that hits
-            totals and can close the debt.
+            Total of open debts (we owe the counterparty, not yet settled) by grouped transaction and
+            actor, per currency. Ungrouped debts appear as their own row. Amounts are shown in red.
+            Record payment creates an Out ledger entry that hits totals and can close the debt.
           </p>
           <BigBookVendorActorOutstandingDebtTable
             rows={vendorActorOutstandingDebt}

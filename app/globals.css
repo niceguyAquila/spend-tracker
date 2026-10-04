@@ -26,7 +26,7 @@
     --stripe: 241 245 249;
     /* Soft muted amber for Debt obligation ledger rows (not bright yellow) */
     --debt-row: 250 240 210;
-    /* Grouped ledger rows — light uses a darker magenta for contrast */
+    /* Grouped ledger rows — light uses a darker magenta for contrast (default / normal) */
     --group-accent-rgb: 192, 38, 211;
     --group-header-bg: rgba(192, 38, 211, 0.14);
     --group-child-bg: rgba(192, 38, 211, 0.06);
@@ -35,6 +35,24 @@
     --group-divider: rgba(192, 38, 211, 0.14);
     --group-chip-text: #a21caf;
     --group-chip-bg: rgba(192, 38, 211, 0.22);
+    /* Credit groups — teal */
+    --group-credit-accent-rgb: 13, 148, 136;
+    --group-credit-header-bg: rgba(13, 148, 136, 0.14);
+    --group-credit-child-bg: rgba(13, 148, 136, 0.06);
+    --group-credit-child-hover-bg: rgba(13, 148, 136, 0.12);
+    --group-credit-child-bar: rgba(13, 148, 136, 0.45);
+    --group-credit-divider: rgba(13, 148, 136, 0.14);
+    --group-credit-chip-text: #0f766e;
+    --group-credit-chip-bg: rgba(13, 148, 136, 0.22);
+    /* Debt groups — maroon */
+    --group-debt-accent-rgb: 136, 19, 55;
+    --group-debt-header-bg: rgba(136, 19, 55, 0.14);
+    --group-debt-child-bg: rgba(136, 19, 55, 0.06);
+    --group-debt-child-hover-bg: rgba(136, 19, 55, 0.12);
+    --group-debt-child-bar: rgba(136, 19, 55, 0.45);
+    --group-debt-divider: rgba(136, 19, 55, 0.14);
+    --group-debt-chip-text: #9f1239;
+    --group-debt-chip-bg: rgba(136, 19, 55, 0.22);
     /* Settings category tabs — active accent (not the group-row magenta) */
     --accent-magenta: #993556;
   }
@@ -68,6 +86,22 @@
     --group-divider: rgba(232, 121, 249, 0.14);
     --group-chip-text: #f5d0fe;
     --group-chip-bg: rgba(232, 121, 249, 0.22);
+    --group-credit-accent-rgb: 45, 212, 191;
+    --group-credit-header-bg: rgba(45, 212, 191, 0.16);
+    --group-credit-child-bg: rgba(45, 212, 191, 0.07);
+    --group-credit-child-hover-bg: rgba(45, 212, 191, 0.12);
+    --group-credit-child-bar: rgba(45, 212, 191, 0.45);
+    --group-credit-divider: rgba(45, 212, 191, 0.14);
+    --group-credit-chip-text: #ccfbf1;
+    --group-credit-chip-bg: rgba(45, 212, 191, 0.22);
+    --group-debt-accent-rgb: 251, 113, 133;
+    --group-debt-header-bg: rgba(190, 18, 60, 0.22);
+    --group-debt-child-bg: rgba(190, 18, 60, 0.1);
+    --group-debt-child-hover-bg: rgba(190, 18, 60, 0.16);
+    --group-debt-child-bar: rgba(251, 113, 133, 0.5);
+    --group-debt-divider: rgba(251, 113, 133, 0.18);
+    --group-debt-chip-text: #fecdd3;
+    --group-debt-chip-bg: rgba(190, 18, 60, 0.28);
     --accent-magenta: #ed93b1;
   }
 
@@ -88,7 +122,30 @@
   }
 }
 
-/* Magenta grouped ledger rows — visual structure only; ungrouped rows untouched */
+/* Grouped ledger rows — visual structure only; ungrouped rows untouched.
+   Default tokens are magenta (normal). Credit/debt groups remap --group-* via tone classes. */
+.data-table tbody tr.group-tone-credit {
+  --group-accent-rgb: var(--group-credit-accent-rgb);
+  --group-header-bg: var(--group-credit-header-bg);
+  --group-child-bg: var(--group-credit-child-bg);
+  --group-child-hover-bg: var(--group-credit-child-hover-bg);
+  --group-child-bar: var(--group-credit-child-bar);
+  --group-divider: var(--group-credit-divider);
+  --group-chip-text: var(--group-credit-chip-text);
+  --group-chip-bg: var(--group-credit-chip-bg);
+}
+
+.data-table tbody tr.group-tone-debt {
+  --group-accent-rgb: var(--group-debt-accent-rgb);
+  --group-header-bg: var(--group-debt-header-bg);
+  --group-child-bg: var(--group-debt-child-bg);
+  --group-child-hover-bg: var(--group-debt-child-hover-bg);
+  --group-child-bar: var(--group-debt-child-bar);
+  --group-divider: var(--group-debt-divider);
+  --group-chip-text: var(--group-debt-chip-text);
+  --group-chip-bg: var(--group-debt-chip-bg);
+}
+
 .data-table tbody tr.group-header {
   background-color: var(--group-header-bg);
   border-color: var(--group-divider);

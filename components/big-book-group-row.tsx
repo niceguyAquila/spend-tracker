@@ -4,6 +4,10 @@ import { memo, useMemo, type RefObject, type ReactNode } from "react";
 import type { BigBookEntry, BigBookEntryGroup } from "@/lib/types";
 import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
 import { summarizeCurrencies } from "@/lib/big-book/totals";
+import {
+  classifyLedgerGroupTone,
+  ledgerGroupToneClass
+} from "@/lib/big-book/ledger-group-tone";
 
 const NET_AMOUNT_FORMAT = { minimumFractionDigits: 2, maximumFractionDigits: 4 } as const;
 
@@ -42,7 +46,7 @@ function BigBookGroupHeaderRowInner({
   onDelete,
   children
 }: Props) {
-  const { dateLabel, totals } = useMemo(() => {
+  const { dateLabel, totals, toneClass } = useMemo(() => {
     const dates = entries.map((entry) => entry.entry_date).sort();
     const dateFrom = dates[0];
     const dateTo = dates[dates.length - 1];
@@ -51,7 +55,8 @@ function BigBookGroupHeaderRowInner({
         dateFrom === dateTo
           ? formatDateDisplay(dateFrom)
           : `${formatDateDisplay(dateFrom)} – ${formatDateDisplay(dateTo)}`,
-      totals: summarizeCurrencies(entries)
+      totals: summarizeCurrencies(entries),
+      toneClass: ledgerGroupToneClass(classifyLedgerGroupTone(entries))
     };
   }, [entries]);
 
@@ -64,7 +69,11 @@ function BigBookGroupHeaderRowInner({
       <tr className="group-block-spacer" aria-hidden="true">
         <td colSpan={columnCount} />
       </tr>
-      <tr className="group-header border-b border-[rgb(var(--border))] align-top">
+      <tr
+        className={`group-header border-b border-[rgb(var(--border))] align-top${
+          toneClass ? ` ${toneClass}` : ""
+        }`}
+      >
         <td className="px-3 py-2">
           <button
             type="button"

@@ -34,6 +34,8 @@ function truncateText(value: string, maxLength = 28) {
 export type BigBookEntryRowProps = {
   entry: BigBookEntry;
   isGroupMember: boolean;
+  /** Magenta / teal / maroon group accent when this row sits inside a group. */
+  groupToneClass?: string;
   stripeClass: string;
   highlighted?: boolean;
   selected: boolean;
@@ -49,6 +51,7 @@ export type BigBookEntryRowProps = {
 function BigBookEntryRowInner({
   entry,
   isGroupMember,
+  groupToneClass = "",
   stripeClass,
   highlighted = false,
   selected,
@@ -67,7 +70,9 @@ function BigBookEntryRowInner({
       : isGroupMember
         ? ""
         : ` ${stripeClass}`;
-  const groupChildClass = isGroupMember ? " group-child" : "";
+  const groupChildClass = isGroupMember
+    ? ` group-child${groupToneClass ? ` ${groupToneClass}` : ""}`
+    : "";
 
   return (
     <tr

@@ -38,6 +38,10 @@ import {
 import { BigBookGroupHeaderRow } from "@/components/big-book-group-row";
 import { BigBookEntryRow } from "@/components/big-book-entry-row";
 import { LinkifyText } from "@/lib/linkify-text";
+import {
+  classifyLedgerGroupTone,
+  ledgerGroupToneClass
+} from "@/lib/big-book/ledger-group-tone";
 
 // Heavy form UI only needed when a create/edit/settlement modal opens.
 const BigBookEntryFields = dynamic(
@@ -243,8 +247,8 @@ const CREDIT_STATUS_LABELS: Record<BigBookCreditStatus, string> = {
   settled: "Settled"
 };
 
-// Credit fields never travel with grouped entries (the API rejects them there),
-// so this only runs for the single-entry create/edit payloads.
+// Settlement close/link fields only apply to single-entry create/edit payloads
+// (grouped entries persist is_credit / is_debt via toEntryPayload).
 function toCreditPayload(form: EntryFormState, settlesEntry: BigBookSettlementTargetRef | null) {
   const settlesEntryId = form.settles_entry_id || null;
   if (!settlesEntryId) {
@@ -298,6 +302,8 @@ function settlementTargetFromEntry(entry: BigBookEntry): BigBookSettlementTarget
 }
 
 function toEntryPayload(form: EntryFormState) {
+  const isCredit = form.is_credit && !form.is_debt;
+  const isDebt = form.is_debt && !form.is_credit;
   return {
     entry_date: form.entry_date,
     entry_direction: form.entry_direction,
@@ -310,7 +316,9 @@ function toEntryPayload(form: EntryFormState) {
     amount: Number(parseAmountInput(form.amount)),
     currency_code: form.currency_code,
     remark: form.remark,
-    responsible_actor_id: form.responsible_actor_id
+    responsible_actor_id: form.responsible_actor_id,
+    is_credit: isCredit,
+    is_debt: isDebt
   };
 }
 
@@ -1213,8 +1221,9 @@ export function BigBookPanel({
       setPendingEntryConfirm(false);
       setCreateModalOpen(false);
       // Optimistically fold every child amount into the Grand Total card; SSR
-      // via `triggerRefresh` reconciles right after.
+      // via `triggerRefresh` reconciles right after. Open debt is obligation-only.
       for (const payload of payloadEntries) {
+        if ("is_debt" in payload && payload.is_debt) continue;
         const actor = initialActors.find((row) => row.id === payload.responsible_actor_id);
         applyMetricDelta(
           payload.responsible_actor_id,
@@ -2199,8 +2208,8 @@ export function BigBookPanel({
     Boolean(settlementForm) &&
     willCreateGasFeeEntry(settlementForm!.currency_code, settlementForm!.gas_fee_amount);
 
-  function renderEntryRow(entry: BigBookEntry, isGroupMember: boolean) {
-    // Group members get magenta `.group-child` styling from globals.css;
+  function renderEntryRow(entry: BigBookEntry, isGroupMember: boolean, groupToneClass = "") {
+    // Group members get `.group-child` (+ optional tone) styling from globals.css;
     // stripeClass is only applied for ungrouped rows.
     const stripe = isGroupMember
       ? ""
@@ -2210,6 +2219,7 @@ export function BigBookPanel({
         key={entry.id}
         entry={entry}
         isGroupMember={isGroupMember}
+        groupToneClass={groupToneClass}
         stripeClass={stripe}
         highlighted={focusedEntryId === entry.id}
         selected={selectedEntryIds.has(entry.id)}
@@ -2629,10 +2639,14 @@ export function BigBookPanel({
                       <td className="px-3 py-2"><div className="h-8 w-20 rounded bg-[rgb(var(--surface-muted))]" /></td>
                     </tr>
                   ))
-                : ledgerRows.map((row) =>
-                    row.kind === "entry" ? (
-                      renderEntryRow(row.entry, false)
-                    ) : (
+                : ledgerRows.map((row) => {
+                    if (row.kind === "entry") {
+                      return renderEntryRow(row.entry, false);
+                    }
+                    const groupToneClass = ledgerGroupToneClass(
+                      classifyLedgerGroupTone(row.entries)
+                    );
+                    return (
                       <BigBookGroupHeaderRow
                         key={`group-${row.group.id}`}
                         group={row.group}
@@ -2649,10 +2663,12 @@ export function BigBookPanel({
                         onUngroup={() => setPendingUngroup(row.group)}
                         onDelete={() => setPendingDeleteGroup({ group: row.group, entries: row.entries })}
                       >
-                        {row.entries.map((entry) => renderEntryRow(entry, true))}
+                        {row.entries.map((entry) =>
+                          renderEntryRow(entry, true, groupToneClass)
+                        )}
                       </BigBookGroupHeaderRow>
-                    )
-                  )}
+                    );
+                  })}
               {!ledgerRows.length && !entriesLoading ? (
                 <TableEmptyState
                   colSpan={LEDGER_COLUMN_COUNT}

@@ -10,19 +10,21 @@ export function computeBigBookDebtStatus(debtSettledAt: string | null): BigBookD
 
 export type VendorActorOutstandingDebtInput = {
   id: string;
+  group_id: string | null;
+  group_label: string | null;
   responsible_actor_id: string;
-  vendor_id: string | null;
   vendor_type_id: string | null;
   currency_code: BigBookVendorActorOutstandingDebtRow["currency"];
   amount: number;
-  vendor_name: string | null;
+  explanation: string | null;
   vendor_type_name: string | null;
   actor_code: "A" | "B";
   actor_display_name: string;
 };
 
 /**
- * Aggregate open debt balances by vendor + actor + currency.
+ * Aggregate open debt balances by grouped transaction + actor + currency.
+ * Standalone (ungrouped) debts each become their own row.
  * Callers must pass only open debts (debt_settled_at is null).
  */
 export function aggregateVendorActorOutstandingDebt(
@@ -34,8 +36,8 @@ export function aggregateVendorActorOutstandingDebt(
     const amount = Math.abs(Number(debt.amount));
     if (!(amount > 0)) continue;
 
-    const vendorKey = debt.vendor_id ?? "none";
-    const key = `${vendorKey}:${debt.responsible_actor_id}:${debt.currency_code}`;
+    const groupKey = debt.group_id ?? `entry:${debt.id}`;
+    const key = `${groupKey}:${debt.responsible_actor_id}:${debt.currency_code}`;
     const existing = byKey.get(key);
     if (existing) {
       existing.outstanding += amount;
@@ -43,10 +45,15 @@ export function aggregateVendorActorOutstandingDebt(
       continue;
     }
 
+    const groupLabel = debt.group_id
+      ? debt.group_label?.trim() || "(Untitled group)"
+      : debt.explanation?.trim() || "(Ungrouped debt)";
+
     byKey.set(key, {
       row_key: key,
-      vendor_id: debt.vendor_id,
-      vendor_name: debt.vendor_name ?? "(No vendor)",
+      group_id: debt.group_id,
+      group_label: groupLabel,
+      entry_id: debt.group_id ? null : debt.id,
       vendor_type_id: debt.vendor_type_id,
       vendor_type_name: debt.vendor_type_name ?? "-",
       actor_id: debt.responsible_actor_id,
@@ -64,7 +71,7 @@ export function aggregateVendorActorOutstandingDebt(
     const currencyDiff = currencyOrder.indexOf(a.currency) - currencyOrder.indexOf(b.currency);
     if (currencyDiff !== 0) return currencyDiff;
     if (a.outstanding !== b.outstanding) return b.outstanding - a.outstanding;
-    if (a.vendor_name !== b.vendor_name) return a.vendor_name.localeCompare(b.vendor_name);
+    if (a.group_label !== b.group_label) return a.group_label.localeCompare(b.group_label);
     return a.actor_display_name.localeCompare(b.actor_display_name);
   });
 }

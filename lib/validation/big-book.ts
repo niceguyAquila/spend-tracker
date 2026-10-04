@@ -353,9 +353,7 @@ export const bigBookBulkDebtSettleSchema = z.object({
   settlement_conversion_rate: z.coerce.number().positive().optional()
 });
 
-const bigBookGroupEntryInputSchema = bigBookEntryBaseSchema.omit({
-  is_credit: true,
-  is_debt: true,
+const bigBookGroupEntryFieldsSchema = bigBookEntryBaseSchema.omit({
   settles_entry_id: true,
   settlement_conversion_rate: true,
   settlement_note: true,
@@ -364,8 +362,12 @@ const bigBookGroupEntryInputSchema = bigBookEntryBaseSchema.omit({
   close_debt: true,
   debt_settlement_note: true
 });
+const bigBookGroupEntryInputSchema = bigBookGroupEntryFieldsSchema.superRefine((value, ctx) => {
+  refineBigBookEntryCreditFields(value, ctx);
+});
 // Group create expands companions client-side (gas fee / KURS) into plain entry rows,
 // so group entry schema stays without kurs_rate / gas_fee_amount fields.
+// Settlement Type (is_credit / is_debt) is allowed so grouped Debt/Credit marks persist.
 
 export const bigBookGroupCreateSchema = z.object({
   label: z.string().trim().min(2).max(200),
@@ -373,9 +375,13 @@ export const bigBookGroupCreateSchema = z.object({
   entries: z.array(bigBookGroupEntryInputSchema).min(2).max(50)
 });
 
-export const bigBookGroupEntryUpdateSchema = bigBookGroupEntryInputSchema.extend({
-  id: z.string().uuid().optional()
-});
+export const bigBookGroupEntryUpdateSchema = bigBookGroupEntryFieldsSchema
+  .extend({
+    id: z.string().uuid().optional()
+  })
+  .superRefine((value, ctx) => {
+    refineBigBookEntryCreditFields(value, ctx);
+  });
 
 export const bigBookGroupUpdateSchema = z.object({
   id: z.string().uuid(),
@@ -475,6 +481,26 @@ export const bigBookVendorActorOutstandingEntriesQuerySchema = z.object({
   dateFrom: optionalString,
   dateTo: optionalString
 });
+
+/** Outstanding debt detail rows are keyed by group (or standalone entry id). */
+export const bigBookVendorActorOutstandingDebtEntriesQuerySchema = z
+  .object({
+    actorId: z.string().uuid(),
+    currency: bigBookCurrencySchema,
+    groupId: z.union([z.string().uuid(), z.literal("none")]).default("none"),
+    entryId: z.string().uuid().optional(),
+    dateFrom: optionalString,
+    dateTo: optionalString
+  })
+  .superRefine((value, ctx) => {
+    if (value.groupId === "none" && !value.entryId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "entryId is required when groupId is none.",
+        path: ["entryId"]
+      });
+    }
+  });
 
 export type BigBookEntriesQuery = z.infer<typeof bigBookEntriesQuerySchema>;
 

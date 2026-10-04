@@ -290,8 +290,11 @@ export type BigBookVendorActorOutstandingRow = {
 
 export type BigBookVendorActorOutstandingDebtRow = {
   row_key: string;
-  vendor_id: string | null;
-  vendor_name: string;
+  /** Set when open debts belong to a ledger group; null for standalone debts. */
+  group_id: string | null;
+  group_label: string;
+  /** Standalone (ungrouped) open debt id; null when row is a group aggregate. */
+  entry_id: string | null;
   vendor_type_id: string | null;
   vendor_type_name: string;
   actor_id: string;

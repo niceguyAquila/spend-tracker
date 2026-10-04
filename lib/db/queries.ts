@@ -2005,12 +2005,13 @@ export async function getBigBookVendorActorOutstandingDebt(filters?: {
 
   type DebtScanRow = {
     id: string;
+    group_id: string | null;
+    explanation: string | null;
     responsible_actor_id: string;
-    vendor_id: string | null;
     vendor_type_id: string | null;
     currency_code: BigBookVendorActorOutstandingDebtRow["currency"];
     amount: number | string;
-    business_ledger_vendors: { id: string; name: string } | { id: string; name: string }[] | null;
+    business_ledger_entry_groups: { id: string; label: string } | { id: string; label: string }[] | null;
     business_ledger_vendor_types: { id: string; name: string } | { id: string; name: string }[] | null;
     big_book_actors:
       | { id: string; actor_code: "A" | "B"; display_name: string }
@@ -2024,8 +2025,8 @@ export async function getBigBookVendorActorOutstandingDebt(filters?: {
       .from("business_ledger_entries")
       .select(
         `
-        id, responsible_actor_id, vendor_id, vendor_type_id, currency_code, amount,
-        business_ledger_vendors(id, name),
+        id, group_id, explanation, responsible_actor_id, vendor_type_id, currency_code, amount,
+        business_ledger_entry_groups(id, label),
         business_ledger_vendor_types(id, name),
         big_book_actors(id, actor_code, display_name)
       `
@@ -2054,9 +2055,9 @@ export async function getBigBookVendorActorOutstandingDebt(filters?: {
 
   return aggregateVendorActorOutstandingDebt(
     debtRows.map((row) => {
-      const vendor = Array.isArray(row.business_ledger_vendors)
-        ? row.business_ledger_vendors[0]
-        : row.business_ledger_vendors;
+      const group = Array.isArray(row.business_ledger_entry_groups)
+        ? row.business_ledger_entry_groups[0]
+        : row.business_ledger_entry_groups;
       const vendorType = Array.isArray(row.business_ledger_vendor_types)
         ? row.business_ledger_vendor_types[0]
         : row.business_ledger_vendor_types;
@@ -2065,12 +2066,13 @@ export async function getBigBookVendorActorOutstandingDebt(filters?: {
         : row.big_book_actors;
       return {
         id: row.id,
+        group_id: row.group_id,
+        group_label: group?.label ?? null,
+        explanation: row.explanation,
         responsible_actor_id: row.responsible_actor_id,
-        vendor_id: row.vendor_id,
         vendor_type_id: row.vendor_type_id,
         currency_code: row.currency_code,
         amount: Number(row.amount),
-        vendor_name: vendor?.name ?? null,
         vendor_type_name: vendorType?.name ?? null,
         actor_code: (actor?.actor_code ?? "A") as "A" | "B",
         actor_display_name: actor?.display_name ?? "Unknown Actor"
@@ -2080,7 +2082,8 @@ export async function getBigBookVendorActorOutstandingDebt(filters?: {
 }
 
 export async function getBigBookVendorActorOutstandingDebtEntries(params: {
-  vendorId: string | null;
+  groupId: string | null;
+  entryId?: string | null;
   actorId: string;
   currency: BigBookVendorActorOutstandingDebtRow["currency"];
   dateFrom?: string;
@@ -2103,9 +2106,13 @@ export async function getBigBookVendorActorOutstandingDebtEntries(params: {
     .eq("responsible_actor_id", params.actorId)
     .eq("currency_code", params.currency);
 
-  query = params.vendorId
-    ? query.eq("vendor_id", params.vendorId)
-    : query.is("vendor_id", null);
+  if (params.groupId) {
+    query = query.eq("group_id", params.groupId);
+  } else if (params.entryId) {
+    query = query.eq("id", params.entryId).is("group_id", null);
+  } else {
+    query = query.is("group_id", null);
+  }
 
   if (params.dateFrom) query = query.gte("entry_date", params.dateFrom);
   if (params.dateTo) query = query.lte("entry_date", params.dateTo);
