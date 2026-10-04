@@ -2,7 +2,12 @@
 
 import { memo, useMemo, type RefObject, type ReactNode } from "react";
 import type { BigBookEntry, BigBookEntryGroup } from "@/lib/types";
-import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
+import {
+  formatAmount,
+  formatDateDisplay,
+  formatDateTimeDisplay,
+  getAmountColorClass
+} from "@/lib/display-format";
 import { summarizeCurrencies } from "@/lib/big-book/totals";
 import {
   classifyLedgerGroupTone,
@@ -131,7 +136,7 @@ function BigBookGroupHeaderRowInner({
         </td>
         <td className="px-3 py-2" colSpan={Math.max(1, trailingColSpan)} aria-hidden="true" />
         <td className="px-3 py-2">
-          <div className="flex flex-col items-end gap-1.5">
+          <div className="flex flex-col items-start gap-1.5">
             {itemCount > 0 ? (
               <span className="group-item-chip">
                 {itemCount} item{itemCount === 1 ? "" : "s"}
@@ -195,6 +200,16 @@ function BigBookGroupHeaderRowInner({
               ) : null}
             </div>
           </div>
+        </td>
+        <td className="overflow-hidden break-words px-3 py-2">
+          {group.updater_display_name && group.updater_display_name !== "-" ? (
+            group.updater_display_name
+          ) : (
+            <span className="text-xs text-muted">-</span>
+          )}
+        </td>
+        <td className="overflow-hidden break-words px-3 py-2 whitespace-nowrap">
+          {formatDateTimeDisplay(group.updated_at || group.created_at)}
         </td>
       </tr>
       {expanded ? children : null}

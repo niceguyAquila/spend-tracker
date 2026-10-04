@@ -53,7 +53,8 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
 import { Modal } from "@/components/ui/modal";
-import { formatAmount, formatDateDisplay } from "@/lib/display-format";
+import { formatAmount, formatDateDisplay, formatDateTimeDisplay } from "@/lib/display-format";
+import { OPTIMISTIC_CONFLICT_MESSAGE } from "@/lib/db/optimistic-lock";
 import { useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
@@ -184,7 +185,6 @@ function arraysEqual(left: string[], right: string[]) {
 const SUPPORTED_CURRENCIES: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR", "USDT", "TRX"];
 
 const LEDGER_SKELETON_ROW_COUNT = 6;
-const LEDGER_COLUMN_COUNT = 12;
 const LEDGER_COLUMN_WIDTH_DEFAULTS: Record<string, number> = {
   select: 44,
   entry_date: 110,
@@ -197,14 +197,22 @@ const LEDGER_COLUMN_WIDTH_DEFAULTS: Record<string, number> = {
   credit: 160,
   remark: 180,
   attachments: 140,
-  actions: 100
+  actions: 110,
+  updated_by: 140,
+  updated_at: 150
 };
 const LEDGER_COLUMN_KEYS = Object.keys(LEDGER_COLUMN_WIDTH_DEFAULTS);
+const LEDGER_COLUMN_COUNT = LEDGER_COLUMN_KEYS.length;
 // Group header rows mirror the ledger layout so totals land in Amount and the
 // group label lines up with Explanation. Date is filled; Cash Flow…Action By
-// show "-" because members may differ.
+// show "-" because members may differ. Trailing colspan covers columns between
+// Amount and Actions (Credit / Remark / Attachments).
 const LEDGER_AMOUNT_COLUMN_INDEX = LEDGER_COLUMN_KEYS.indexOf("amount");
-const GROUP_ROW_TRAILING_COLSPAN = LEDGER_COLUMN_COUNT - LEDGER_AMOUNT_COLUMN_INDEX - 2;
+const LEDGER_ACTIONS_COLUMN_INDEX = LEDGER_COLUMN_KEYS.indexOf("actions");
+const GROUP_ROW_TRAILING_COLSPAN = Math.max(
+  1,
+  LEDGER_ACTIONS_COLUMN_INDEX - LEDGER_AMOUNT_COLUMN_INDEX - 1
+);
 const DESC_DEFAULT_SORT_KEYS = new Set<BigBookLedgerSortKey>(["entry_date", "amount"]);
 const EMPTY_LEDGER_TOTALS: BigBookLedgerTotals = {
   pageTotals: [],
@@ -435,7 +443,7 @@ export function BigBookPanel({
   } = useColumnWidths({
     storageKey: "big-book-ledger-column-widths",
     defaults: LEDGER_COLUMN_WIDTH_DEFAULTS,
-    schemaVersion: 1,
+    schemaVersion: 2,
     minWidth: 60
   });
   const [openActionMenu, setOpenActionMenu] = useState<{
@@ -453,6 +461,18 @@ export function BigBookPanel({
   const [createAttachmentFiles, setCreateAttachmentFiles] = useState<File[]>([]);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [editingEntryMeta, setEditingEntryMeta] = useState<{
+    updated_at: string;
+    updater_display_name: string;
+  } | null>(null);
+  const [editingGroupMeta, setEditingGroupMeta] = useState<{
+    updated_at: string;
+    updater_display_name: string;
+  } | null>(null);
+  const [optimisticConflictOpen, setOptimisticConflictOpen] = useState(false);
+  const [optimisticConflictMessage, setOptimisticConflictMessage] = useState(
+    OPTIMISTIC_CONFLICT_MESSAGE
+  );
   const [pendingEditConfirm, setPendingEditConfirm] = useState(false);
   const [editForm, setEditForm] = useState<EntryFormState>({
     entry_date: "",
@@ -535,7 +555,10 @@ export function BigBookPanel({
   // Kept as an id so the open history modal re-reads the freshly loaded entry
   // after a settlement is added or deleted.
   const [settlementHistoryEntryId, setSettlementHistoryEntryId] = useState<string | null>(null);
-  const [pendingDeleteSettlementId, setPendingDeleteSettlementId] = useState<string | null>(null);
+  const [pendingDeleteSettlement, setPendingDeleteSettlement] = useState<{
+    id: string;
+    updated_at: string;
+  } | null>(null);
   const [settlementDeleting, setSettlementDeleting] = useState(false);
   const [creditClosureDialog, setCreditClosureDialog] = useState<{
     entry: BigBookEntry;
@@ -1399,13 +1422,20 @@ export function BigBookPanel({
     setMessage(null);
     try {
       const cascadeQuery = linkedInfo ? "&cascadeLinked=1" : "";
+      const expectedQuery = `&expected_updated_at=${encodeURIComponent(pendingDeleteEntry.updated_at)}`;
       const response = await secureFetch(
-        `/api/big-book/entries?id=${pendingDeleteEntry.id}${cascadeQuery}`,
+        `/api/big-book/entries?id=${pendingDeleteEntry.id}${cascadeQuery}${expectedQuery}`,
         { method: "DELETE" }
       );
       if (handleUnauthorizedResponse(response)) return;
       const data = await response.json();
       if (!response.ok) {
+        if (response.status === 409 || data.code === "optimistic_conflict") {
+          handleOptimisticConflict(
+            typeof data.error === "string" ? data.error : OPTIMISTIC_CONFLICT_MESSAGE
+          );
+          return;
+        }
         setError(data.error ?? "Failed to delete ledger entry.");
         return;
       }
@@ -1565,10 +1595,34 @@ export function BigBookPanel({
     }
   }
 
+  function handleOptimisticConflict(message?: string) {
+    setOptimisticConflictMessage(message?.trim() || OPTIMISTIC_CONFLICT_MESSAGE);
+    setOptimisticConflictOpen(true);
+  }
+
+  function dismissOptimisticConflictAndRefresh() {
+    setOptimisticConflictOpen(false);
+    setPendingEditConfirm(false);
+    setEditModalOpen(false);
+    setEditingEntryId(null);
+    setEditingEntryMeta(null);
+    setEditingGroupId(null);
+    setEditingGroupMeta(null);
+    setPendingDeleteEntry(null);
+    setCreditClosureDialog(null);
+    setPendingDeleteSettlement(null);
+    triggerRefresh();
+  }
+
   function startEditEntry(row: BigBookEntry) {
     setOpenActionMenu(null);
     setEditingGroupId(null);
+    setEditingGroupMeta(null);
     setEditingEntryId(row.id);
+    setEditingEntryMeta({
+      updated_at: row.updated_at,
+      updater_display_name: row.updater_display_name
+    });
     setEditForm(entryFormFromEntry(row));
     setEditSettlesEntry(row.settles_entry);
     setEditModalOpen(true);
@@ -1577,7 +1631,12 @@ export function BigBookPanel({
   function startEditGroup(group: BigBookEntryGroup, entries: BigBookEntry[]) {
     setOpenActionMenu(null);
     setEditingEntryId(null);
+    setEditingEntryMeta(null);
     setEditingGroupId(group.id);
+    setEditingGroupMeta({
+      updated_at: group.updated_at,
+      updater_display_name: group.updater_display_name
+    });
     setEditGroupLabel(group.label);
     setEditGroupRemark(group.remark ?? "");
     const forms = entries.map(entryFormFromEntry);
@@ -1696,7 +1755,7 @@ export function BigBookPanel({
   }
 
   async function saveEditedEntry() {
-    if (!editingEntryId) return;
+    if (!editingEntryId || !editingEntryMeta) return;
     const amountValue = Number(parseAmountInput(editForm.amount));
     if (!Number.isFinite(amountValue) || amountValue <= 0) {
       setError("Amount must be greater than 0.");
@@ -1713,6 +1772,7 @@ export function BigBookPanel({
         body: JSON.stringify({
           ...editForm,
           id: editingEntryId,
+          expected_updated_at: editingEntryMeta.updated_at,
           vendor_type_id: editForm.vendor_type_id || null,
           vendor_id: editForm.vendor_id || null,
           pocket_id: editForm.pocket_id || null,
@@ -1724,6 +1784,12 @@ export function BigBookPanel({
       if (handleUnauthorizedResponse(response)) return;
       const data = await response.json();
       if (!response.ok) {
+        if (response.status === 409 || data.code === "optimistic_conflict") {
+          handleOptimisticConflict(
+            typeof data.error === "string" ? data.error : OPTIMISTIC_CONFLICT_MESSAGE
+          );
+          return;
+        }
         setError(extractApiError(data.error, "Failed to update ledger entry."));
         return;
       }
@@ -1731,6 +1797,7 @@ export function BigBookPanel({
       setPendingEditConfirm(false);
       setEditModalOpen(false);
       setEditingEntryId(null);
+      setEditingEntryMeta(null);
       setEditSettlesEntry(null);
       triggerRefresh();
     } catch {
@@ -1912,6 +1979,7 @@ export function BigBookPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: creditClosureDialog.entry.id,
+          expected_updated_at: creditClosureDialog.entry.updated_at,
           settled: creditClosureDialog.settled,
           note: creditClosureNote.trim() || null
         })
@@ -1919,6 +1987,12 @@ export function BigBookPanel({
       if (handleUnauthorizedResponse(response)) return;
       const data = await response.json();
       if (!response.ok) {
+        if (response.status === 409 || data.code === "optimistic_conflict") {
+          handleOptimisticConflict(
+            typeof data.error === "string" ? data.error : OPTIMISTIC_CONFLICT_MESSAGE
+          );
+          return;
+        }
         setError(
           extractApiError(
             data.error,
@@ -2079,24 +2153,30 @@ export function BigBookPanel({
   }
 
   async function deleteSettlement() {
-    if (!pendingDeleteSettlementId) return;
+    if (!pendingDeleteSettlement) return;
     setSettlementDeleting(true);
     setError(null);
     setMessage(null);
     try {
       // Settlement deletes always cascade the parent credit/debt + all siblings.
       const response = await secureFetch(
-        `/api/big-book/entries?id=${pendingDeleteSettlementId}&cascadeLinked=1`,
+        `/api/big-book/entries?id=${pendingDeleteSettlement.id}&cascadeLinked=1&expected_updated_at=${encodeURIComponent(pendingDeleteSettlement.updated_at)}`,
         { method: "DELETE" }
       );
       if (handleUnauthorizedResponse(response)) return;
       const data = await response.json();
       if (!response.ok) {
+        if (response.status === 409 || data.code === "optimistic_conflict") {
+          handleOptimisticConflict(
+            typeof data.error === "string" ? data.error : OPTIMISTIC_CONFLICT_MESSAGE
+          );
+          return;
+        }
         setError(extractApiError(data.error, "Failed to delete the settlement."));
         return;
       }
       setMessage("Credit/debt and linked settlements deleted.");
-      setPendingDeleteSettlementId(null);
+      setPendingDeleteSettlement(null);
       setSettlementHistoryEntryId(null);
       triggerRefresh();
     } catch {
@@ -2601,7 +2681,9 @@ export function BigBookPanel({
                   [
                     ["remark", "Remark"],
                     ["attachments", "Attachments"],
-                    ["actions", "Actions"]
+                    ["actions", "Actions"],
+                    ["updated_by", "Last Updated by"],
+                    ["updated_at", "Last Updated at"]
                   ] as Array<[string, string]>
                 ).map(([key, label]) => (
                   <th key={key} className="relative px-3 py-2">
@@ -2637,6 +2719,8 @@ export function BigBookPanel({
                       <td className="px-3 py-2"><div className="h-4 w-20 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-16 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-8 w-20 rounded bg-[rgb(var(--surface-muted))]" /></td>
+                      <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
+                      <td className="px-3 py-2"><div className="h-4 w-28 rounded bg-[rgb(var(--surface-muted))]" /></td>
                     </tr>
                   ))
                 : ledgerRows.map((row) => {
@@ -3264,6 +3348,18 @@ export function BigBookPanel({
           </>
         }
       >
+        {(editingEntryMeta || editingGroupMeta) && (
+          <p className="mb-3 text-xs text-muted">
+            Last updated by{" "}
+            <span className="font-medium text-[rgb(var(--text))]">
+              {(editingEntryMeta ?? editingGroupMeta)?.updater_display_name || "-"}
+            </span>{" "}
+            at{" "}
+            <span className="font-medium text-[rgb(var(--text))]">
+              {formatDateTimeDisplay((editingEntryMeta ?? editingGroupMeta)?.updated_at ?? "")}
+            </span>
+          </p>
+        )}
         {editingGroupId ? (
           <div className="space-y-4">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -3418,6 +3514,16 @@ export function BigBookPanel({
         confirming={createPending}
         closeOnBackdrop={false}
         onConfirm={editingGroupId ? saveEditedGroup : saveEditedEntry}
+      />
+
+      <ConfirmDialog
+        open={optimisticConflictOpen}
+        onOpenChange={setOptimisticConflictOpen}
+        title="Record changed by someone else"
+        description={optimisticConflictMessage}
+        confirmLabel="Refresh ledger"
+        closeOnBackdrop={false}
+        onConfirm={dismissOptimisticConflictAndRefresh}
       />
 
       <ConfirmDialog
@@ -3875,7 +3981,12 @@ export function BigBookPanel({
                           type="button"
                           className="text-xs text-[rgb(var(--danger))] underline"
                           disabled={settlementDeleting}
-                          onClick={() => setPendingDeleteSettlementId(settlement.id)}
+                          onClick={() =>
+                            setPendingDeleteSettlement({
+                              id: settlement.id,
+                              updated_at: settlement.updated_at
+                            })
+                          }
                         >
                           Delete
                         </button>
@@ -3897,9 +4008,9 @@ export function BigBookPanel({
       </Modal>
 
       <ConfirmDialog
-        open={Boolean(pendingDeleteSettlementId)}
+        open={Boolean(pendingDeleteSettlement)}
         onOpenChange={(open) => {
-          if (!open && !settlementDeleting) setPendingDeleteSettlementId(null);
+          if (!open && !settlementDeleting) setPendingDeleteSettlement(null);
         }}
         title="Delete credit/debt and linked settlements?"
         description={

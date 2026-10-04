@@ -26,6 +26,7 @@ import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
 import { BigBookTypeVendorTypeMapSection } from "@/components/big-book-type-vendor-type-map-section";
 import { BigBookWalletsSettingsSection } from "@/components/big-book-wallets-settings-section";
 import { BigBookTypeInvoiceProfilesSection } from "@/components/big-book-type-invoice-profiles-section";
+import { BigBookEntryAuditHistorySection } from "@/components/big-book-entry-audit-history-section";
 import {
   SettingsCategoryTabBar,
   SettingsDangerZonePanel
@@ -46,6 +47,7 @@ const BIG_BOOK_SETTINGS_TABS = [
   { id: "actors", label: "Actor Mapping", icon: "actors" },
   { id: "type-vendor-map", label: "Type → Vendor Map", icon: "type-vendor-map" },
   { id: "invoice-presets", label: "Invoice Presets", icon: "invoice-presets" },
+  { id: "history", label: "History", icon: "history" },
   { id: DANGER_ZONE_TAB_ID, label: "Danger zone", icon: "danger-zone" }
 ] as const satisfies readonly SettingsCategoryTab[];
 
@@ -960,6 +962,8 @@ export function BigBookSettingsPanel({
         vendorTypes={initialVendorTypes}
       />
       ) : null}
+
+      <BigBookEntryAuditHistorySection active={activeTab === "history"} />
 
       {activeTab === "invoice-presets" ? (
       <BigBookTypeInvoiceProfilesSection types={initialTypes} initialProfiles={initialTypeInvoiceProfiles} />

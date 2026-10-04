@@ -28,6 +28,10 @@ import {
   getBigBookVendorActorOutstanding,
   getBigBookVendorActorOutstandingDebt
 } from "@/lib/db/queries";
+import {
+  parseExpectedUpdatedAt,
+  resolveOptimisticMiss
+} from "@/lib/db/optimistic-lock";
 
 type BigBookCurrency = "IDR" | "MYR" | "USDT" | "TRX";
 
@@ -545,7 +549,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { id, ...payload } = parsed.data;
+  const { id, expected_updated_at, ...payload } = parsed.data;
   const supabase = await createClient();
 
   const settlement = await resolveSettlementFields(supabase, {
@@ -574,7 +578,7 @@ export async function PATCH(request: Request) {
   const isCredit = settlement.settles_entry_id ? false : Boolean(payload.is_credit);
   const isDebt = settlement.settles_entry_id || isCredit ? false : Boolean(payload.is_debt);
 
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from("business_ledger_entries")
     .update({
       entry_date: payload.entry_date,
@@ -597,13 +601,25 @@ export async function PATCH(request: Request) {
       settlement_note: settlement.settles_entry_id ? payload.settlement_note ?? null : null,
       updated_by: authCheck.user.id
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("updated_at", expected_updated_at)
+    .select("id, updated_at")
+    .maybeSingle();
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
+  if (!updated) {
+    const { data: existing } = await supabase
+      .from("business_ledger_entries")
+      .select("id, updated_at")
+      .eq("id", id)
+      .maybeSingle();
+    return resolveOptimisticMiss({ existing });
+  }
   return NextResponse.json({
     ok: true,
+    updated_at: updated.updated_at,
     settlement_conversion_rate: settlement.settlement_conversion_rate,
     settlement_amount_in_credit_currency: settlement.settlement_amount_in_credit_currency
   });
@@ -624,13 +640,17 @@ export async function DELETE(request: Request) {
   if (!id) {
     return NextResponse.json({ error: "Entry ID is required." }, { status: 400 });
   }
+  const expectedUpdatedAt = parseExpectedUpdatedAt(searchParams.get("expected_updated_at"));
+  if (!expectedUpdatedAt.ok) {
+    return expectedUpdatedAt.response;
+  }
   const cascadeLinked = searchParams.get("cascadeLinked") === "1";
 
   const supabase = await createClient();
 
   const { data: target, error: targetError } = await supabase
     .from("business_ledger_entries")
-    .select("id, is_credit, is_debt, settles_entry_id")
+    .select("id, is_credit, is_debt, settles_entry_id, updated_at")
     .eq("id", id)
     .maybeSingle();
 
@@ -639,6 +659,9 @@ export async function DELETE(request: Request) {
   }
   if (!target) {
     return NextResponse.json({ error: "Entry not found." }, { status: 404 });
+  }
+  if (target.updated_at !== expectedUpdatedAt.value) {
+    return resolveOptimisticMiss({ existing: target });
   }
 
   const isObligation = Boolean(target.is_credit) || Boolean(target.is_debt);
@@ -685,10 +708,16 @@ export async function DELETE(request: Request) {
         }
       }
 
-      const { data: deletedObligation, error: obligationDeleteError } = await supabase
+      const obligationDeleteQuery = supabase
         .from("business_ledger_entries")
         .delete()
-        .eq("id", obligationId)
+        .eq("id", obligationId);
+      // When the user deleted the obligation itself, re-check its timestamp.
+      const { data: deletedObligation, error: obligationDeleteError } = await (
+        obligationId === id
+          ? obligationDeleteQuery.eq("updated_at", expectedUpdatedAt.value)
+          : obligationDeleteQuery
+      )
         .select("id")
         .maybeSingle();
 
@@ -705,7 +734,12 @@ export async function DELETE(request: Request) {
         return NextResponse.json({ error: obligationDeleteError.message }, { status: 400 });
       }
       if (!deletedObligation) {
-        return NextResponse.json({ error: "Entry not found." }, { status: 404 });
+        const { data: existing } = await supabase
+          .from("business_ledger_entries")
+          .select("id, updated_at")
+          .eq("id", obligationId)
+          .maybeSingle();
+        return resolveOptimisticMiss({ existing });
       }
 
       return NextResponse.json({
@@ -720,6 +754,7 @@ export async function DELETE(request: Request) {
     .from("business_ledger_entries")
     .delete()
     .eq("id", id)
+    .eq("updated_at", expectedUpdatedAt.value)
     .select("id")
     .maybeSingle();
 
@@ -736,7 +771,12 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
   if (!data) {
-    return NextResponse.json({ error: "Entry not found." }, { status: 404 });
+    const { data: existing } = await supabase
+      .from("business_ledger_entries")
+      .select("id, updated_at")
+      .eq("id", id)
+      .maybeSingle();
+    return resolveOptimisticMiss({ existing });
   }
   return NextResponse.json({ ok: true, cascaded: false, deleted_ids: [id] });
 }

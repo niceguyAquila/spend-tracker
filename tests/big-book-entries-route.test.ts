@@ -2,10 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const insertMock = vi.fn();
 const updateMock = vi.fn();
+const EXPECTED_UPDATED_AT = "2026-04-23T10:00:00.000Z";
 const deleteMaybeSingleMock = vi.fn();
 const deleteSelectMock = vi.fn(() => ({ maybeSingle: deleteMaybeSingleMock }));
 const deleteInMock = vi.fn().mockResolvedValue({ error: null });
-const deleteEqIdMock = vi.fn(() => ({ select: deleteSelectMock }));
+const deleteEqUpdatedAtMock = vi.fn(() => ({ select: deleteSelectMock }));
+const deleteEqIdMock = vi.fn(() => ({
+  eq: deleteEqUpdatedAtMock,
+  select: deleteSelectMock
+}));
+const updateMaybeSingleMock = vi.fn();
+const updateSelectMock = vi.fn(() => ({ maybeSingle: updateMaybeSingleMock }));
+const updateEqUpdatedAtMock = vi.fn(() => ({ select: updateSelectMock }));
 const updateEqIdMock = vi.fn();
 const insertSelectSingleMock = vi.fn();
 const groupInsertMock = vi.fn();
@@ -122,7 +130,12 @@ describe("big book entries route", () => {
     groupInsertSingleMock.mockResolvedValue({ data: { id: "group-1" }, error: null });
     groupDeleteEqMock.mockResolvedValue({ error: null });
     kursTypesIlikeMock.mockImplementation(() => Promise.resolve(kursTypesResponse));
+    updateMaybeSingleMock.mockResolvedValue({
+      data: { id: "55555555-5555-4555-8555-555555555555", updated_at: EXPECTED_UPDATED_AT },
+      error: null
+    });
     updateEqIdMock.mockImplementation(() => ({
+      eq: updateEqUpdatedAtMock,
       error: null,
       is: vi.fn(() => ({
         select: vi.fn().mockResolvedValue({ data: [{ id: "attached-1" }], error: null })
@@ -482,6 +495,7 @@ describe("big book entries route", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: "55555555-5555-4555-8555-555555555555",
+        expected_updated_at: EXPECTED_UPDATED_AT,
         entry_date: "2026-04-23",
         entry_direction: "spending",
         entry_type_id: "11111111-1111-4111-8111-111111111111",
@@ -510,6 +524,7 @@ describe("big book entries route", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: "55555555-5555-4555-8555-555555555555",
+        expected_updated_at: EXPECTED_UPDATED_AT,
         entry_date: "2026-04-23",
         entry_direction: "spending",
         entry_type_id: "11111111-1111-4111-8111-111111111111",
@@ -536,6 +551,7 @@ describe("big book entries route", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: "55555555-5555-4555-8555-555555555555",
+        expected_updated_at: EXPECTED_UPDATED_AT,
         entry_date: "2026-04-23",
         entry_direction: "spending",
         entry_type_id: "11111111-1111-4111-8111-111111111111",
@@ -1279,7 +1295,8 @@ describe("big book entries route", () => {
         id: "entry-1",
         is_credit: true,
         is_debt: false,
-        settles_entry_id: null
+        settles_entry_id: null,
+        updated_at: EXPECTED_UPDATED_AT
       },
       error: null
     });
@@ -1289,7 +1306,7 @@ describe("big book entries route", () => {
     });
 
     const { DELETE } = await import("@/app/api/big-book/entries/route");
-    const request = new Request("https://app.localhost/api/big-book/entries?id=entry-1", {
+    const request = new Request(`https://app.localhost/api/big-book/entries?id=entry-1&expected_updated_at=${encodeURIComponent(EXPECTED_UPDATED_AT)}`, {
       method: "DELETE"
     });
 
@@ -1306,7 +1323,8 @@ describe("big book entries route", () => {
         id: "debt-1",
         is_credit: false,
         is_debt: true,
-        settles_entry_id: null
+        settles_entry_id: null,
+        updated_at: EXPECTED_UPDATED_AT
       },
       error: null
     });
@@ -1318,7 +1336,7 @@ describe("big book entries route", () => {
 
     const { DELETE } = await import("@/app/api/big-book/entries/route");
     const request = new Request(
-      "https://app.localhost/api/big-book/entries?id=debt-1&cascadeLinked=1",
+      `https://app.localhost/api/big-book/entries?id=debt-1&cascadeLinked=1&expected_updated_at=${encodeURIComponent(EXPECTED_UPDATED_AT)}`,
       { method: "DELETE" }
     );
 
@@ -1337,7 +1355,8 @@ describe("big book entries route", () => {
         id: "pay-1",
         is_credit: false,
         is_debt: false,
-        settles_entry_id: "credit-1"
+        settles_entry_id: "credit-1",
+        updated_at: EXPECTED_UPDATED_AT
       },
       error: null
     });
@@ -1349,7 +1368,7 @@ describe("big book entries route", () => {
 
     const { DELETE } = await import("@/app/api/big-book/entries/route");
     const request = new Request(
-      "https://app.localhost/api/big-book/entries?id=pay-1&cascadeLinked=1",
+      `https://app.localhost/api/big-book/entries?id=pay-1&cascadeLinked=1&expected_updated_at=${encodeURIComponent(EXPECTED_UPDATED_AT)}`,
       { method: "DELETE" }
     );
 
@@ -1366,19 +1385,65 @@ describe("big book entries route", () => {
         id: "entry-1",
         is_credit: false,
         is_debt: false,
-        settles_entry_id: null
+        settles_entry_id: null,
+        updated_at: EXPECTED_UPDATED_AT
       },
       error: null
     });
 
     const { DELETE } = await import("@/app/api/big-book/entries/route");
-    const request = new Request("https://app.localhost/api/big-book/entries?id=entry-1", {
+    const request = new Request(`https://app.localhost/api/big-book/entries?id=entry-1&expected_updated_at=${encodeURIComponent(EXPECTED_UPDATED_AT)}`, {
       method: "DELETE"
     });
 
     const response = await DELETE(request);
     expect(response.status).toBe(200);
     expect(deleteEqIdMock).toHaveBeenCalledWith("id", "entry-1");
+    expect(deleteEqUpdatedAtMock).toHaveBeenCalledWith("updated_at", EXPECTED_UPDATED_AT);
     expect(deleteSelectMock).toHaveBeenCalled();
+  });
+
+  it("returns 409 when patch loses an optimistic lock", async () => {
+    updateMaybeSingleMock.mockResolvedValueOnce({ data: null, error: null });
+    creditLookupMaybeSingleMock.mockResolvedValueOnce({
+      data: {
+        id: "55555555-5555-4555-8555-555555555555",
+        updated_at: "2026-04-24T00:00:00.000Z"
+      },
+      error: null
+    });
+
+    const { PATCH } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: "55555555-5555-4555-8555-555555555555",
+        expected_updated_at: EXPECTED_UPDATED_AT,
+        entry_date: "2026-04-23",
+        entry_direction: "spending",
+        entry_type_id: "11111111-1111-4111-8111-111111111111",
+        explanation: "Stale edit",
+        amount: 10,
+        currency_code: "IDR",
+        remark: "",
+        responsible_actor_id: "22222222-2222-4222-8222-222222222222"
+      })
+    });
+
+    const response = await PATCH(request);
+    const data = await response.json();
+    expect(response.status).toBe(409);
+    expect(data.code).toBe("optimistic_conflict");
+    expect(data.current_updated_at).toBe("2026-04-24T00:00:00.000Z");
+  });
+
+  it("returns 400 when delete is missing expected_updated_at", async () => {
+    const { DELETE } = await import("@/app/api/big-book/entries/route");
+    const request = new Request("https://app.localhost/api/big-book/entries?id=entry-1", {
+      method: "DELETE"
+    });
+    const response = await DELETE(request);
+    expect(response.status).toBe(400);
   });
 });

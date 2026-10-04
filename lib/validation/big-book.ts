@@ -254,14 +254,24 @@ export const bigBookEntryInputSchema = bigBookEntryBaseSchema
     refineKursFields(value, ctx);
   });
 
+const expectedUpdatedAtSchema = z
+  .string()
+  .trim()
+  .min(1, "expected_updated_at is required")
+  .refine((value) => Number.isFinite(Date.parse(value)), {
+    message: "expected_updated_at must be a valid ISO timestamp."
+  });
+
 export const bigBookEntryUpdateSchema = bigBookEntryBaseSchema
   .extend({
-    id: z.string().uuid()
+    id: z.string().uuid(),
+    expected_updated_at: expectedUpdatedAtSchema
   })
   .superRefine(refineBigBookEntryCreditFields);
 
 export const bigBookCreditSettleSchema = z.object({
   id: z.string().uuid(),
+  expected_updated_at: expectedUpdatedAtSchema,
   settled: z.boolean(),
   note: optionalNoteSchema
 });
