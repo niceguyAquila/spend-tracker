@@ -26,6 +26,15 @@
     --stripe: 241 245 249;
     /* Soft muted amber for Debt obligation ledger rows (not bright yellow) */
     --debt-row: 250 240 210;
+    /* Grouped ledger rows — light uses a darker magenta for contrast */
+    --group-accent-rgb: 192, 38, 211;
+    --group-header-bg: rgba(192, 38, 211, 0.14);
+    --group-child-bg: rgba(192, 38, 211, 0.06);
+    --group-child-hover-bg: rgba(192, 38, 211, 0.12);
+    --group-child-bar: rgba(192, 38, 211, 0.45);
+    --group-divider: rgba(192, 38, 211, 0.14);
+    --group-chip-text: #a21caf;
+    --group-chip-bg: rgba(192, 38, 211, 0.22);
   }
 
   .dark {
@@ -49,6 +58,14 @@
     --info: 96 165 250;
     --stripe: 30 41 59;
     --debt-row: 58 48 22;
+    --group-accent-rgb: 232, 121, 249;
+    --group-header-bg: rgba(232, 121, 249, 0.16);
+    --group-child-bg: rgba(232, 121, 249, 0.07);
+    --group-child-hover-bg: rgba(232, 121, 249, 0.12);
+    --group-child-bar: rgba(232, 121, 249, 0.45);
+    --group-divider: rgba(232, 121, 249, 0.14);
+    --group-chip-text: #f5d0fe;
+    --group-chip-bg: rgba(232, 121, 249, 0.22);
   }
 
   body {
@@ -66,6 +83,88 @@
   .bg-debt-row {
     background-color: rgb(var(--debt-row));
   }
+}
+
+/* Magenta grouped ledger rows — visual structure only; ungrouped rows untouched */
+.data-table tbody tr.group-header {
+  background-color: var(--group-header-bg);
+  border-color: var(--group-divider);
+}
+
+.data-table tbody tr.group-header:hover {
+  background-color: var(--group-header-bg);
+}
+
+.data-table tbody tr.group-header > td:first-child {
+  box-shadow: inset 3px 0 0 rgb(var(--group-accent-rgb));
+}
+
+.data-table tbody tr.group-child {
+  background-color: var(--group-child-bg);
+  border-color: var(--group-divider);
+}
+
+.data-table tbody tr.group-child:hover {
+  background-color: var(--group-child-hover-bg);
+}
+
+/* Debt rows inside a group: keep amber readable, overlay group tint + accents */
+.data-table tbody tr.group-child.bg-debt-row {
+  background-color: rgb(var(--debt-row));
+  background-image: linear-gradient(var(--group-child-bg), var(--group-child-bg));
+}
+
+.data-table tbody tr.group-child.bg-debt-row:hover {
+  background-color: rgb(var(--debt-row));
+  background-image: linear-gradient(var(--group-child-hover-bg), var(--group-child-hover-bg));
+}
+
+.data-table tbody tr.group-child > td:first-child {
+  box-shadow: inset 3px 0 0 var(--group-child-bar);
+}
+
+/* First visible content cell (Date) — ~16px indent without shifting layout elsewhere */
+.data-table tbody tr.group-child > td:nth-child(2) {
+  padding-left: 1rem;
+}
+
+.group-chevron {
+  display: inline-block;
+  color: rgb(var(--group-accent-rgb));
+  transition: transform 150ms ease;
+}
+
+.group-chevron--expanded {
+  transform: rotate(90deg);
+}
+
+.group-item-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 0.25rem;
+  background-color: var(--group-chip-bg);
+  color: var(--group-chip-text);
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+/* Transparent spacer rows (~7px). Margins on <tr> are ignored under
+   border-collapse: collapse (Tailwind preflight); sticky-head already assumes collapse. */
+.data-table tbody tr.group-block-spacer,
+.data-table tbody tr.group-block-spacer:hover {
+  background: transparent;
+  border: none;
+}
+
+.data-table tbody tr.group-block-spacer > td {
+  padding: 0;
+  border: none;
+  height: 7px;
+  line-height: 0;
+  font-size: 0;
 }
 
 body {
