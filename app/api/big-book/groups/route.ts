@@ -21,9 +21,13 @@ type EntryPayload = {
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
   remark?: string;
   responsible_actor_id: string;
+  is_credit?: boolean;
+  is_debt?: boolean;
 };
 
 function toEntryInsertRow(payload: EntryPayload, groupId: string, actorId: string) {
+  const isCredit = Boolean(payload.is_credit) && !payload.is_debt;
+  const isDebt = Boolean(payload.is_debt) && !payload.is_credit;
   return {
     group_id: groupId,
     entry_date: payload.entry_date,
@@ -38,6 +42,8 @@ function toEntryInsertRow(payload: EntryPayload, groupId: string, actorId: strin
     currency_code: payload.currency_code,
     remark: payload.remark || null,
     responsible_actor_id: payload.responsible_actor_id,
+    is_credit: isCredit,
+    is_debt: isDebt,
     created_by: actorId,
     updated_by: actorId
   };
@@ -162,6 +168,8 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: `Entry ${entry.id} does not belong to this group.` }, { status: 400 });
       }
       const { id: entryId, ...payload } = entry;
+      const isCredit = Boolean(payload.is_credit) && !payload.is_debt;
+      const isDebt = Boolean(payload.is_debt) && !payload.is_credit;
       const { error: updateError } = await supabase
         .from("business_ledger_entries")
         .update({
@@ -177,6 +185,8 @@ export async function PATCH(request: Request) {
           currency_code: payload.currency_code,
           remark: payload.remark || null,
           responsible_actor_id: payload.responsible_actor_id,
+          is_credit: isCredit,
+          is_debt: isDebt,
           updated_by: actorId
         })
         .eq("id", entryId)

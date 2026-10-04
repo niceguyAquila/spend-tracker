@@ -243,8 +243,8 @@ const CREDIT_STATUS_LABELS: Record<BigBookCreditStatus, string> = {
   settled: "Settled"
 };
 
-// Credit fields never travel with grouped entries (the API rejects them there),
-// so this only runs for the single-entry create/edit payloads.
+// Settlement close/link fields only apply to single-entry create/edit payloads
+// (grouped entries persist is_credit / is_debt via toEntryPayload).
 function toCreditPayload(form: EntryFormState, settlesEntry: BigBookSettlementTargetRef | null) {
   const settlesEntryId = form.settles_entry_id || null;
   if (!settlesEntryId) {
@@ -298,6 +298,8 @@ function settlementTargetFromEntry(entry: BigBookEntry): BigBookSettlementTarget
 }
 
 function toEntryPayload(form: EntryFormState) {
+  const isCredit = form.is_credit && !form.is_debt;
+  const isDebt = form.is_debt && !form.is_credit;
   return {
     entry_date: form.entry_date,
     entry_direction: form.entry_direction,
@@ -310,7 +312,9 @@ function toEntryPayload(form: EntryFormState) {
     amount: Number(parseAmountInput(form.amount)),
     currency_code: form.currency_code,
     remark: form.remark,
-    responsible_actor_id: form.responsible_actor_id
+    responsible_actor_id: form.responsible_actor_id,
+    is_credit: isCredit,
+    is_debt: isDebt
   };
 }
 
@@ -1213,8 +1217,9 @@ export function BigBookPanel({
       setPendingEntryConfirm(false);
       setCreateModalOpen(false);
       // Optimistically fold every child amount into the Grand Total card; SSR
-      // via `triggerRefresh` reconciles right after.
+      // via `triggerRefresh` reconciles right after. Open debt is obligation-only.
       for (const payload of payloadEntries) {
+        if ("is_debt" in payload && payload.is_debt) continue;
         const actor = initialActors.find((row) => row.id === payload.responsible_actor_id);
         applyMetricDelta(
           payload.responsible_actor_id,

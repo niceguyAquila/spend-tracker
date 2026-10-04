@@ -4,7 +4,7 @@ import {
   computeBigBookDebtStatus,
   sumOutstandingByCurrency
 } from "@/lib/big-book/debt";
-import { bigBookEntryInputSchema } from "@/lib/validation/big-book";
+import { bigBookEntryInputSchema, bigBookGroupCreateSchema } from "@/lib/validation/big-book";
 
 const TYPE_ID = "11111111-1111-1111-1111-111111111111";
 const ACTOR_ID = "22222222-2222-2222-2222-222222222222";
@@ -41,111 +41,122 @@ describe("big book debt helpers", () => {
 });
 
 describe("aggregateVendorActorOutstandingDebt", () => {
-  it("splits by currency and buckets missing vendors", () => {
+  it("aggregates by group + actor + currency and keeps standalone debts separate", () => {
     const rows = aggregateVendorActorOutstandingDebt([
       {
         id: "d1",
+        group_id: "group-office",
+        group_label: "October office setup",
+        explanation: "Rent arrears",
         responsible_actor_id: "actor-a",
-        vendor_id: "vendor-kilo",
         vendor_type_id: "type-partner",
         currency_code: "USDT",
         amount: 1000,
-        vendor_name: "Kilo",
         vendor_type_name: "Partner",
         actor_code: "A",
         actor_display_name: "Actor A"
       },
       {
         id: "d2",
+        group_id: "group-office",
+        group_label: "October office setup",
+        explanation: "Utilities",
         responsible_actor_id: "actor-a",
-        vendor_id: "vendor-kilo",
         vendor_type_id: "type-partner",
-        currency_code: "IDR",
-        amount: 45000000,
-        vendor_name: "Kilo",
+        currency_code: "USDT",
+        amount: 250,
         vendor_type_name: "Partner",
         actor_code: "A",
         actor_display_name: "Actor A"
       },
       {
         id: "d3",
-        responsible_actor_id: "actor-b",
-        vendor_id: null,
-        vendor_type_id: null,
-        currency_code: "USDT",
-        amount: 100,
-        vendor_name: null,
-        vendor_type_name: null,
-        actor_code: "B",
-        actor_display_name: "Actor B"
+        group_id: "group-office",
+        group_label: "October office setup",
+        explanation: "Local tax",
+        responsible_actor_id: "actor-a",
+        vendor_type_id: "type-partner",
+        currency_code: "IDR",
+        amount: 45000000,
+        vendor_type_name: "Partner",
+        actor_code: "A",
+        actor_display_name: "Actor A"
       },
       {
         id: "d4",
-        responsible_actor_id: "actor-a",
-        vendor_id: "vendor-hcm",
-        vendor_type_id: "type-client",
+        group_id: null,
+        group_label: null,
+        explanation: "Standalone float debt",
+        responsible_actor_id: "actor-b",
+        vendor_type_id: null,
         currency_code: "USDT",
-        amount: 500,
-        vendor_name: "HCM",
-        vendor_type_name: "Client",
-        actor_code: "A",
-        actor_display_name: "Actor A"
+        amount: 100,
+        vendor_type_name: null,
+        actor_code: "B",
+        actor_display_name: "Actor B"
       }
     ]);
 
-    expect(rows).toHaveLength(4);
+    expect(rows).toHaveLength(3);
 
-    const kiloUsdt = rows.find((row) => row.vendor_name === "Kilo" && row.currency === "USDT");
-    expect(kiloUsdt).toMatchObject({
-      outstanding: 1000,
-      open_debt_count: 1,
+    const officeUsdt = rows.find(
+      (row) => row.group_label === "October office setup" && row.currency === "USDT"
+    );
+    expect(officeUsdt).toMatchObject({
+      group_id: "group-office",
+      entry_id: null,
+      outstanding: 1250,
+      open_debt_count: 2,
       actor_display_name: "Actor A"
     });
 
-    const kiloIdr = rows.find((row) => row.vendor_name === "Kilo" && row.currency === "IDR");
-    expect(kiloIdr?.outstanding).toBe(45000000);
+    const officeIdr = rows.find(
+      (row) => row.group_label === "October office setup" && row.currency === "IDR"
+    );
+    expect(officeIdr?.outstanding).toBe(45000000);
 
-    const noVendor = rows.find((row) => row.vendor_name === "(No vendor)");
-    expect(noVendor).toMatchObject({
+    const standalone = rows.find((row) => row.group_label === "Standalone float debt");
+    expect(standalone).toMatchObject({
+      group_id: null,
+      entry_id: "d4",
       outstanding: 100,
       vendor_type_name: "-",
       actor_display_name: "Actor B"
     });
   });
 
-  it("aggregates multiple open debts for the same vendor-actor-currency", () => {
+  it("does not merge open debts from different groups", () => {
     const rows = aggregateVendorActorOutstandingDebt([
       {
         id: "d1",
+        group_id: "group-a",
+        group_label: "Group A",
+        explanation: "A",
         responsible_actor_id: "actor-a",
-        vendor_id: "vendor-1",
         vendor_type_id: "type-1",
         currency_code: "MYR",
         amount: 100,
-        vendor_name: "Rbee",
         vendor_type_name: "Merchant",
         actor_code: "A",
         actor_display_name: "Actor A"
       },
       {
         id: "d2",
+        group_id: "group-b",
+        group_label: "Group B",
+        explanation: "B",
         responsible_actor_id: "actor-a",
-        vendor_id: "vendor-1",
         vendor_type_id: "type-1",
         currency_code: "MYR",
         amount: 50,
-        vendor_name: "Rbee",
         vendor_type_name: "Merchant",
         actor_code: "A",
         actor_display_name: "Actor A"
       }
     ]);
 
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      outstanding: 150,
-      open_debt_count: 2
-    });
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.group_label).sort()).toEqual(["Group A", "Group B"]);
   });
 });
 
@@ -200,5 +211,62 @@ describe("debt / credit mutual exclusivity", () => {
         true
       );
     }
+  });
+});
+
+describe("grouped entry settlement type", () => {
+  const groupEntry = {
+    entry_date: "2026-08-01",
+    entry_direction: "spending" as const,
+    entry_type_id: TYPE_ID,
+    vendor_type_id: null,
+    vendor_id: null,
+    pocket_id: null,
+    action_by_id: null,
+    explanation: "Grouped debt line",
+    amount: 500,
+    currency_code: "IDR" as const,
+    remark: "",
+    responsible_actor_id: ACTOR_ID
+  };
+
+  it("accepts is_debt on grouped create entries", () => {
+    const parsed = bigBookGroupCreateSchema.safeParse({
+      label: "Office arrears",
+      remark: "",
+      entries: [
+        { ...groupEntry, is_debt: true },
+        { ...groupEntry, explanation: "Companion spend", is_debt: false }
+      ]
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.entries[0].is_debt).toBe(true);
+      expect(parsed.data.entries[1].is_debt).toBe(false);
+    }
+  });
+
+  it("rejects debt + credit on the same grouped entry", () => {
+    const parsed = bigBookGroupCreateSchema.safeParse({
+      label: "Office arrears",
+      remark: "",
+      entries: [
+        { ...groupEntry, is_debt: true, is_credit: true },
+        { ...groupEntry, explanation: "Companion spend" }
+      ]
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects grouped debt with Cash Flow In", () => {
+    const parsed = bigBookGroupCreateSchema.safeParse({
+      label: "Office arrears",
+      remark: "",
+      entries: [
+        { ...groupEntry, is_debt: true, entry_direction: "profit" },
+        { ...groupEntry, explanation: "Companion spend" }
+      ]
+    });
+    expect(parsed.success).toBe(false);
   });
 });

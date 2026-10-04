@@ -28,7 +28,7 @@ const COLUMN_COUNT = 9;
 const CURRENCY_ORDER = ["IDR", "MYR", "USDT", "TRX"] as const;
 const DEBT_AMOUNT_CLASS = "text-[rgb(var(--danger))]";
 
-type SortKey = "vendor_name" | "actor_display_name" | "currency" | "outstanding";
+type SortKey = "group_label" | "actor_display_name" | "currency" | "outstanding";
 
 type Props = {
   rows: BigBookVendorActorOutstandingDebtRow[];
@@ -160,7 +160,8 @@ export function BigBookVendorActorOutstandingDebtTable({
       const params = new URLSearchParams();
       params.set("actorId", row.actor_id);
       params.set("currency", row.currency);
-      params.set("vendorId", row.vendor_id ?? "none");
+      params.set("groupId", row.group_id ?? "none");
+      if (row.entry_id) params.set("entryId", row.entry_id);
       if (detailFilters?.dateFrom) params.set("dateFrom", detailFilters.dateFrom);
       if (detailFilters?.dateTo) params.set("dateTo", detailFilters.dateTo);
 
@@ -301,7 +302,7 @@ export function BigBookVendorActorOutstandingDebtTable({
     try {
       const detailRows = await fetchDetailRows(row);
       if (!detailRows.length) {
-        setPayError("No open debts found for this vendor row.");
+        setPayError("No open debts found for this group row.");
         return;
       }
       const debts = toDebtDrafts(detailRows);
@@ -311,7 +312,7 @@ export function BigBookVendorActorOutstandingDebtTable({
         debts,
         totalAmount: debts.reduce((sum, item) => sum + item.amount, 0),
         currency: row.currency,
-        label: `${row.vendor_name} · ${row.actor_display_name} · ${row.currency}`
+        label: `${row.group_label} · ${row.actor_display_name} · ${row.currency}`
       });
     } catch (error) {
       setPayError(error instanceof Error ? error.message : "Failed to prepare payment.");
@@ -350,7 +351,7 @@ export function BigBookVendorActorOutstandingDebtTable({
       const missing = [...debtIdSet].filter((id) => !debtsById.has(id));
       if (missing.length) {
         setPayError(
-          "Expand the vendor rows for selected debts (or select the vendor row) so amounts can be confirmed."
+          "Expand the group rows for selected debts (or select the group row) so amounts can be confirmed."
         );
         return;
       }
@@ -359,7 +360,7 @@ export function BigBookVendorActorOutstandingDebtTable({
         .map((id) => debtsById.get(id))
         .filter((row): row is BulkSettleCreditDraft => Boolean(row));
       if (!debts.length) {
-        setPayError("Select at least one vendor row or open debt to pay.");
+        setPayError("Select at least one group row or open debt to pay.");
         return;
       }
 
@@ -488,8 +489,8 @@ export function BigBookVendorActorOutstandingDebtTable({
               <th className="w-10 px-3 py-2" aria-label="Expand" />
               <th className="px-3 py-2">Vendor Type</th>
               <th className="px-3 py-2">
-                <button type="button" className="font-semibold" onClick={() => toggleSort("vendor_name")}>
-                  {sortLabel("Vendor (owed)", "vendor_name")}
+                <button type="button" className="font-semibold" onClick={() => toggleSort("group_label")}>
+                  {sortLabel("Grouped transaction", "group_label")}
                 </button>
               </th>
               <th className="px-3 py-2">
@@ -666,7 +667,7 @@ function DebtSummaryRows({
             ref={(el) => {
               if (el) el.indeterminate = parentState === "indeterminate";
             }}
-            aria-label={`Select open debts for ${row.vendor_name}`}
+            aria-label={`Select open debts for ${row.group_label}`}
             onChange={onToggleSelected}
           />
         </td>
@@ -677,8 +678,8 @@ function DebtSummaryRows({
             aria-expanded={expanded}
             aria-label={
               expanded
-                ? `Collapse open debts for ${row.vendor_name}`
-                : `Expand open debts for ${row.vendor_name}`
+                ? `Collapse open debts for ${row.group_label}`
+                : `Expand open debts for ${row.group_label}`
             }
             onClick={(event) => {
               event.stopPropagation();
@@ -689,7 +690,7 @@ function DebtSummaryRows({
           </button>
         </td>
         <td className="px-3 py-2">{row.vendor_type_name}</td>
-        <td className="px-3 py-2">{row.vendor_name}</td>
+        <td className="px-3 py-2">{row.group_label}</td>
         <td className="px-3 py-2">{row.actor_display_name}</td>
         <td className="px-3 py-2">{row.currency}</td>
         <td className={`px-3 py-2 font-medium ${DEBT_AMOUNT_CLASS}`}>
@@ -744,7 +745,7 @@ function DebtNestedTable({
     return <p className="text-sm text-[rgb(var(--danger))]">{details.message}</p>;
   }
   if (!details.rows.length) {
-    return <p className="text-sm text-muted">No open debts for this vendor and actor.</p>;
+    return <p className="text-sm text-muted">No open debts for this grouped transaction and actor.</p>;
   }
 
   const truncated = details.totalCount > details.rows.length;

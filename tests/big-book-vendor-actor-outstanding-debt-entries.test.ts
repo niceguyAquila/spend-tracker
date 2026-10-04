@@ -74,7 +74,8 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 const ACTOR_ID = "22222222-2222-4222-8222-222222222222";
-const VENDOR_ID = "77777777-7777-4777-8777-777777777777";
+const GROUP_ID = "77777777-7777-4777-8777-777777777777";
+const ENTRY_ID = "11111111-1111-4111-8111-111111111111";
 
 describe("getBigBookVendorActorOutstandingDebtEntries", () => {
   beforeEach(() => {
@@ -85,7 +86,7 @@ describe("getBigBookVendorActorOutstandingDebtEntries", () => {
     payloadRef.value = {
       data: [
         {
-          id: "11111111-1111-4111-8111-111111111111",
+          id: ENTRY_ID,
           entry_date: "2026-09-01",
           entry_direction: "spending",
           explanation: "Open debt",
@@ -102,22 +103,22 @@ describe("getBigBookVendorActorOutstandingDebtEntries", () => {
     vi.clearAllMocks();
   });
 
-  it("filters open debts with is_debt and debt_settled_at IS NULL", async () => {
+  it("filters open debts with is_debt and debt_settled_at IS NULL for a group", async () => {
     const { getBigBookVendorActorOutstandingDebtEntries } = await import("@/lib/db/queries");
     const result = await getBigBookVendorActorOutstandingDebtEntries({
-      vendorId: null,
+      groupId: GROUP_ID,
       actorId: ACTOR_ID,
       currency: "MYR"
     });
 
-    expect(callsRef.is).toContainEqual(["vendor_id", null]);
+    expect(callsRef.eq).toContainEqual(["group_id", GROUP_ID]);
     expect(callsRef.eq).toContainEqual(["responsible_actor_id", ACTOR_ID]);
     expect(callsRef.eq).toContainEqual(["currency_code", "MYR"]);
     expect(callsRef.eq).toContainEqual(["is_debt", true]);
     expect(callsRef.is).toContainEqual(["debt_settled_at", null]);
     expect(result.rows).toEqual([
       {
-        id: "11111111-1111-4111-8111-111111111111",
+        id: ENTRY_ID,
         entry_date: "2026-09-01",
         entry_direction: "spending",
         entry_type_id: "33333333-3333-4333-8333-333333333333",
@@ -131,18 +132,19 @@ describe("getBigBookVendorActorOutstandingDebtEntries", () => {
     expect(result.totalCount).toBe(1);
   });
 
-  it("eq-filters a concrete vendor and optional dates", async () => {
+  it("filters a standalone ungrouped debt by entry id", async () => {
     const { getBigBookVendorActorOutstandingDebtEntries } = await import("@/lib/db/queries");
     await getBigBookVendorActorOutstandingDebtEntries({
-      vendorId: VENDOR_ID,
+      groupId: null,
+      entryId: ENTRY_ID,
       actorId: ACTOR_ID,
       currency: "MYR",
       dateFrom: "2026-01-01",
       dateTo: "2026-01-31"
     });
 
-    expect(callsRef.eq).toContainEqual(["vendor_id", VENDOR_ID]);
-    expect(callsRef.is).not.toContainEqual(["vendor_id", null]);
+    expect(callsRef.eq).toContainEqual(["id", ENTRY_ID]);
+    expect(callsRef.is).toContainEqual(["group_id", null]);
     expect(callsRef.gte).toContainEqual(["entry_date", "2026-01-01"]);
     expect(callsRef.lte).toContainEqual(["entry_date", "2026-01-31"]);
   });
