@@ -307,16 +307,40 @@ describe("big book entry schema", () => {
 });
 
 describe("big book outstanding entries query schema", () => {
-  it("defaults missing vendorId to none and creditKind to credit", () => {
-    const parsed = bigBookVendorActorOutstandingEntriesQuerySchema.safeParse({
+  it("requires vendorId for Credit detail and defaults creditKind to credit", () => {
+    const missingVendor = bigBookVendorActorOutstandingEntriesQuerySchema.safeParse({
       actorId: ACTOR_ID,
       currency: "MYR"
+    });
+    expect(missingVendor.success).toBe(false);
+
+    const parsed = bigBookVendorActorOutstandingEntriesQuerySchema.safeParse({
+      actorId: ACTOR_ID,
+      currency: "MYR",
+      vendorId: "none"
     });
     expect(parsed.success).toBe(true);
     if (parsed.success) {
       expect(parsed.data.vendorId).toBe("none");
       expect(parsed.data.creditKind).toBe("credit");
     }
+  });
+
+  it("requires typeId for Future Credit detail", () => {
+    const missingType = bigBookVendorActorOutstandingEntriesQuerySchema.safeParse({
+      actorId: ACTOR_ID,
+      currency: "MYR",
+      creditKind: "future"
+    });
+    expect(missingType.success).toBe(false);
+
+    const parsed = bigBookVendorActorOutstandingEntriesQuerySchema.safeParse({
+      actorId: ACTOR_ID,
+      currency: "MYR",
+      creditKind: "future",
+      typeId: "none"
+    });
+    expect(parsed.success).toBe(true);
   });
 
   it("rejects an invalid vendorId", () => {
