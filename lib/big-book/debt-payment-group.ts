@@ -1,8 +1,7 @@
 import { buildGasFeeGroupLabel } from "@/lib/big-book/gas-fee-entry";
+import type { createClient } from "@/lib/supabase/server";
 
-// Minimal Supabase surface used by debt payment grouping helpers.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnySupabase = any;
+type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
 export type DebtGroupTarget = {
   id: string;
@@ -15,7 +14,7 @@ export type DebtGroupTarget = {
  * reuse the debt's group, or create one and attach the standalone debt.
  */
 export async function ensureDebtPaymentGroup(
-  supabase: AnySupabase,
+  supabase: SupabaseClient,
   debt: DebtGroupTarget,
   actorId: string
 ): Promise<
@@ -71,7 +70,7 @@ export async function ensureDebtPaymentGroup(
  * Detach the debt first — `group_id` is ON DELETE CASCADE.
  */
 export async function rollbackDebtPaymentGroup(
-  supabase: AnySupabase,
+  supabase: SupabaseClient,
   createdGroupId: string | null,
   attachedDebtId: string | null,
   actorId: string
