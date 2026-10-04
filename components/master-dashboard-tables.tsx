@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useMemo } from "react";
-import type { BigBookEntry, BigBookTypeCashflowByCurrency, CreditBookTypeCashflowByCurrency } from "@/lib/types";
+import type { BigBookEntry, BigBookTypeCashflowByCurrency } from "@/lib/types";
 import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
 import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
@@ -257,94 +257,6 @@ export function MasterDashboardBigBookTypeCashflowTable({
           ))}
           {!visibleRowsByCurrency.length ? (
             <TableEmptyState colSpan={6} message="No Big Book cashflow data matches the selected filters." />
-          ) : null}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-type MasterDashboardCreditBookTypeCashflowTableProps = {
-  sourceRowsByCurrency: CreditBookTypeCashflowByCurrency[];
-};
-
-export function MasterDashboardCreditBookTypeCashflowTable({
-  sourceRowsByCurrency
-}: MasterDashboardCreditBookTypeCashflowTableProps) {
-  const visibleRowsByCurrency = useMemo(
-    () => sourceRowsByCurrency.filter((currencyRow) => currencyRow.rows.length > 0),
-    [sourceRowsByCurrency]
-  );
-
-  return (
-    <div className="mt-4 overflow-x-auto">
-      <table className="data-table min-w-[1080px]">
-        <thead>
-          <tr>
-            <th className="px-3 py-2">Currency</th>
-            <th className="px-3 py-2">Actor</th>
-            <th className="px-3 py-2">Type</th>
-            <th className="px-3 py-2">Inflow</th>
-            <th className="px-3 py-2">Outflow</th>
-            <th className="px-3 py-2">Net</th>
-            <th className="px-3 py-2">Outstanding</th>
-          </tr>
-        </thead>
-        <tbody>
-          {visibleRowsByCurrency.map((currencyRow, index) => (
-            <Fragment key={currencyRow.currency}>
-              {currencyRow.rows.map((row, rowIndex) => (
-                <tr
-                  key={`${currencyRow.currency}:${row.row_key}`}
-                  className={`border-b border-[rgb(var(--border))] ${rowStripeClass(rowIndex)}`}
-                >
-                  <td className="px-3 py-2">{currencyRow.currency}</td>
-                  <td className="px-3 py-2">{row.actor_display_name}</td>
-                  <td className="px-3 py-2">{row.type_name}</td>
-                  <td className={`px-3 py-2 ${getBlueOrNeutralClass(row.inflow)}`}>
-                    {currencyRow.currency} {formatAmount(row.inflow)}
-                  </td>
-                  <td className={`px-3 py-2 ${getRedOrNeutralClass(row.outflow)}`}>
-                    {currencyRow.currency} {formatAmount(row.outflow)}
-                  </td>
-                  <td className={`px-3 py-2 ${getNetBlueRedNeutralClass(row.net)}`}>
-                    {currencyRow.currency} {formatAmount(row.net)}
-                  </td>
-                  <td className={`px-3 py-2 ${getNetBlueRedNeutralClass(row.outstanding)}`}>
-                    {currencyRow.currency} {formatAmount(row.outstanding)}
-                  </td>
-                </tr>
-              ))}
-              <tr className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-[rgb(var(--text))]">
-                <td className="px-3 py-2">{currencyRow.currency}</td>
-                <td className="px-3 py-2 font-semibold" colSpan={2}>Combined</td>
-                <td className={`px-3 py-2 font-semibold ${getBlueOrNeutralClass(currencyRow.combined.inflow)}`}>
-                  {currencyRow.currency} {formatAmount(currencyRow.combined.inflow)}
-                </td>
-                <td className={`px-3 py-2 font-semibold ${getRedOrNeutralClass(currencyRow.combined.outflow)}`}>
-                  {currencyRow.currency} {formatAmount(currencyRow.combined.outflow)}
-                </td>
-                <td className={`px-3 py-2 font-semibold ${getNetBlueRedNeutralClass(currencyRow.combined.net)}`}>
-                  {currencyRow.currency} {formatAmount(currencyRow.combined.net)}
-                </td>
-                <td className={`px-3 py-2 font-semibold ${getNetBlueRedNeutralClass(currencyRow.combined.outstanding)}`}>
-                  {currencyRow.currency} {formatAmount(currencyRow.combined.outstanding)}
-                </td>
-              </tr>
-              {index < visibleRowsByCurrency.length - 1 ? (
-                <tr aria-hidden="true">
-                  <td className="!p-0" colSpan={7}>
-                    <div className="h-4" />
-                  </td>
-                </tr>
-              ) : null}
-            </Fragment>
-          ))}
-          {!visibleRowsByCurrency.length ? (
-            <TableEmptyState
-              colSpan={7}
-              message="No Credit Big Book cashflow data matches the selected filters."
-            />
           ) : null}
         </tbody>
       </table>

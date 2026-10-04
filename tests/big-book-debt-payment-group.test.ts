@@ -4,11 +4,13 @@ import {
   rollbackDebtPaymentGroup
 } from "@/lib/big-book/debt-payment-group";
 
+// Test doubles only implement the query surface used by the helper.
+
 describe("debt payment group helper", () => {
   it("reuses an existing debt group_id", async () => {
     const supabase = { from: vi.fn() };
     const result = await ensureDebtPaymentGroup(
-      supabase,
+      supabase as never,
       { id: "debt-1", group_id: "group-9", explanation: "Debt A" },
       "user-1"
     );
@@ -45,7 +47,7 @@ describe("debt payment group helper", () => {
     };
 
     const result = await ensureDebtPaymentGroup(
-      supabase,
+      supabase as never,
       { id: "debt-1", group_id: null, explanation: "Vendor invoice debt" },
       "user-1"
     );
@@ -75,7 +77,7 @@ describe("debt payment group helper", () => {
       })
     };
 
-    await rollbackDebtPaymentGroup(supabase, "group-new", "debt-1", "user-1");
+    await rollbackDebtPaymentGroup(supabase as never, "group-new", "debt-1", "user-1");
     expect(entryUpdate).toHaveBeenCalledWith({ group_id: null, updated_by: "user-1" });
     expect(entryUpdateEq).toHaveBeenCalledWith("id", "debt-1");
     expect(groupDeleteEq).toHaveBeenCalledWith("id", "group-new");

@@ -18,7 +18,8 @@ const OPTIONAL_HEADERS = [
   "action_by_name",
   "group_label",
   "group_remark",
-  "is_credit"
+  "is_credit",
+  "is_future_credit"
 ] as const;
 
 /** Full import/export column order (required + optional + derived export-only). */
@@ -37,7 +38,8 @@ export const BIG_BOOK_CSV_HEADERS = [
   "action_by_name",
   "group_label",
   "group_remark",
-  "is_credit"
+  "is_credit",
+  "is_future_credit"
 ] as const;
 
 export const BIG_BOOK_CSV_EXPORT_HEADERS = [
@@ -122,6 +124,7 @@ export type ParsedBigBookCsvRow = {
   group_label: string | null;
   group_remark: string | null;
   is_credit: boolean;
+  is_future_credit: boolean;
 };
 
 export type ParseBigBookCsvResult = {
@@ -331,6 +334,7 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
     const groupLabel = normalizeOptional(get("group_label"));
     const groupRemark = normalizeOptional(get("group_remark"));
     const isCreditRaw = normalizeOptional(get("is_credit"));
+    const isFutureCreditRaw = normalizeOptional(get("is_future_credit"));
 
     if (!entryDateRaw || !entryDirectionRaw || !typeName || !explanation || !amountRaw || !currencyRaw || !actorName) {
       errors.push(`Row ${lineNumber}: required fields must not be empty.`);
@@ -387,6 +391,16 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
       continue;
     }
 
+    const isFutureCredit = parseIsCredit(isFutureCreditRaw);
+    if (isFutureCredit === null) {
+      errors.push(`Row ${lineNumber}: is_future_credit must be true/false (or 1/0, yes/no).`);
+      continue;
+    }
+    if (isFutureCredit && !isCredit) {
+      errors.push(`Row ${lineNumber}: is_future_credit requires is_credit to be true.`);
+      continue;
+    }
+
     parsedRows.push({
       entry_date: entryDate,
       entry_direction: directionParsed.data,
@@ -402,7 +416,8 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
       action_by_name: actionByName,
       group_label: groupLabel,
       group_remark: groupRemark,
-      is_credit: isCredit
+      is_credit: isCredit,
+      is_future_credit: isFutureCredit
     });
   }
 

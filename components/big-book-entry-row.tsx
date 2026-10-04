@@ -136,13 +136,19 @@ function BigBookEntryRowInner({
       <td className="overflow-hidden break-words px-3 py-2">
         {entry.is_credit ? (
           <div className="space-y-1">
-            <span
-              className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${creditStatusBadgeClass(
-                entry.credit_status ?? "open"
-              )}`}
-            >
-              {CREDIT_STATUS_LABELS[entry.credit_status ?? "open"]}
-            </span>
+            {entry.is_future_credit ? (
+              <span className="inline-flex rounded bg-[rgb(var(--warning)/0.18)] px-2 py-0.5 text-xs font-medium text-[rgb(var(--warning))]">
+                Future Credit
+              </span>
+            ) : (
+              <span
+                className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${creditStatusBadgeClass(
+                  entry.credit_status ?? "open"
+                )}`}
+              >
+                {CREDIT_STATUS_LABELS[entry.credit_status ?? "open"]}
+              </span>
+            )}
             {entry.credit_settled_at ? (
               <p className="text-xs text-muted">
                 Closed {formatDateDisplay(entry.credit_settled_at.slice(0, 10))}

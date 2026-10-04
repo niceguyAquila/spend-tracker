@@ -97,7 +97,7 @@ const optionalUuidOrEmpty = (message: string) =>
     .transform((value) => (value && value.length ? value : null));
 
 export const bigBookCreditStatusSchema = z.enum(["open", "settled"]);
-export const bigBookCreditFlagSchema = z.enum(["credit", "settlement", "none"]);
+export const bigBookCreditFlagSchema = z.enum(["credit", "future_credit", "settlement", "none"]);
 
 // The client sends `null` for notes that do not apply, so accept null/undefined/""
 // interchangeably and normalize them all to null.
@@ -121,6 +121,7 @@ const bigBookEntryBaseSchema = z.object({
   remark: z.string().max(1000).optional().or(z.literal("")),
   responsible_actor_id: z.string().uuid("Responsible actor is required"),
   is_credit: z.boolean().optional().default(false),
+  is_future_credit: z.boolean().optional().default(false),
   is_debt: z.boolean().optional().default(false),
   settles_entry_id: optionalUuidOrEmpty("Settlement target must be a valid id"),
   settlement_conversion_rate: z.coerce.number().positive().nullable().optional(),
@@ -149,6 +150,7 @@ const optionalKursAmountSchema = z.preprocess((value) => {
 function refineBigBookEntryCreditFields<
   T extends {
     is_credit?: boolean;
+    is_future_credit?: boolean;
     is_debt?: boolean;
     entry_direction?: string;
     settles_entry_id?: string | null;
@@ -158,10 +160,24 @@ function refineBigBookEntryCreditFields<
     currency_code?: string;
   }
 >(value: T, ctx: z.RefinementCtx) {
+  if (value.is_future_credit && !value.is_credit) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Future credit requires the credit settlement type.",
+      path: ["is_future_credit"]
+    });
+  }
   if (value.is_credit && value.is_debt) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: "An entry cannot be marked as both credit and debt.",
+      path: ["is_debt"]
+    });
+  }
+  if (value.is_future_credit && value.is_debt) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "An entry cannot be marked as both future credit and debt.",
       path: ["is_debt"]
     });
   }
@@ -170,6 +186,13 @@ function refineBigBookEntryCreditFields<
       code: z.ZodIssueCode.custom,
       message: "A settlement entry cannot also be marked as credit.",
       path: ["is_credit"]
+    });
+  }
+  if (value.is_future_credit && value.settles_entry_id) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "A settlement entry cannot also be marked as future credit.",
+      path: ["is_future_credit"]
     });
   }
   if (value.is_debt && value.settles_entry_id) {

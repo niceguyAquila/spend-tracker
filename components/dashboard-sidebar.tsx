@@ -29,7 +29,6 @@ type DashboardSidebarProps = {
 
 const MODULE_ICONS: Record<string, string> = {
   "Transaction Big Book": "/asset/accounting-book.png",
-  "Credit Big Book": "/asset/accounting-book.png",
   Admin: "/asset/admin.png"
 };
 
@@ -75,37 +74,6 @@ function createNavModules(globalRole: AppRole): NavModule[] {
           href: "/dashboard/big-book/exchange-helper",
           label: "Exchange Helper",
           isActive: (pathname) => pathname === "/dashboard/big-book/exchange-helper"
-        }
-      ]
-    },
-    {
-      title: "Credit Big Book",
-      isModuleActive: (pathname) => pathname.startsWith("/dashboard/credit-big-book"),
-      links: [
-        {
-          href: "/dashboard/credit-big-book/master-dashboard",
-          label: "Master Dashboard",
-          isActive: (pathname) => pathname === "/dashboard/credit-big-book/master-dashboard"
-        },
-        {
-          href: "/dashboard/credit-big-book",
-          label: "Credit Dashboard",
-          isActive: (pathname) => pathname === "/dashboard/credit-big-book"
-        },
-        {
-          href: "/dashboard/credit-big-book/individual-type-ledger",
-          label: "Credit Type Dashboard",
-          isActive: (pathname) => pathname === "/dashboard/credit-big-book/individual-type-ledger"
-        },
-        {
-          href: "/dashboard/credit-big-book/settings",
-          label: "Settings",
-          isActive: (pathname) => pathname === "/dashboard/credit-big-book/settings"
-        },
-        {
-          href: "/dashboard/credit-big-book/exchange-helper",
-          label: "Exchange Helper",
-          isActive: (pathname) => pathname === "/dashboard/credit-big-book/exchange-helper"
         }
       ]
     },

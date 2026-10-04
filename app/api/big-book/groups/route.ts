@@ -22,11 +22,13 @@ type EntryPayload = {
   remark?: string;
   responsible_actor_id: string;
   is_credit?: boolean;
+  is_future_credit?: boolean;
   is_debt?: boolean;
 };
 
 function toEntryInsertRow(payload: EntryPayload, groupId: string, actorId: string) {
   const isCredit = Boolean(payload.is_credit) && !payload.is_debt;
+  const isFutureCredit = isCredit && Boolean(payload.is_future_credit);
   const isDebt = Boolean(payload.is_debt) && !payload.is_credit;
   return {
     group_id: groupId,
@@ -43,6 +45,7 @@ function toEntryInsertRow(payload: EntryPayload, groupId: string, actorId: strin
     remark: payload.remark || null,
     responsible_actor_id: payload.responsible_actor_id,
     is_credit: isCredit,
+    is_future_credit: isFutureCredit,
     is_debt: isDebt,
     created_by: actorId,
     updated_by: actorId
@@ -169,6 +172,7 @@ export async function PATCH(request: Request) {
       }
       const { id: entryId, ...payload } = entry;
       const isCredit = Boolean(payload.is_credit) && !payload.is_debt;
+      const isFutureCredit = isCredit && Boolean(payload.is_future_credit);
       const isDebt = Boolean(payload.is_debt) && !payload.is_credit;
       const { error: updateError } = await supabase
         .from("business_ledger_entries")
@@ -186,6 +190,7 @@ export async function PATCH(request: Request) {
           remark: payload.remark || null,
           responsible_actor_id: payload.responsible_actor_id,
           is_credit: isCredit,
+          is_future_credit: isFutureCredit,
           is_debt: isDebt,
           updated_by: actorId
         })

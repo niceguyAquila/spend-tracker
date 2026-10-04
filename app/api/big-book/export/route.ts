@@ -144,6 +144,7 @@ export async function GET(request: Request) {
         group?.label ?? "",
         group?.remark ?? "",
         entry.is_credit ? "true" : "false",
+        entry.is_future_credit ? "true" : "false",
         entry.credit_status ?? "",
         entry.credit_settled_at ?? "",
         entry.settles_entry?.explanation ?? ""

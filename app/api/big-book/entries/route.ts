@@ -78,7 +78,9 @@ async function resolveSettlementFields(
 
   const { data: targetEntry, error: targetError } = await supabase
     .from("business_ledger_entries")
-    .select("id, is_credit, is_debt, settles_entry_id, currency_code, group_id, explanation")
+    .select(
+      "id, is_credit, is_future_credit, is_debt, settles_entry_id, currency_code, group_id, explanation"
+    )
     .eq("id", payload.settles_entry_id)
     .maybeSingle();
 
@@ -90,6 +92,7 @@ async function resolveSettlementFields(
   }
   const isCredit = Boolean(targetEntry.is_credit);
   const isDebt = Boolean(targetEntry.is_debt);
+  const isFutureCredit = Boolean(targetEntry.is_future_credit);
   if (!isCredit && !isDebt) {
     return {
       ok: false,
@@ -102,6 +105,13 @@ async function resolveSettlementFields(
       ok: false,
       status: 400,
       error: "Settlement target cannot be both credit and debt."
+    };
+  }
+  if (isFutureCredit) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Future Credit must be actualized before it can be settled."
     };
   }
   if (targetEntry.settles_entry_id) {
@@ -378,6 +388,7 @@ export async function POST(request: Request) {
   }
 
   const isCredit = settlement.settles_entry_id ? false : Boolean(payload.is_credit);
+  const isFutureCredit = isCredit && Boolean(payload.is_future_credit);
   const isDebt = settlement.settles_entry_id || isCredit ? false : Boolean(payload.is_debt);
 
   const mainRow = {
@@ -395,6 +406,7 @@ export async function POST(request: Request) {
     remark: payload.remark || null,
     responsible_actor_id: payload.responsible_actor_id,
     is_credit: isCredit,
+    is_future_credit: isFutureCredit,
     is_debt: isDebt,
     settles_entry_id: settlement.settles_entry_id,
     settlement_conversion_rate: settlement.settlement_conversion_rate,
@@ -436,6 +448,7 @@ export async function POST(request: Request) {
         remark: kursEntry.remark || null,
         responsible_actor_id: kursEntry.responsible_actor_id,
         is_credit: false,
+        is_future_credit: false,
         is_debt: false,
         created_by: actorId,
         updated_by: actorId
@@ -459,6 +472,7 @@ export async function POST(request: Request) {
         remark: gasEntry.remark || null,
         responsible_actor_id: gasEntry.responsible_actor_id,
         is_credit: false,
+        is_future_credit: false,
         is_debt: false,
         created_by: actorId,
         updated_by: actorId
@@ -576,7 +590,43 @@ export async function PATCH(request: Request) {
   }
 
   const isCredit = settlement.settles_entry_id ? false : Boolean(payload.is_credit);
+  const isFutureCredit = isCredit && Boolean(payload.is_future_credit);
   const isDebt = settlement.settles_entry_id || isCredit ? false : Boolean(payload.is_debt);
+
+  // Demoting Credit → Future Credit is only allowed when no settlements exist yet.
+  if (isFutureCredit) {
+    const { data: existing, error: existingError } = await supabase
+      .from("business_ledger_entries")
+      .select("id, is_credit, is_future_credit")
+      .eq("id", id)
+      .maybeSingle();
+    if (existingError) {
+      return NextResponse.json({ error: existingError.message }, { status: 400 });
+    }
+    if (!existing) {
+      return NextResponse.json({ error: "Entry not found." }, { status: 404 });
+    }
+    const wasActualizedCredit =
+      Boolean(existing.is_credit) && !Boolean(existing.is_future_credit);
+    if (wasActualizedCredit) {
+      const { count, error: settleCountError } = await supabase
+        .from("business_ledger_entries")
+        .select("id", { count: "exact", head: true })
+        .eq("settles_entry_id", id);
+      if (settleCountError) {
+        return NextResponse.json({ error: settleCountError.message }, { status: 400 });
+      }
+      if ((count ?? 0) > 0) {
+        return NextResponse.json(
+          {
+            error:
+              "Cannot mark as Future Credit after settlements exist. Remove settlements first."
+          },
+          { status: 400 }
+        );
+      }
+    }
+  }
 
   const { data: updated, error } = await supabase
     .from("business_ledger_entries")
@@ -594,6 +644,7 @@ export async function PATCH(request: Request) {
       remark: payload.remark || null,
       responsible_actor_id: payload.responsible_actor_id,
       is_credit: isCredit,
+      is_future_credit: isFutureCredit,
       is_debt: isDebt,
       settles_entry_id: settlement.settles_entry_id,
       settlement_conversion_rate: settlement.settlement_conversion_rate,

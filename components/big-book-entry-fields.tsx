@@ -42,6 +42,7 @@ export type EntryFormState = {
   remark: string;
   responsible_actor_id: string;
   is_credit: boolean;
+  is_future_credit: boolean;
   is_debt: boolean;
   settles_entry_id: string;
   settlement_conversion_rate: string;
@@ -112,6 +113,7 @@ export function createEmptyEntryForm(options: {
     remark: "",
     responsible_actor_id: options.defaultActorId,
     is_credit: false,
+    is_future_credit: false,
     is_debt: false,
     settles_entry_id: "",
     settlement_conversion_rate: "",
@@ -205,16 +207,19 @@ export function BigBookEntryFields({
   // Pocket UI removed from create/edit; pocket_id stays in state/API (optional/empty).
   void pockets;
   const isSettlementMode = Boolean(settlesEntry || value.settles_entry_id);
-  const settlementKind: "none" | "credit" | "debt" = value.is_credit
-    ? "credit"
-    : value.is_debt
-      ? "debt"
-      : "none";
+  const settlementKind: "none" | "credit" | "future_credit" | "debt" = value.is_debt
+    ? "debt"
+    : value.is_credit && value.is_future_credit
+      ? "future_credit"
+      : value.is_credit
+        ? "credit"
+        : "none";
   const showSettlementType = !hideCreditToggle && !isSettlementMode;
 
-  function applySettlementKind(next: "none" | "credit" | "debt") {
+  function applySettlementKind(next: "none" | "credit" | "future_credit" | "debt") {
     patch({
-      is_credit: next === "credit",
+      is_credit: next === "credit" || next === "future_credit",
+      is_future_credit: next === "future_credit",
       is_debt: next === "debt",
       entry_direction: next === "debt" ? "spending" : value.entry_direction,
       settles_entry_id: "",
@@ -636,7 +641,12 @@ export function BigBookEntryFields({
           {
             kind: "credit" as const,
             title: "Credit",
-            hint: "Vendor owes our company"
+            hint: "Vendor owes our company now"
+          },
+          {
+            kind: "future_credit" as const,
+            title: "Future Credit",
+            hint: "Expected later — excluded from totals until actualized"
           },
           {
             kind: "debt" as const,

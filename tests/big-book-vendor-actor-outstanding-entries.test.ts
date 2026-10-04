@@ -125,7 +125,8 @@ describe("getBigBookVendorActorOutstandingEntries", () => {
         explanation: "Open credit",
         amount: 8100,
         currency_code: "MYR",
-        remark: null
+        remark: null,
+        is_future_credit: false
       }
     ]);
     expect(result.totalCount).toBe(1);

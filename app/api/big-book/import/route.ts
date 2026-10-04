@@ -192,6 +192,7 @@ export async function POST(request: Request) {
       remark: row.remark ?? "",
       responsible_actor_id: actorId ?? "",
       is_credit: row.is_credit,
+      is_future_credit: row.is_future_credit,
       group_label: row.group_label,
       group_remark: row.group_remark
     };
@@ -297,6 +298,7 @@ export async function POST(request: Request) {
         remark: row.remark || null,
         responsible_actor_id: row.responsible_actor_id,
         is_credit: Boolean(row.is_credit),
+        is_future_credit: Boolean(row.is_credit) && Boolean(row.is_future_credit),
         group_id: groupId,
         created_by: authCheck.user.id,
         updated_by: authCheck.user.id
