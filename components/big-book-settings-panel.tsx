@@ -26,9 +26,32 @@ import { sliceForPage, useTablePagination } from "@/lib/table-pagination";
 import { BigBookTypeVendorTypeMapSection } from "@/components/big-book-type-vendor-type-map-section";
 import { BigBookWalletsSettingsSection } from "@/components/big-book-wallets-settings-section";
 import { BigBookTypeInvoiceProfilesSection } from "@/components/big-book-type-invoice-profiles-section";
+import {
+  SettingsCategoryTabBar,
+  SettingsDangerZonePanel
+} from "@/components/settings-category-tab-bar";
 import { sortByDisplayLabel } from "@/lib/ui/sort-by-display-label";
+import { DANGER_ZONE_TAB_ID, type SettingsCategoryTab } from "@/lib/ui/settings-tabs";
+import { useSettingsTab } from "@/lib/ui/use-settings-tab";
 
 type StatusFilter = "all" | "active" | "inactive";
+
+const BIG_BOOK_SETTINGS_TABS = [
+  { id: "types", label: "Types", icon: "types" },
+  { id: "vendor-types", label: "Vendor Types", icon: "vendor-types" },
+  { id: "vendors", label: "Vendor Names", icon: "vendors" },
+  { id: "action-by", label: "Action By", icon: "action-by" },
+  { id: "pockets", label: "Actor Pockets", icon: "pockets" },
+  { id: "wallets", label: "Invoice Wallets", icon: "wallets" },
+  { id: "actors", label: "Actor Mapping", icon: "actors" },
+  { id: "type-vendor-map", label: "Type → Vendor Map", icon: "type-vendor-map" },
+  { id: "invoice-presets", label: "Invoice Presets", icon: "invoice-presets" },
+  { id: DANGER_ZONE_TAB_ID, label: "Danger zone", icon: "danger-zone" }
+] as const satisfies readonly SettingsCategoryTab[];
+
+type BigBookSettingsTabId = (typeof BIG_BOOK_SETTINGS_TABS)[number]["id"];
+
+const BIG_BOOK_SETTINGS_TAB_IDS = BIG_BOOK_SETTINGS_TABS.map((tab) => tab.id);
 
 type Props = {
   initialTypes: BigBookLedgerType[];
@@ -82,6 +105,10 @@ export function BigBookSettingsPanel({
 }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
+  const { activeTab, setTab } = useSettingsTab<BigBookSettingsTabId>(
+    BIG_BOOK_SETTINGS_TAB_IDS,
+    "types"
+  );
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [newTypeCode, setNewTypeCode] = useState("");
@@ -794,6 +821,13 @@ export function BigBookSettingsPanel({
 
   return (
     <div className="space-y-6">
+      <SettingsCategoryTabBar
+        tabs={BIG_BOOK_SETTINGS_TABS}
+        activeTab={activeTab}
+        onChange={setTab}
+      />
+
+      {activeTab === "types" ? (
       <section className="card relative" aria-busy={criticalPending}>
         <BlockingOverlay active={criticalPending} label="Processing settings..." />
         <h2 className="text-lg font-semibold">Type Management</h2>
@@ -917,16 +951,21 @@ export function BigBookSettingsPanel({
           rangeLabel={typePagination.rangeLabel}
         />
       </section>
+      ) : null}
 
+      {activeTab === "type-vendor-map" ? (
       <BigBookTypeVendorTypeMapSection
         initialMaps={initialTypeVendorTypeMaps}
         types={initialTypes}
         vendorTypes={initialVendorTypes}
       />
+      ) : null}
 
+      {activeTab === "invoice-presets" ? (
       <BigBookTypeInvoiceProfilesSection types={initialTypes} initialProfiles={initialTypeInvoiceProfiles} />
+      ) : null}
 
-
+      {activeTab === "vendor-types" ? (
       <section
         className="card relative"
         aria-busy={vendorTypeSubmitting || toggleVendorTypeSubmitting || vendorTypeEditor.submitting}
@@ -1062,7 +1101,9 @@ export function BigBookSettingsPanel({
           rangeLabel={vendorTypePagination.rangeLabel}
         />
       </section>
+      ) : null}
 
+      {activeTab === "vendors" ? (
       <section
         className="card relative"
         aria-busy={vendorSubmitting || toggleVendorSubmitting || vendorEditor.submitting}
@@ -1219,7 +1260,9 @@ export function BigBookSettingsPanel({
           show={Boolean(vendorParentTypeId)}
         />
       </section>
+      ) : null}
 
+      {activeTab === "action-by" ? (
       <section
         className="card relative"
         aria-busy={
@@ -1372,7 +1415,9 @@ export function BigBookSettingsPanel({
           rangeLabel={actionByPagination.rangeLabel}
         />
       </section>
+      ) : null}
 
+      {activeTab === "pockets" ? (
       <section
         className="card relative"
         aria-busy={pocketSubmitting || togglePocketSubmitting || pocketDeleting || pocketEditor.submitting}
@@ -1539,9 +1584,13 @@ export function BigBookSettingsPanel({
           show={Boolean(pocketParentActorId)}
         />
       </section>
+      ) : null}
 
+      {activeTab === "wallets" ? (
       <BigBookWalletsSettingsSection initialWallets={initialWallets} />
+      ) : null}
 
+      {activeTab === "actors" ? (
       <section className="card">
         <h2 className="text-lg font-semibold">Actor A/B Mapping</h2>
         <p className="mt-1 text-sm text-muted">Both actors share the same authority level and are fixed globally.</p>
@@ -1589,6 +1638,28 @@ export function BigBookSettingsPanel({
           ))}
         </div>
       </section>
+      ) : null}
+
+      {activeTab === DANGER_ZONE_TAB_ID ? (
+        <SettingsDangerZonePanel>
+          <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted">
+            <li>
+              Permanent{" "}
+              <button type="button" className="underline" onClick={() => setTab("action-by")}>
+                Action By
+              </button>{" "}
+              delete clears Action By on existing entries.
+            </li>
+            <li>
+              Permanent{" "}
+              <button type="button" className="underline" onClick={() => setTab("pockets")}>
+                Actor Pocket
+              </button>{" "}
+              delete clears pocket on existing entries.
+            </li>
+          </ul>
+        </SettingsDangerZonePanel>
+      ) : null}
 
       {error ? <p className="text-sm text-[rgb(var(--danger))]">{error}</p> : null}
       {message ? <p className="text-sm text-[rgb(var(--success))]">{message}</p> : null}
