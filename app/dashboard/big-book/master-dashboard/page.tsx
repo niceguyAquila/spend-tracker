@@ -1,7 +1,6 @@
 import { MasterDashboardBigBookTypeCashflowTable } from "@/components/master-dashboard-tables";
 import { BigBookTypeCashflowFilters } from "@/components/big-book-type-cashflow-filters";
-import { BigBookVendorActorOutstandingTable } from "@/components/big-book-vendor-actor-outstanding-table";
-import { BigBookVendorActorOutstandingDebtTable } from "@/components/big-book-vendor-actor-outstanding-debt-table";
+import { BigBookOutstandingTabs } from "@/components/big-book-outstanding-tabs";
 import { PageHeader } from "@/components/ui/page-header";
 import { SetupRequiredCard } from "@/components/ui/setup-required-card";
 import {
@@ -9,6 +8,7 @@ import {
   getBigBookLedgerTypes,
   getBigBookTypeCashflowByCurrency,
   getBigBookVendorActorOutstanding,
+  getBigBookVendorActorFutureOutstanding,
   getBigBookVendorActorOutstandingDebt,
   getBigBookVendorTypes,
   getBigBookVendors
@@ -68,6 +68,7 @@ export default async function BigBookMasterDashboardPage({ searchParams }: BigBo
       vendors,
       sourceRowsByCurrency,
       vendorActorOutstanding,
+      vendorActorOutstandingFuture,
       vendorActorOutstandingDebt
     ] = await Promise.all([
       getBigBookActors(),
@@ -84,6 +85,7 @@ export default async function BigBookMasterDashboardPage({ searchParams }: BigBo
         dateTo: dateTo || undefined
       }),
       getBigBookVendorActorOutstanding(outstandingFilters),
+      getBigBookVendorActorFutureOutstanding(outstandingFilters),
       getBigBookVendorActorOutstandingDebt(outstandingFilters)
     ]);
 
@@ -117,37 +119,17 @@ export default async function BigBookMasterDashboardPage({ searchParams }: BigBo
           <MasterDashboardBigBookTypeCashflowTable sourceRowsByCurrency={sourceRowsByCurrency} />
         </section>
 
-        <section className="card">
-          <h2 className="text-lg font-semibold">Outstanding Credit by Vendor and Actor</h2>
-          <p className="mt-1 text-sm text-muted">
-            Who owes whom: vendor (owes) to actor (owed), per currency. Outstanding is the total of credits
-            not yet marked settled. Filters above also apply here; date range selects which open credits are
-            included.
-          </p>
-          <BigBookVendorActorOutstandingTable
-            rows={vendorActorOutstanding}
-            detailFilters={{
-              dateFrom: dateFrom || undefined,
-              dateTo: dateTo || undefined
-            }}
-          />
-        </section>
-
-        <section className="card">
-          <h2 className="text-lg font-semibold">Outstanding Debt by Grouped Transaction and Actor</h2>
-          <p className="mt-1 text-sm text-muted">
-            Open debts by grouped transaction and actor, per currency. Ungrouped debts appear as their
-            own row. Outstanding is the total of debts not yet marked settled. Amounts are shown in
-            red. Filters above also apply here.
-          </p>
-          <BigBookVendorActorOutstandingDebtTable
-            rows={vendorActorOutstandingDebt}
-            detailFilters={{
-              dateFrom: dateFrom || undefined,
-              dateTo: dateTo || undefined
-            }}
-          />
-        </section>
+        <BigBookOutstandingTabs
+          title="Outstanding by Vendor / Group and Actor"
+          description="Who owes whom and what we owe, per currency. Filters above also apply here; date range selects which open rows are included."
+          vendorActorOutstanding={vendorActorOutstanding}
+          vendorActorOutstandingFuture={vendorActorOutstandingFuture}
+          vendorActorOutstandingDebt={vendorActorOutstandingDebt}
+          detailFilters={{
+            dateFrom: dateFrom || undefined,
+            dateTo: dateTo || undefined
+          }}
+        />
       </div>
     );
   } catch (error) {

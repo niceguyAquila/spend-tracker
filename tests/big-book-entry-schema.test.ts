@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  bigBookCreditActualizeSchema,
   bigBookCreditSettleSchema,
   bigBookEntryInputSchema,
   bigBookEntryUpdateSchema,
@@ -294,16 +295,28 @@ describe("big book entry schema", () => {
     expect(parsed.success).toBe(true);
     if (parsed.success) expect(parsed.data.note).toBeNull();
   });
+
+  it("accepts a credit actualize payload", () => {
+    const parsed = bigBookCreditActualizeSchema.safeParse({
+      id: CREDIT_ID,
+      expected_updated_at: EXPECTED_UPDATED_AT,
+      actualized: true
+    });
+    expect(parsed.success).toBe(true);
+  });
 });
 
 describe("big book outstanding entries query schema", () => {
-  it("defaults missing vendorId to none", () => {
+  it("defaults missing vendorId to none and creditKind to credit", () => {
     const parsed = bigBookVendorActorOutstandingEntriesQuerySchema.safeParse({
       actorId: ACTOR_ID,
       currency: "MYR"
     });
     expect(parsed.success).toBe(true);
-    if (parsed.success) expect(parsed.data.vendorId).toBe("none");
+    if (parsed.success) {
+      expect(parsed.data.vendorId).toBe("none");
+      expect(parsed.data.creditKind).toBe("credit");
+    }
   });
 
   it("rejects an invalid vendorId", () => {

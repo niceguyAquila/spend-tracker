@@ -299,6 +299,13 @@ export const bigBookCreditSettleSchema = z.object({
   note: optionalNoteSchema
 });
 
+/** Toggle Future Credit ↔ actualized Credit without rewriting the full entry. */
+export const bigBookCreditActualizeSchema = z.object({
+  id: z.string().uuid(),
+  expected_updated_at: expectedUpdatedAtSchema,
+  actualized: z.boolean()
+});
+
 export const bigBookTypeVendorTypeMapCreateSchema = z.object({
   entry_type_id: z.string().uuid("Select a type."),
   vendor_type_id: z.string().uuid("Select a vendor type.")
@@ -512,7 +519,9 @@ export const bigBookVendorActorOutstandingEntriesQuerySchema = z.object({
   currency: bigBookCurrencySchema,
   vendorId: z.union([z.string().uuid(), z.literal("none")]).default("none"),
   dateFrom: optionalString,
-  dateTo: optionalString
+  dateTo: optionalString,
+  /** `future` = Future Credit only; default `credit` = actualized Credit only. */
+  creditKind: z.enum(["credit", "future"]).optional().default("credit")
 });
 
 /** Outstanding debt detail rows are keyed by group (or standalone entry id). */

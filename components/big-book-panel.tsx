@@ -99,6 +99,7 @@ type Props = {
   initialActorMetrics?: BigBookActorCurrencyMetrics[];
   initialActorPocketMetrics?: BigBookActorPocketMetrics[];
   initialVendorActorOutstanding?: BigBookVendorActorOutstandingRow[];
+  initialVendorActorOutstandingFuture?: BigBookVendorActorOutstandingRow[];
   initialVendorActorOutstandingDebt?: BigBookVendorActorOutstandingDebtRow[];
   initialEntryId?: string;
 };
@@ -405,6 +406,7 @@ export function BigBookPanel({
   initialActorMetrics,
   initialActorPocketMetrics,
   initialVendorActorOutstanding,
+  initialVendorActorOutstandingFuture,
   initialVendorActorOutstandingDebt,
   initialEntryId
 }: Props) {
@@ -732,6 +734,7 @@ export function BigBookPanel({
         Array.isArray(data?.actorMetrics) ||
         Array.isArray(data?.actorPocketMetrics) ||
         Array.isArray(data?.vendorActorOutstanding) ||
+        Array.isArray(data?.vendorActorOutstandingFuture) ||
         Array.isArray(data?.vendorActorOutstandingDebt)
       ) {
         setMetricsOverride((prev) => ({
@@ -744,6 +747,9 @@ export function BigBookPanel({
           vendorActorOutstanding: Array.isArray(data?.vendorActorOutstanding)
             ? data.vendorActorOutstanding
             : (prev?.vendorActorOutstanding ?? []),
+          vendorActorOutstandingFuture: Array.isArray(data?.vendorActorOutstandingFuture)
+            ? data.vendorActorOutstandingFuture
+            : (prev?.vendorActorOutstandingFuture ?? []),
           vendorActorOutstandingDebt: Array.isArray(data?.vendorActorOutstandingDebt)
             ? data.vendorActorOutstandingDebt
             : (prev?.vendorActorOutstandingDebt ?? [])
@@ -945,6 +951,7 @@ export function BigBookPanel({
       !initialActorMetrics &&
       !initialActorPocketMetrics &&
       !initialVendorActorOutstanding &&
+      !initialVendorActorOutstandingFuture &&
       !initialVendorActorOutstandingDebt
     ) {
       return null;
@@ -953,6 +960,7 @@ export function BigBookPanel({
       actorMetrics: initialActorMetrics ?? [],
       actorPocketMetrics: initialActorPocketMetrics ?? [],
       vendorActorOutstanding: initialVendorActorOutstanding ?? [],
+      vendorActorOutstandingFuture: initialVendorActorOutstandingFuture ?? [],
       vendorActorOutstandingDebt: initialVendorActorOutstandingDebt ?? []
     };
   });
@@ -974,6 +982,7 @@ export function BigBookPanel({
           actorMetrics: [],
           actorPocketMetrics: [],
           vendorActorOutstanding: [],
+          vendorActorOutstandingFuture: [],
           vendorActorOutstandingDebt: []
         };
         const next = base.actorMetrics.map((row) => ({ ...row, totals: { ...row.totals } }));

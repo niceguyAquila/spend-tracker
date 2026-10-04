@@ -162,6 +162,7 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
       params.set("actorId", row.actor_id);
       params.set("currency", row.currency);
       params.set("vendorId", row.vendor_id ?? "none");
+      params.set("creditKind", "credit");
       if (detailFilters?.dateFrom) params.set("dateFrom", detailFilters.dateFrom);
       if (detailFilters?.dateTo) params.set("dateTo", detailFilters.dateTo);
 
@@ -319,20 +320,15 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
     setRowSettleLoadingKey(row.row_key);
     try {
       const detailRows = await fetchDetailRows(row);
-      const settleableRows = detailRows.filter((entry) => !entry.is_future_credit);
-      if (!settleableRows.length) {
-        setSettleError(
-          detailRows.length
-            ? "This row only has Future Credit. Actualize credits before settling."
-            : "No open credits found for this vendor row."
-        );
+      if (!detailRows.length) {
+        setSettleError("No open credits found for this vendor row.");
         return;
       }
-      const totalAmount = settleableRows.reduce((sum, entry) => sum + entry.amount, 0);
+      const totalAmount = detailRows.reduce((sum, entry) => sum + entry.amount, 0);
       setSettleMode("single");
       setEditDraft(null);
       setPendingSettle({
-        credits: settleableRows.map((entry) => ({
+        credits: detailRows.map((entry) => ({
           id: entry.id,
           amount: entry.amount,
           currency_code: entry.currency_code as BulkSettleCurrency,
@@ -361,7 +357,7 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
       for (const details of Object.values(detailsByKey)) {
         if (details.status !== "ok") continue;
         for (const entry of details.rows) {
-          if (creditIdSet.has(entry.id) && !entry.is_future_credit) {
+          if (creditIdSet.has(entry.id)) {
             creditsById.set(entry.id, {
               id: entry.id,
               amount: entry.amount,
@@ -378,7 +374,6 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
       for (const row of selectedRows) {
         const detailRows = await fetchDetailRows(row);
         for (const entry of detailRows) {
-          if (entry.is_future_credit) continue;
           creditIdSet.add(entry.id);
           creditsById.set(entry.id, {
             id: entry.id,
@@ -966,16 +961,7 @@ function OutstandingSummaryRows({
             maximumFractionDigits: 4
           })}
         </td>
-        <td className="px-3 py-2">
-          <div className="space-y-0.5">
-            <div>{row.open_credit_count}</div>
-            {(row.open_future_credit_count ?? 0) > 0 ? (
-              <div className="text-xs text-[rgb(var(--warning))]">
-                {row.open_future_credit_count} future
-              </div>
-            ) : null}
-          </div>
-        </td>
+        <td className="px-3 py-2">{row.open_credit_count}</td>
         <td className="px-3 py-2 text-right">
           <div className="flex flex-wrap items-center justify-end gap-2">
             <button
@@ -1121,12 +1107,6 @@ function OutstandingNestedTableLoaded({
                     className="h-4 w-4"
                     aria-label={`Select credit ${entry.explanation}`}
                     checked={selectedCreditIds.has(entry.id)}
-                    disabled={entry.is_future_credit}
-                    title={
-                      entry.is_future_credit
-                        ? "Actualize Future Credit before selecting for settlement"
-                        : undefined
-                    }
                     onChange={() => onToggleCredit(entry.id)}
                   />
                 </td>
@@ -1146,15 +1126,9 @@ function OutstandingNestedTableLoaded({
                 <td className="px-3 py-1.5">
                   <div className="space-y-1">
                     <div>{entry.explanation}</div>
-                    {entry.is_future_credit ? (
-                      <span className="inline-flex rounded bg-[rgb(var(--warning)/0.18)] px-2 py-0.5 text-xs font-medium text-[rgb(var(--warning))]">
-                        Future Credit
-                      </span>
-                    ) : (
-                      <span className="inline-flex rounded bg-[rgb(var(--success)/0.15)] px-2 py-0.5 text-xs font-medium text-[rgb(var(--success))]">
-                        Credit
-                      </span>
-                    )}
+                    <span className="inline-flex rounded bg-[rgb(var(--success)/0.15)] px-2 py-0.5 text-xs font-medium text-[rgb(var(--success))]">
+                      Credit
+                    </span>
                   </div>
                 </td>
                 <td className={`px-3 py-1.5 font-medium tabular-nums ${getAmountColorClass(amount)}`}>

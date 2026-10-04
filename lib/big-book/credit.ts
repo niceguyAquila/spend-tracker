@@ -68,27 +68,37 @@ export type VendorActorOutstandingCreditInput = {
   is_future_credit?: boolean;
 };
 
+export type AggregateVendorActorOutstandingOptions = {
+  /** When true, only Future Credit rows. When false/omitted, only actualized Credit. */
+  futureOnly?: boolean;
+};
+
 /**
  * Aggregate open credit balances by vendor + actor + currency.
- * Callers must pass only open credits (credit_settled_at is null), including Future Credit.
+ * Callers must pass only open credits (credit_settled_at is null).
+ * By default excludes Future Credit; pass `{ futureOnly: true }` for Future Credit only.
  */
 export function aggregateVendorActorOutstanding(
-  credits: VendorActorOutstandingCreditInput[]
+  credits: VendorActorOutstandingCreditInput[],
+  options?: AggregateVendorActorOutstandingOptions
 ): BigBookVendorActorOutstandingRow[] {
+  const futureOnly = Boolean(options?.futureOnly);
   const byKey = new Map<string, BigBookVendorActorOutstandingRow>();
 
   for (const credit of credits) {
+    const isFuture = Boolean(credit.is_future_credit);
+    if (futureOnly ? !isFuture : isFuture) continue;
+
     const amount = Math.abs(Number(credit.amount));
     if (!(amount > 0)) continue;
 
     const vendorKey = credit.vendor_id ?? "none";
     const key = `${vendorKey}:${credit.responsible_actor_id}:${credit.currency_code}`;
-    const futureDelta = credit.is_future_credit ? 1 : 0;
     const existing = byKey.get(key);
     if (existing) {
       existing.outstanding += amount;
       existing.open_credit_count += 1;
-      existing.open_future_credit_count += futureDelta;
+      if (futureOnly) existing.open_future_credit_count += 1;
       continue;
     }
 
@@ -104,7 +114,7 @@ export function aggregateVendorActorOutstanding(
       currency: credit.currency_code,
       outstanding: amount,
       open_credit_count: 1,
-      open_future_credit_count: futureDelta
+      open_future_credit_count: futureOnly ? 1 : 0
     });
   }
 

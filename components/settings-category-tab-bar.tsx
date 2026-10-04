@@ -12,6 +12,7 @@ type Props<T extends string> = {
   tabs: readonly SettingsCategoryTab<T>[];
   activeTab: T;
   onChange: (tab: T) => void;
+  ariaLabel?: string;
 };
 
 function TabIcon({ name }: { name: SettingsTabIconName }) {
@@ -122,11 +123,16 @@ function TabIcon({ name }: { name: SettingsTabIconName }) {
   }
 }
 
-export function SettingsCategoryTabBar<T extends string>({ tabs, activeTab, onChange }: Props<T>) {
+export function SettingsCategoryTabBar<T extends string>({
+  tabs,
+  activeTab,
+  onChange,
+  ariaLabel = "Settings categories"
+}: Props<T>) {
   const ordered = orderSettingsTabs(tabs);
 
   return (
-    <div className="settings-category-tab-bar" role="tablist" aria-label="Settings categories">
+    <div className="settings-category-tab-bar" role="tablist" aria-label={ariaLabel}>
       <div className="settings-category-tab-bar__inner">
         {ordered.map((tab) => {
           const isActive = tab.id === activeTab;

@@ -26,6 +26,7 @@ import {
   getBigBookEntriesPaged,
   getBigBookLedgerRowsPaged,
   getBigBookVendorActorOutstanding,
+  getBigBookVendorActorFutureOutstanding,
   getBigBookVendorActorOutstandingDebt
 } from "@/lib/db/queries";
 import {
@@ -214,6 +215,7 @@ export async function GET(request: Request) {
           getBigBookActorCurrencyMetrics(),
           getBigBookActorPocketMetrics(),
           getBigBookVendorActorOutstanding(),
+          getBigBookVendorActorFutureOutstanding(),
           getBigBookVendorActorOutstandingDebt()
         ])
       : null;
@@ -224,13 +226,19 @@ export async function GET(request: Request) {
         metricsPromise
       ]);
       if (!metrics) return NextResponse.json(result);
-      const [actorMetrics, actorPocketMetrics, vendorActorOutstanding, vendorActorOutstandingDebt] =
-        metrics;
+      const [
+        actorMetrics,
+        actorPocketMetrics,
+        vendorActorOutstanding,
+        vendorActorOutstandingFuture,
+        vendorActorOutstandingDebt
+      ] = metrics;
       return NextResponse.json({
         ...result,
         actorMetrics,
         actorPocketMetrics,
         vendorActorOutstanding,
+        vendorActorOutstandingFuture,
         vendorActorOutstandingDebt
       });
     }
@@ -240,13 +248,19 @@ export async function GET(request: Request) {
       metricsPromise
     ]);
     if (!metrics) return NextResponse.json(result);
-    const [actorMetrics, actorPocketMetrics, vendorActorOutstanding, vendorActorOutstandingDebt] =
-      metrics;
+    const [
+      actorMetrics,
+      actorPocketMetrics,
+      vendorActorOutstanding,
+      vendorActorOutstandingFuture,
+      vendorActorOutstandingDebt
+    ] = metrics;
     return NextResponse.json({
       ...result,
       actorMetrics,
       actorPocketMetrics,
       vendorActorOutstanding,
+      vendorActorOutstandingFuture,
       vendorActorOutstandingDebt
     });
   } catch (error) {
