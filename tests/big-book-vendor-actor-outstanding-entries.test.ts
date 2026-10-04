@@ -24,6 +24,8 @@ type Payload = {
     currency_code: "MYR";
     remark: string | null;
     entry_type_id: string | null;
+    is_future_credit?: boolean;
+    updated_at: string;
     business_ledger_types: { name: string };
   }>;
   error: null;
@@ -93,6 +95,8 @@ describe("getBigBookVendorActorOutstandingEntries", () => {
           currency_code: "MYR",
           remark: null,
           entry_type_id: "33333333-3333-4333-8333-333333333333",
+          is_future_credit: false,
+          updated_at: "2026-09-01T10:00:00.000Z",
           business_ledger_types: { name: "Float" }
         }
       ],
@@ -114,6 +118,7 @@ describe("getBigBookVendorActorOutstandingEntries", () => {
     expect(callsRef.eq).toContainEqual(["responsible_actor_id", ACTOR_ID]);
     expect(callsRef.eq).toContainEqual(["currency_code", "MYR"]);
     expect(callsRef.eq).toContainEqual(["is_credit", true]);
+    expect(callsRef.eq).toContainEqual(["is_future_credit", false]);
     expect(callsRef.is).toContainEqual(["credit_settled_at", null]);
     expect(result.rows).toEqual([
       {
@@ -126,7 +131,8 @@ describe("getBigBookVendorActorOutstandingEntries", () => {
         amount: 8100,
         currency_code: "MYR",
         remark: null,
-        is_future_credit: false
+        is_future_credit: false,
+        updated_at: "2026-09-01T10:00:00.000Z"
       }
     ]);
     expect(result.totalCount).toBe(1);
@@ -146,5 +152,17 @@ describe("getBigBookVendorActorOutstandingEntries", () => {
     expect(callsRef.is).not.toContainEqual(["vendor_id", null]);
     expect(callsRef.gte).toContainEqual(["entry_date", "2026-01-01"]);
     expect(callsRef.lte).toContainEqual(["entry_date", "2026-01-31"]);
+  });
+
+  it("filters Future Credit when futureOnly is true", async () => {
+    const { getBigBookVendorActorOutstandingEntries } = await import("@/lib/db/queries");
+    await getBigBookVendorActorOutstandingEntries({
+      vendorId: VENDOR_ID,
+      actorId: ACTOR_ID,
+      currency: "MYR",
+      futureOnly: true
+    });
+
+    expect(callsRef.eq).toContainEqual(["is_future_credit", true]);
   });
 });

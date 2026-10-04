@@ -8,6 +8,7 @@ import {
   getBigBookLedgerTypes,
   getBigBookTypeVendorTypeMaps,
   getBigBookVendorActorOutstanding,
+  getBigBookVendorActorFutureOutstanding,
   getBigBookVendorActorOutstandingDebt,
   getBigBookVendorTypes,
   getBigBookVendors
@@ -51,12 +52,22 @@ export default async function BigBookPage({ searchParams }: BigBookPageProps) {
       perfTimed("getBigBookActorCurrencyMetrics", () => getBigBookActorCurrencyMetrics()),
       perfTimed("getBigBookActorPocketMetrics", () => getBigBookActorPocketMetrics()),
       perfTimed("getBigBookVendorActorOutstanding", () => getBigBookVendorActorOutstanding()),
+      perfTimed("getBigBookVendorActorFutureOutstanding", () =>
+        getBigBookVendorActorFutureOutstanding()
+      ),
       perfTimed("getBigBookVendorActorOutstandingDebt", () => getBigBookVendorActorOutstandingDebt())
     ]).then(
-      ([actorMetrics, actorPocketMetrics, vendorActorOutstanding, vendorActorOutstandingDebt]) => ({
+      ([
         actorMetrics,
         actorPocketMetrics,
         vendorActorOutstanding,
+        vendorActorOutstandingFuture,
+        vendorActorOutstandingDebt
+      ]) => ({
+        actorMetrics,
+        actorPocketMetrics,
+        vendorActorOutstanding,
+        vendorActorOutstandingFuture,
         vendorActorOutstandingDebt
       })
     );

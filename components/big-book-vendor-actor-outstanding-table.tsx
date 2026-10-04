@@ -30,8 +30,10 @@ import {
 
 const COLUMN_COUNT = 9;
 const CURRENCY_ORDER = ["IDR", "MYR", "USDT", "TRX"] as const;
+const WARNING_AMOUNT_CLASS = "text-[rgb(var(--warning))]";
 
 type SortKey = "vendor_name" | "actor_display_name" | "currency" | "outstanding";
+export type OutstandingCreditKind = "credit" | "future";
 
 export type OutstandingDetailFilters = {
   dateFrom?: string;
@@ -41,8 +43,16 @@ export type OutstandingDetailFilters = {
 type Props = {
   rows: BigBookVendorActorOutstandingRow[];
   detailFilters?: OutstandingDetailFilters;
-  /** Called after a successful bulk settle so the parent can refresh metrics/ledger. */
+  /** Called after a successful bulk settle / actualize so the parent can refresh metrics/ledger. */
   onSettled?: () => void;
+  /** Default `credit`. Use `future` for Future Credit outstanding (settle + actualize). */
+  creditKind?: OutstandingCreditKind;
+};
+
+type PendingActualize = {
+  credits: Array<{ id: string; expected_updated_at: string; explanation: string; amount: number }>;
+  currency: string;
+  label: string;
 };
 
 type DetailState =
@@ -81,8 +91,12 @@ function compareRows(
   return b.outstanding - a.outstanding;
 }
 
-function detailCacheKey(row: BigBookVendorActorOutstandingRow, filters?: OutstandingDetailFilters) {
-  return `${row.row_key}:${filters?.dateFrom ?? ""}:${filters?.dateTo ?? ""}`;
+function detailCacheKey(
+  row: BigBookVendorActorOutstandingRow,
+  filters: OutstandingDetailFilters | undefined,
+  creditKind: OutstandingCreditKind
+) {
+  return `${creditKind}:${row.row_key}:${filters?.dateFrom ?? ""}:${filters?.dateTo ?? ""}`;
 }
 
 function signedAmount(entry: BigBookVendorActorOutstandingEntry) {
@@ -94,7 +108,13 @@ function extractApiError(error: unknown, fallback: string) {
   return fallback;
 }
 
-export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSettled }: Props) {
+export function BigBookVendorActorOutstandingTable({
+  rows,
+  detailFilters,
+  onSettled,
+  creditKind = "credit"
+}: Props) {
+  const isFutureKind = creditKind === "future";
   const [sortKey, setSortKey] = useState<SortKey>("currency");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set());
@@ -111,6 +131,11 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
   const [invoiceSeed, setInvoiceSeed] = useState<InvoiceBuilderSeed | null>(null);
   const [invoiceLoadingKey, setInvoiceLoadingKey] = useState<string | null>(null);
   const [invoiceError, setInvoiceError] = useState<string | null>(null);
+  const [pendingActualize, setPendingActualize] = useState<PendingActualize | null>(null);
+  const [actualizeSubmitting, setActualizeSubmitting] = useState(false);
+  const [actualizeError, setActualizeError] = useState<string | null>(null);
+  const [actualizeMessage, setActualizeMessage] = useState<string | null>(null);
+  const [rowActualizeLoadingKey, setRowActualizeLoadingKey] = useState<string | null>(null);
 
   const sortedRows = useMemo(
     () => [...rows].sort((a, b) => compareRows(a, b, sortKey, sortDir)),
@@ -154,7 +179,7 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
 
   const fetchDetailRows = useCallback(
     async (row: BigBookVendorActorOutstandingRow): Promise<BigBookVendorActorOutstandingEntry[]> => {
-      const cacheKey = detailCacheKey(row, detailFilters);
+      const cacheKey = detailCacheKey(row, detailFilters, creditKind);
       const existing = detailsByKey[cacheKey];
       if (existing?.status === "ok") return existing.rows;
 
@@ -162,6 +187,7 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
       params.set("actorId", row.actor_id);
       params.set("currency", row.currency);
       params.set("vendorId", row.vendor_id ?? "none");
+      params.set("creditKind", creditKind);
       if (detailFilters?.dateFrom) params.set("dateFrom", detailFilters.dateFrom);
       if (detailFilters?.dateTo) params.set("dateTo", detailFilters.dateTo);
 
@@ -172,7 +198,11 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
       const data = await response.json();
       if (!response.ok) {
         const message =
-          typeof data?.error === "string" ? data.error : "Failed to load open credits.";
+          typeof data?.error === "string"
+            ? data.error
+            : isFutureKind
+              ? "Failed to load Future Credits."
+              : "Failed to load open credits.";
         setDetailsByKey((prev) => ({ ...prev, [cacheKey]: { status: "error", message } }));
         throw new Error(message);
       }
@@ -186,12 +216,12 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
       }));
       return nextRows;
     },
-    [detailFilters, detailsByKey]
+    [creditKind, detailFilters, detailsByKey, isFutureKind]
   );
 
   const loadDetails = useCallback(
     async (row: BigBookVendorActorOutstandingRow) => {
-      const cacheKey = detailCacheKey(row, detailFilters);
+      const cacheKey = detailCacheKey(row, detailFilters, creditKind);
       try {
         await fetchDetailRows(row);
       } catch {
@@ -203,7 +233,7 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
   );
 
   function toggleExpanded(row: BigBookVendorActorOutstandingRow) {
-    const cacheKey = detailCacheKey(row, detailFilters);
+    const cacheKey = detailCacheKey(row, detailFilters, creditKind);
     setExpandedKeys((prev) => {
       const next = new Set(prev);
       if (next.has(cacheKey)) {
@@ -222,7 +252,7 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
 
   const syncParentSelectionFromCredits = useCallback(
     (row: BigBookVendorActorOutstandingRow, nextCreditIds: Set<string>) => {
-      const cacheKey = detailCacheKey(row, detailFilters);
+      const cacheKey = detailCacheKey(row, detailFilters, creditKind);
       const details = detailsByKey[cacheKey];
       if (details?.status !== "ok" || !details.rows.length) return;
       const allSelected = details.rows.every((entry) => nextCreditIds.has(entry.id));
@@ -235,11 +265,11 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
         return next;
       });
     },
-    [detailFilters, detailsByKey]
+    [creditKind, detailFilters, detailsByKey]
   );
 
   async function toggleRowSelected(row: BigBookVendorActorOutstandingRow) {
-    const cacheKey = detailCacheKey(row, detailFilters);
+    const cacheKey = detailCacheKey(row, detailFilters, creditKind);
     const currentlySelected = selectedRowKeys.has(row.row_key);
     const details = detailsByKey[cacheKey];
 
@@ -319,20 +349,19 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
     setRowSettleLoadingKey(row.row_key);
     try {
       const detailRows = await fetchDetailRows(row);
-      const settleableRows = detailRows.filter((entry) => !entry.is_future_credit);
-      if (!settleableRows.length) {
+      if (!detailRows.length) {
         setSettleError(
-          detailRows.length
-            ? "This row only has Future Credit. Actualize credits before settling."
+          isFutureKind
+            ? "No open Future Credits found for this vendor row."
             : "No open credits found for this vendor row."
         );
         return;
       }
-      const totalAmount = settleableRows.reduce((sum, entry) => sum + entry.amount, 0);
+      const totalAmount = detailRows.reduce((sum, entry) => sum + entry.amount, 0);
       setSettleMode("single");
       setEditDraft(null);
       setPendingSettle({
-        credits: settleableRows.map((entry) => ({
+        credits: detailRows.map((entry) => ({
           id: entry.id,
           amount: entry.amount,
           currency_code: entry.currency_code as BulkSettleCurrency,
@@ -361,7 +390,7 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
       for (const details of Object.values(detailsByKey)) {
         if (details.status !== "ok") continue;
         for (const entry of details.rows) {
-          if (creditIdSet.has(entry.id) && !entry.is_future_credit) {
+          if (creditIdSet.has(entry.id)) {
             creditsById.set(entry.id, {
               id: entry.id,
               amount: entry.amount,
@@ -378,7 +407,6 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
       for (const row of selectedRows) {
         const detailRows = await fetchDetailRows(row);
         for (const entry of detailRows) {
-          if (entry.is_future_credit) continue;
           creditIdSet.add(entry.id);
           creditsById.set(entry.id, {
             id: entry.id,
@@ -483,7 +511,7 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
       const rowByCreditId = new Map<string, BigBookVendorActorOutstandingRow>();
 
       for (const row of rows) {
-        const cacheKey = detailCacheKey(row, detailFilters);
+        const cacheKey = detailCacheKey(row, detailFilters, creditKind);
         const details = detailsByKey[cacheKey];
         if (details?.status !== "ok") continue;
         for (const entry of details.rows) {
@@ -634,6 +662,94 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
     }
   }
 
+  async function prepareActualizeFromRow(row: BigBookVendorActorOutstandingRow) {
+    if (!isFutureKind) return;
+    setActualizeError(null);
+    setActualizeMessage(null);
+    setRowActualizeLoadingKey(row.row_key);
+    try {
+      const detailRows = await fetchDetailRows(row);
+      if (!detailRows.length) {
+        setActualizeError("No open Future Credits found for this vendor row.");
+        return;
+      }
+      setPendingActualize({
+        credits: detailRows.map((entry) => ({
+          id: entry.id,
+          expected_updated_at: entry.updated_at,
+          explanation: entry.explanation,
+          amount: entry.amount
+        })),
+        currency: row.currency,
+        label: `${row.vendor_name} · Actor ${row.actor_display_name}`
+      });
+    } catch (error) {
+      setActualizeError(
+        error instanceof Error ? error.message : "Failed to load Future Credits to actualize."
+      );
+    } finally {
+      setRowActualizeLoadingKey(null);
+    }
+  }
+
+  function prepareActualizeFromEntry(entry: BigBookVendorActorOutstandingEntry) {
+    if (!isFutureKind) return;
+    setActualizeError(null);
+    setActualizeMessage(null);
+    setPendingActualize({
+      credits: [
+        {
+          id: entry.id,
+          expected_updated_at: entry.updated_at,
+          explanation: entry.explanation,
+          amount: entry.amount
+        }
+      ],
+      currency: entry.currency_code,
+      label: entry.explanation
+    });
+  }
+
+  async function submitActualize() {
+    if (!pendingActualize) return;
+    setActualizeSubmitting(true);
+    setActualizeError(null);
+    try {
+      for (const credit of pendingActualize.credits) {
+        const response = await secureFetch("/api/big-book/entries/actualize", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: credit.id,
+            expected_updated_at: credit.expected_updated_at,
+            actualized: true
+          })
+        });
+        if (handleUnauthorizedResponse(response)) return;
+        const data = await response.json();
+        if (!response.ok) {
+          setActualizeError(extractApiError(data.error, "Failed to actualize Future Credit."));
+          return;
+        }
+      }
+      setActualizeMessage(
+        pendingActualize.credits.length === 1
+          ? "Future Credit actualized to Credit."
+          : `Actualized ${pendingActualize.credits.length} Future Credits to Credit.`
+      );
+      setPendingActualize(null);
+      setSelectedRowKeys(new Set());
+      setSelectedCreditIds(new Set());
+      setDetailsByKey({});
+      setExpandedKeys(new Set());
+      onSettled?.();
+    } catch {
+      setActualizeError("Failed to actualize Future Credit due to a network error.");
+    } finally {
+      setActualizeSubmitting(false);
+    }
+  }
+
   // Prefer unique open-credit count so parent+child sync does not double-count.
   const selectedCount = useMemo(() => {
     if (selectedCreditIds.size > 0) return selectedCreditIds.size;
@@ -641,13 +757,13 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
     let pending = 0;
     for (const row of rows) {
       if (!selectedRowKeys.has(row.row_key)) continue;
-      const cacheKey = detailCacheKey(row, detailFilters);
+      const cacheKey = detailCacheKey(row, detailFilters, creditKind);
       const details = detailsByKey[cacheKey];
       if (details?.status === "ok") continue;
       pending += row.open_credit_count;
     }
     return pending;
-  }, [selectedCreditIds, selectedRowKeys, rows, detailFilters, detailsByKey]);
+  }, [selectedCreditIds, selectedRowKeys, rows, detailFilters, detailsByKey, creditKind]);
 
   return (
     <div className="mt-4 space-y-3">
@@ -671,8 +787,14 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
         {settleMessage ? (
           <p className="text-sm text-[rgb(var(--success))]">{settleMessage}</p>
         ) : null}
+        {actualizeMessage ? (
+          <p className="text-sm text-[rgb(var(--success))]">{actualizeMessage}</p>
+        ) : null}
         {settleError && !pendingSettle && !editDraft ? (
           <p className="text-sm text-[rgb(var(--danger))]">{settleError}</p>
+        ) : null}
+        {actualizeError && !pendingActualize ? (
+          <p className="text-sm text-[rgb(var(--danger))]">{actualizeError}</p>
         ) : null}
         {invoiceError && !invoiceSeed ? (
           <p className="text-sm text-[rgb(var(--danger))]">{invoiceError}</p>
@@ -710,13 +832,15 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
                   {sortLabel("Outstanding", "outstanding")}
                 </button>
               </th>
-              <th className="px-3 py-2">Open Credits</th>
+              <th className="px-3 py-2">
+                {isFutureKind ? "Open Future Credits" : "Open Credits"}
+              </th>
               <th className="px-3 py-2 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {sortedRows.map((row, index) => {
-              const cacheKey = detailCacheKey(row, detailFilters);
+              const cacheKey = detailCacheKey(row, detailFilters, creditKind);
               const expanded = expandedKeys.has(cacheKey);
               const details = detailsByKey[cacheKey];
               const detailIds =
@@ -735,8 +859,10 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
                   details={details}
                   checkState={checkState}
                   selectedCreditIds={selectedCreditIds}
+                  creditKind={creditKind}
                   settleLoading={rowSettleLoadingKey === row.row_key}
                   invoiceLoading={invoiceLoadingKey === row.row_key}
+                  actualizeLoading={rowActualizeLoadingKey === row.row_key}
                   onToggleExpand={() => toggleExpanded(row)}
                   onToggleSelected={() => void toggleRowSelected(row)}
                   onToggleCredit={(creditId) => toggleCreditSelected(row, creditId)}
@@ -745,15 +871,28 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
                   }
                   onSettleRow={() => void prepareSettleFromRow(row)}
                   onInvoiceRow={() => void prepareInvoiceFromRow(row)}
+                  onActualizeRow={() => void prepareActualizeFromRow(row)}
+                  onActualizeEntry={prepareActualizeFromEntry}
                 />
               );
             })}
             {!rows.length ? (
-              <TableEmptyState colSpan={COLUMN_COUNT} message="No open credits right now." />
+              <TableEmptyState
+                colSpan={COLUMN_COUNT}
+                message={
+                  isFutureKind ? "No open Future Credits right now." : "No open credits right now."
+                }
+              />
             ) : null}
           </tbody>
           {currencySubtotals.length ? (
-            <tfoot className="border-t border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]">
+            <tfoot
+              className={`border-t border-[rgb(var(--border))] ${
+                isFutureKind
+                  ? "bg-[rgb(var(--warning)/0.08)]"
+                  : "bg-[rgb(var(--surface-muted))]"
+              }`}
+            >
               {currencySubtotals.map((subtotal) => (
                 <tr key={subtotal.currency}>
                   <td className="px-3 py-2" aria-hidden="true" />
@@ -762,7 +901,13 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
                     Subtotal
                   </td>
                   <td className="px-3 py-2 font-medium">{subtotal.currency}</td>
-                  <td className={`px-3 py-2 font-medium ${getAmountColorClass(subtotal.outstanding)}`}>
+                  <td
+                    className={`px-3 py-2 font-medium ${
+                      isFutureKind
+                        ? WARNING_AMOUNT_CLASS
+                        : getAmountColorClass(subtotal.outstanding)
+                    }`}
+                  >
                     {formatAmount(subtotal.outstanding, {
                       minimumFractionDigits: 0,
                       maximumFractionDigits: 4
@@ -785,7 +930,7 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
             setSettleError(null);
           }
         }}
-        title="Settle open credits?"
+        title={isFutureKind ? "Settle Future Credits?" : "Settle open credits?"}
         confirmLabel="Continue to edit settlement"
         confirming={false}
         closeOnBackdrop={false}
@@ -796,7 +941,8 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
             <div className="space-y-3 text-sm">
               <p>
                 Settling <span className="font-medium">{pendingSettle.credits.length}</span> open
-                credit{pendingSettle.credits.length === 1 ? "" : "s"} for{" "}
+                {isFutureKind ? " Future Credit" : " credit"}
+                {pendingSettle.credits.length === 1 ? "" : "s"} for{" "}
                 <span className="font-medium">{pendingSettle.label}</span>.
               </p>
               <p>
@@ -868,6 +1014,43 @@ export function BigBookVendorActorOutstandingTable({ rows, detailFilters, onSett
         onSubmit={submitBulkSettleEdit}
       />
 
+      <ConfirmDialog
+        open={Boolean(pendingActualize)}
+        onOpenChange={(open) => {
+          if (!open && !actualizeSubmitting) {
+            setPendingActualize(null);
+            setActualizeError(null);
+          }
+        }}
+        title="Actualize Future Credit?"
+        confirmLabel={
+          pendingActualize && pendingActualize.credits.length > 1
+            ? `Actualize ${pendingActualize.credits.length} credits`
+            : "Actualize to Credit"
+        }
+        confirming={actualizeSubmitting}
+        closeOnBackdrop={false}
+        confirmDisabled={!pendingActualize}
+        onConfirm={() => void submitActualize()}
+        description={
+          pendingActualize ? (
+            <div className="space-y-3 text-sm">
+              <p>
+                Actualizing{" "}
+                <span className="font-medium">{pendingActualize.credits.length}</span> Future
+                Credit{pendingActualize.credits.length === 1 ? "" : "s"} for{" "}
+                <span className="font-medium">{pendingActualize.label}</span>.
+              </p>
+              <p>
+                This moves them into Outstanding Credit so the obligation itself is included in cash
+                totals. Settlements can already be recorded without actualizing.
+              </p>
+              {actualizeError ? <p className="text-[rgb(var(--danger))]">{actualizeError}</p> : null}
+            </div>
+          ) : null
+        }
+      />
+
       <BigBookInvoiceBuilderModal
         open={Boolean(invoiceSeed)}
         seed={invoiceSeed}
@@ -889,14 +1072,18 @@ function OutstandingSummaryRows({
   details,
   checkState,
   selectedCreditIds,
+  creditKind,
   settleLoading,
   invoiceLoading,
+  actualizeLoading,
   onToggleExpand,
   onToggleSelected,
   onToggleCredit,
   onSetCreditsSelected,
   onSettleRow,
-  onInvoiceRow
+  onInvoiceRow,
+  onActualizeRow,
+  onActualizeEntry
 }: {
   row: BigBookVendorActorOutstandingRow;
   index: number;
@@ -904,16 +1091,22 @@ function OutstandingSummaryRows({
   details: DetailState | undefined;
   checkState: ParentCheckState;
   selectedCreditIds: Set<string>;
+  creditKind: OutstandingCreditKind;
   settleLoading: boolean;
   invoiceLoading: boolean;
+  actualizeLoading: boolean;
   onToggleExpand: () => void;
   onToggleSelected: () => void;
   onToggleCredit: (creditId: string) => void;
   onSetCreditsSelected: (creditIds: string[], selected: boolean) => void;
   onSettleRow: () => void;
   onInvoiceRow: () => void;
+  onActualizeRow: () => void;
+  onActualizeEntry: (entry: BigBookVendorActorOutstandingEntry) => void;
 }) {
   const checkboxRef = useRef<HTMLInputElement>(null);
+  const isFutureKind = creditKind === "future";
+  const actionsBusy = settleLoading || invoiceLoading || actualizeLoading;
 
   useEffect(() => {
     if (checkboxRef.current) {
@@ -945,8 +1138,8 @@ function OutstandingSummaryRows({
             aria-expanded={expanded}
             aria-label={
               expanded
-                ? `Collapse open credits for ${row.vendor_name}`
-                : `Expand open credits for ${row.vendor_name}`
+                ? `Collapse open ${isFutureKind ? "Future Credits" : "credits"} for ${row.vendor_name}`
+                : `Expand open ${isFutureKind ? "Future Credits" : "credits"} for ${row.vendor_name}`
             }
             onClick={(event) => {
               event.stopPropagation();
@@ -960,28 +1153,23 @@ function OutstandingSummaryRows({
         <td className="px-3 py-2">{row.vendor_name}</td>
         <td className="px-3 py-2">{row.actor_display_name}</td>
         <td className="px-3 py-2">{row.currency}</td>
-        <td className={`px-3 py-2 font-medium ${getAmountColorClass(row.outstanding)}`}>
+        <td
+          className={`px-3 py-2 font-medium ${
+            isFutureKind ? WARNING_AMOUNT_CLASS : getAmountColorClass(row.outstanding)
+          }`}
+        >
           {formatAmount(row.outstanding, {
             minimumFractionDigits: 0,
             maximumFractionDigits: 4
           })}
         </td>
-        <td className="px-3 py-2">
-          <div className="space-y-0.5">
-            <div>{row.open_credit_count}</div>
-            {(row.open_future_credit_count ?? 0) > 0 ? (
-              <div className="text-xs text-[rgb(var(--warning))]">
-                {row.open_future_credit_count} future
-              </div>
-            ) : null}
-          </div>
-        </td>
+        <td className="px-3 py-2">{row.open_credit_count}</td>
         <td className="px-3 py-2 text-right">
           <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
               className="btn-secondary btn-sm"
-              disabled={settleLoading || invoiceLoading || row.open_credit_count === 0}
+              disabled={actionsBusy || row.open_credit_count === 0}
               onClick={(event) => {
                 event.stopPropagation();
                 onSettleRow();
@@ -992,7 +1180,7 @@ function OutstandingSummaryRows({
             <button
               type="button"
               className="btn-secondary btn-sm"
-              disabled={settleLoading || invoiceLoading || row.open_credit_count === 0}
+              disabled={actionsBusy || row.open_credit_count === 0}
               onClick={(event) => {
                 event.stopPropagation();
                 onInvoiceRow();
@@ -1000,17 +1188,38 @@ function OutstandingSummaryRows({
             >
               {invoiceLoading ? "Loading…" : "Create invoice"}
             </button>
+            {isFutureKind ? (
+              <button
+                type="button"
+                className="btn-secondary btn-sm !border-[rgb(var(--warning)/0.45)] !text-[rgb(var(--warning))] hover:!bg-[rgb(var(--warning)/0.12)]"
+                disabled={actionsBusy || row.open_credit_count === 0}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onActualizeRow();
+                }}
+              >
+                {actualizeLoading ? "Loading…" : "Actualize"}
+              </button>
+            ) : null}
           </div>
         </td>
       </tr>
       {expanded ? (
-        <tr className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/50">
+        <tr
+          className={`border-b border-[rgb(var(--border))] ${
+            isFutureKind
+              ? "bg-[rgb(var(--warning)/0.06)]"
+              : "bg-[rgb(var(--surface-muted))]/50"
+          }`}
+        >
           <td className="px-3 py-3" colSpan={COLUMN_COUNT}>
             <OutstandingNestedTable
               details={details}
+              creditKind={creditKind}
               selectedCreditIds={selectedCreditIds}
               onToggleCredit={onToggleCredit}
               onSetCreditsSelected={onSetCreditsSelected}
+              onActualizeEntry={onActualizeEntry}
             />
           </td>
         </tr>
@@ -1021,32 +1230,49 @@ function OutstandingSummaryRows({
 
 function OutstandingNestedTable({
   details,
+  creditKind,
   selectedCreditIds,
   onToggleCredit,
-  onSetCreditsSelected
+  onSetCreditsSelected,
+  onActualizeEntry
 }: {
   details: DetailState | undefined;
+  creditKind: OutstandingCreditKind;
   selectedCreditIds: Set<string>;
   onToggleCredit: (creditId: string) => void;
   onSetCreditsSelected: (creditIds: string[], selected: boolean) => void;
+  onActualizeEntry: (entry: BigBookVendorActorOutstandingEntry) => void;
 }) {
+  const isFutureKind = creditKind === "future";
   if (!details || details.status === "loading") {
-    return <p className="text-sm text-muted">Loading open credits…</p>;
+    return (
+      <p className="text-sm text-muted">
+        {isFutureKind ? "Loading Future Credits…" : "Loading open credits…"}
+      </p>
+    );
   }
   if (details.status === "error") {
     return <p className="text-sm text-[rgb(var(--danger))]">{details.message}</p>;
   }
   if (!details.rows.length) {
-    return <p className="text-sm text-muted">No open credits for this vendor and actor.</p>;
+    return (
+      <p className="text-sm text-muted">
+        {isFutureKind
+          ? "No open Future Credits for this vendor and actor."
+          : "No open credits for this vendor and actor."}
+      </p>
+    );
   }
 
   return (
     <OutstandingNestedTableLoaded
       rows={details.rows}
       totalCount={details.totalCount}
+      creditKind={creditKind}
       selectedCreditIds={selectedCreditIds}
       onToggleCredit={onToggleCredit}
       onSetCreditsSelected={onSetCreditsSelected}
+      onActualizeEntry={onActualizeEntry}
     />
   );
 }
@@ -1054,16 +1280,21 @@ function OutstandingNestedTable({
 function OutstandingNestedTableLoaded({
   rows,
   totalCount,
+  creditKind,
   selectedCreditIds,
   onToggleCredit,
-  onSetCreditsSelected
+  onSetCreditsSelected,
+  onActualizeEntry
 }: {
   rows: BigBookVendorActorOutstandingEntry[];
   totalCount: number;
+  creditKind: OutstandingCreditKind;
   selectedCreditIds: Set<string>;
   onToggleCredit: (creditId: string) => void;
   onSetCreditsSelected: (creditIds: string[], selected: boolean) => void;
+  onActualizeEntry: (entry: BigBookVendorActorOutstandingEntry) => void;
 }) {
+  const isFutureKind = creditKind === "future";
   const truncated = totalCount > rows.length;
   const allChildIds = rows.map((entry) => entry.id);
   const allChildrenSelected = allChildIds.every((id) => selectedCreditIds.has(id));
@@ -1080,7 +1311,8 @@ function OutstandingNestedTableLoaded({
     <div className="space-y-2">
       {truncated ? (
         <p className="text-xs text-muted">
-          Showing first {rows.length} of {totalCount} open credits.
+          Showing first {rows.length} of {totalCount} open{" "}
+          {isFutureKind ? "Future Credits" : "credits"}.
         </p>
       ) : null}
       <table className="data-table min-w-full">
@@ -1091,7 +1323,7 @@ function OutstandingNestedTableLoaded({
                 ref={selectAllRef}
                 type="checkbox"
                 className="h-4 w-4"
-                aria-label="Select all open credits in this vendor row"
+                aria-label={`Select all open ${isFutureKind ? "Future Credits" : "credits"} in this vendor row`}
                 aria-checked={
                   someChildrenSelected && !allChildrenSelected
                     ? "mixed"
@@ -1108,6 +1340,9 @@ function OutstandingNestedTableLoaded({
             <th className="px-3 py-1.5 font-medium">Amount</th>
             <th className="px-3 py-1.5 font-medium">Remark</th>
             <th className="px-3 py-1.5 font-medium">Ledger</th>
+            {isFutureKind ? (
+              <th className="px-3 py-1.5 font-medium text-right">Actions</th>
+            ) : null}
           </tr>
         </thead>
         <tbody>
@@ -1121,12 +1356,6 @@ function OutstandingNestedTableLoaded({
                     className="h-4 w-4"
                     aria-label={`Select credit ${entry.explanation}`}
                     checked={selectedCreditIds.has(entry.id)}
-                    disabled={entry.is_future_credit}
-                    title={
-                      entry.is_future_credit
-                        ? "Actualize Future Credit before selecting for settlement"
-                        : undefined
-                    }
                     onChange={() => onToggleCredit(entry.id)}
                   />
                 </td>
@@ -1146,7 +1375,7 @@ function OutstandingNestedTableLoaded({
                 <td className="px-3 py-1.5">
                   <div className="space-y-1">
                     <div>{entry.explanation}</div>
-                    {entry.is_future_credit ? (
+                    {isFutureKind ? (
                       <span className="inline-flex rounded bg-[rgb(var(--warning)/0.18)] px-2 py-0.5 text-xs font-medium text-[rgb(var(--warning))]">
                         Future Credit
                       </span>
@@ -1176,6 +1405,20 @@ function OutstandingNestedTableLoaded({
                     View in ledger
                   </Link>
                 </td>
+                {isFutureKind ? (
+                  <td className="px-3 py-1.5 text-right">
+                    <button
+                      type="button"
+                      className="btn-secondary btn-sm !border-[rgb(var(--warning)/0.45)] !text-[rgb(var(--warning))] hover:!bg-[rgb(var(--warning)/0.12)]"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onActualizeEntry(entry);
+                      }}
+                    >
+                      Actualize
+                    </button>
+                  </td>
+                ) : null}
               </tr>
             );
           })}

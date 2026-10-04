@@ -24,6 +24,7 @@ type Payload = {
     currency_code: "MYR";
     remark: string | null;
     entry_type_id: string | null;
+    updated_at: string;
     business_ledger_types: { name: string };
   }>;
   error: null;
@@ -94,6 +95,7 @@ describe("getBigBookVendorActorOutstandingDebtEntries", () => {
           currency_code: "MYR",
           remark: null,
           entry_type_id: "33333333-3333-4333-8333-333333333333",
+          updated_at: "2026-09-01T10:00:00.000Z",
           business_ledger_types: { name: "Float" }
         }
       ],
@@ -127,7 +129,8 @@ describe("getBigBookVendorActorOutstandingDebtEntries", () => {
         amount: 8100,
         currency_code: "MYR",
         remark: null,
-        is_future_credit: false
+        is_future_credit: false,
+        updated_at: "2026-09-01T10:00:00.000Z"
       }
     ]);
     expect(result.totalCount).toBe(1);

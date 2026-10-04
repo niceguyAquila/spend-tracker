@@ -68,7 +68,8 @@ describe("big book vendor-actor outstanding entries route", () => {
       actorId: ACTOR_ID,
       currency: "MYR",
       dateFrom: "2026-01-01",
-      dateTo: "2026-01-31"
+      dateTo: "2026-01-31",
+      futureOnly: false
     });
   });
 
@@ -102,9 +103,28 @@ describe("big book vendor-actor outstanding entries route", () => {
       actorId: ACTOR_ID,
       currency: "MYR",
       dateFrom: undefined,
-      dateTo: undefined
+      dateTo: undefined,
+      futureOnly: false
     });
     expect(data.totalCount).toBe(1);
     expect(data.rows).toHaveLength(1);
+  });
+
+  it("forwards creditKind=future as futureOnly", async () => {
+    const { GET } = await import("@/app/api/big-book/vendor-actor-outstanding/entries/route");
+    const request = new Request(
+      `https://app.localhost/api/big-book/vendor-actor-outstanding/entries?actorId=${ACTOR_ID}&currency=MYR&vendorId=none&creditKind=future`
+    );
+
+    const response = await GET(request);
+    expect(response.status).toBe(200);
+    expect(getBigBookVendorActorOutstandingEntriesMock).toHaveBeenCalledWith({
+      vendorId: null,
+      actorId: ACTOR_ID,
+      currency: "MYR",
+      dateFrom: undefined,
+      dateTo: undefined,
+      futureOnly: true
+    });
   });
 });

@@ -1943,6 +1943,7 @@ export async function getBigBookVendorActorOutstanding(filters?: {
       `
       )
       .eq("is_credit", true)
+      .eq("is_future_credit", false)
       .is("credit_settled_at", null)
       .order("created_at", { ascending: false })
       .range(offset, offset + pageSize - 1);
@@ -1986,9 +1987,160 @@ export async function getBigBookVendorActorOutstanding(filters?: {
         vendor_type_name: vendorType?.name ?? null,
         actor_code: (actor?.actor_code ?? "A") as "A" | "B",
         actor_display_name: actor?.display_name ?? "Unknown Actor",
-        is_future_credit: Boolean(row.is_future_credit)
+        is_future_credit: false
       };
-    })
+    }),
+    { futureOnly: false }
+  );
+}
+
+export async function getBigBookVendorActorFutureOutstanding(filters?: {
+  actorId?: string[];
+  vendorId?: string[];
+  vendorTypeId?: string[];
+  currencyCode?: Array<BigBookVendorActorOutstandingRow["currency"]>;
+  dateFrom?: string;
+  dateTo?: string;
+}): Promise<BigBookVendorActorOutstandingRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await tryRpc<
+    Array<{
+      vendor_id: string | null;
+      vendor_name: string;
+      vendor_type_id: string | null;
+      vendor_type_name: string;
+      actor_id: string;
+      actor_code: "A" | "B";
+      actor_display_name: string;
+      currency: BigBookVendorActorOutstandingRow["currency"];
+      outstanding: number;
+      open_credit_count: number;
+      open_future_credit_count?: number;
+    }>
+  >(supabase, "get_big_book_vendor_actor_future_outstanding", {
+    p_actor_ids: toRpcArray(filters?.actorId),
+    p_vendor_ids: toRpcArray(filters?.vendorId),
+    p_vendor_type_ids: toRpcArray(filters?.vendorTypeId),
+    p_currency_codes: toRpcArray(filters?.currencyCode),
+    p_date_from: filters?.dateFrom || null,
+    p_date_to: filters?.dateTo || null
+  });
+
+  if (error && !isMissingRpcError(error)) throw error;
+
+  if (!error && data) {
+    return (data as Array<{
+      vendor_id: string | null;
+      vendor_name: string;
+      vendor_type_id: string | null;
+      vendor_type_name: string;
+      actor_id: string;
+      actor_code: "A" | "B";
+      actor_display_name: string;
+      currency: BigBookVendorActorOutstandingRow["currency"];
+      outstanding: number;
+      open_credit_count: number;
+      open_future_credit_count?: number;
+    }>).map((row) => {
+      const vendorKey = row.vendor_id ?? "none";
+      const openCount = Number(row.open_credit_count);
+      return {
+        row_key: `${vendorKey}:${row.actor_id}:${row.currency}`,
+        vendor_id: row.vendor_id,
+        vendor_name: row.vendor_name,
+        vendor_type_id: row.vendor_type_id,
+        vendor_type_name: row.vendor_type_name,
+        actor_id: row.actor_id,
+        actor_code: row.actor_code,
+        actor_display_name: row.actor_display_name,
+        currency: row.currency,
+        outstanding: Number(row.outstanding),
+        open_credit_count: openCount,
+        open_future_credit_count: Number(row.open_future_credit_count ?? openCount)
+      };
+    });
+  }
+
+  const pageSize = 1000;
+  let offset = 0;
+
+  type CreditScanRow = {
+    id: string;
+    responsible_actor_id: string;
+    vendor_id: string | null;
+    vendor_type_id: string | null;
+    currency_code: BigBookVendorActorOutstandingRow["currency"];
+    amount: number | string;
+    is_future_credit: boolean | null;
+    business_ledger_vendors: { id: string; name: string } | { id: string; name: string }[] | null;
+    business_ledger_vendor_types: { id: string; name: string } | { id: string; name: string }[] | null;
+    big_book_actors:
+      | { id: string; actor_code: "A" | "B"; display_name: string }
+      | { id: string; actor_code: "A" | "B"; display_name: string }[]
+      | null;
+  };
+
+  const creditRows: CreditScanRow[] = [];
+  while (true) {
+    let query = supabase
+      .from("business_ledger_entries")
+      .select(
+        `
+        id, responsible_actor_id, vendor_id, vendor_type_id, currency_code, amount, is_future_credit,
+        business_ledger_vendors(id, name),
+        business_ledger_vendor_types(id, name),
+        big_book_actors(id, actor_code, display_name)
+      `
+      )
+      .eq("is_credit", true)
+      .eq("is_future_credit", true)
+      .is("credit_settled_at", null)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + pageSize - 1);
+
+    query = applyBigBookEntryFilters(query, {
+      actorId: filters?.actorId,
+      vendorId: filters?.vendorId,
+      vendorTypeId: filters?.vendorTypeId,
+      currencyCode: filters?.currencyCode,
+      dateFrom: filters?.dateFrom,
+      dateTo: filters?.dateTo
+    });
+
+    const { data: batchData, error: batchError } = await query;
+    if (batchError) throw batchError;
+    const batch = (batchData ?? []) as CreditScanRow[];
+    creditRows.push(...batch);
+    if (batch.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  return aggregateVendorActorOutstanding(
+    creditRows.map((row) => {
+      const vendor = Array.isArray(row.business_ledger_vendors)
+        ? row.business_ledger_vendors[0]
+        : row.business_ledger_vendors;
+      const vendorType = Array.isArray(row.business_ledger_vendor_types)
+        ? row.business_ledger_vendor_types[0]
+        : row.business_ledger_vendor_types;
+      const actor = Array.isArray(row.big_book_actors)
+        ? row.big_book_actors[0]
+        : row.big_book_actors;
+      return {
+        id: row.id,
+        responsible_actor_id: row.responsible_actor_id,
+        vendor_id: row.vendor_id,
+        vendor_type_id: row.vendor_type_id,
+        currency_code: row.currency_code,
+        amount: Number(row.amount),
+        vendor_name: vendor?.name ?? null,
+        vendor_type_name: vendorType?.name ?? null,
+        actor_code: (actor?.actor_code ?? "A") as "A" | "B",
+        actor_display_name: actor?.display_name ?? "Unknown Actor",
+        is_future_credit: true
+      };
+    }),
+    { futureOnly: true }
   );
 }
 
@@ -2000,20 +2152,24 @@ export async function getBigBookVendorActorOutstandingEntries(params: {
   currency: BigBookVendorActorOutstandingRow["currency"];
   dateFrom?: string;
   dateTo?: string;
+  /** When true, only Future Credit. When false/omitted, only actualized Credit. */
+  futureOnly?: boolean;
 }): Promise<BigBookVendorActorOutstandingEntriesResult> {
   const supabase = await createClient();
   const limit = BIG_BOOK_VENDOR_ACTOR_OUTSTANDING_ENTRIES_LIMIT;
+  const futureOnly = Boolean(params.futureOnly);
 
   let query = supabase
     .from("business_ledger_entries")
     .select(
       `
-      id, entry_date, entry_direction, entry_type_id, explanation, amount, currency_code, remark, is_future_credit,
+      id, entry_date, entry_direction, entry_type_id, explanation, amount, currency_code, remark, is_future_credit, updated_at,
       business_ledger_types(name)
     `,
       { count: "exact" }
     )
     .eq("is_credit", true)
+    .eq("is_future_credit", futureOnly)
     .is("credit_settled_at", null)
     .eq("responsible_actor_id", params.actorId)
     .eq("currency_code", params.currency);
@@ -2046,7 +2202,8 @@ export async function getBigBookVendorActorOutstandingEntries(params: {
       amount: Math.abs(Number(row.amount)),
       currency_code: row.currency_code,
       remark: row.remark ?? null,
-      is_future_credit: Boolean(row.is_future_credit)
+      is_future_credit: Boolean(row.is_future_credit),
+      updated_at: row.updated_at
     };
   });
 
@@ -2161,7 +2318,7 @@ export async function getBigBookVendorActorOutstandingDebtEntries(params: {
     .from("business_ledger_entries")
     .select(
       `
-      id, entry_date, entry_direction, entry_type_id, explanation, amount, currency_code, remark,
+      id, entry_date, entry_direction, entry_type_id, explanation, amount, currency_code, remark, updated_at,
       business_ledger_types(name)
     `,
       { count: "exact" }
@@ -2203,7 +2360,8 @@ export async function getBigBookVendorActorOutstandingDebtEntries(params: {
       amount: Math.abs(Number(row.amount)),
       currency_code: row.currency_code,
       remark: row.remark ?? null,
-      is_future_credit: false
+      is_future_credit: false,
+      updated_at: row.updated_at
     };
   });
 

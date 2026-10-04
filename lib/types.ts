@@ -162,7 +162,7 @@ export type BigBookSettlementTargetRef = {
   vendor_name: string | null;
   /** True when the settlement target is a debt obligation (pay outflow). */
   is_debt: boolean;
-  /** True when the settlement target is Future Credit (must actualize before settle). */
+  /** True when the settlement target is Future Credit (still settleable; excluded from cash totals until actualized). */
   is_future_credit: boolean;
   credit_status: BigBookCreditStatus | null;
   credit_settled_at: string | null;
@@ -305,7 +305,10 @@ export type BigBookVendorActorOutstandingRow = {
   currency: BigBookCashflowCurrency;
   outstanding: number;
   open_credit_count: number;
-  /** Subset of open_credit_count that are Future Credit (not yet actualized). */
+  /**
+   * For Future Credit outstanding rows this equals open_credit_count.
+   * For actualized Credit outstanding rows this is always 0 (Future is aggregated separately).
+   */
   open_future_credit_count: number;
 };
 
@@ -337,6 +340,8 @@ export type BigBookVendorActorOutstandingEntry = {
   currency_code: BigBookCashflowCurrency;
   remark: string | null;
   is_future_credit: boolean;
+  /** Optimistic-lock timestamp for Actualize / settle mutations. */
+  updated_at: string;
 };
 
 export type BigBookVendorActorOutstandingEntriesResult = {

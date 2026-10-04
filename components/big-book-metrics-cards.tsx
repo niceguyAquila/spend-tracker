@@ -7,8 +7,7 @@ import type {
   BigBookVendorActorOutstandingDebtRow,
   BigBookVendorActorOutstandingRow
 } from "@/lib/types";
-import { BigBookVendorActorOutstandingTable } from "@/components/big-book-vendor-actor-outstanding-table";
-import { BigBookVendorActorOutstandingDebtTable } from "@/components/big-book-vendor-actor-outstanding-debt-table";
+import { BigBookOutstandingTabs } from "@/components/big-book-outstanding-tabs";
 import { formatAmount, getAmountColorClass } from "@/lib/display-format";
 import { sumOutstandingByCurrency } from "@/lib/big-book/debt";
 
@@ -16,28 +15,36 @@ export type BigBookMetricsBundle = {
   actorMetrics: BigBookActorCurrencyMetrics[];
   actorPocketMetrics: BigBookActorPocketMetrics[];
   vendorActorOutstanding: BigBookVendorActorOutstandingRow[];
+  vendorActorOutstandingFuture: BigBookVendorActorOutstandingRow[];
   vendorActorOutstandingDebt: BigBookVendorActorOutstandingDebtRow[];
 };
 
 const SUPPORTED_CURRENCIES: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR", "USDT", "TRX"];
 const DEBT_AMOUNT_CLASS = "text-[rgb(var(--danger))]";
+const WARNING_AMOUNT_CLASS = "text-[rgb(var(--warning))]";
 
 function TotalsBox({
   label,
   value,
   breakdown,
-  forceNegativeColor
+  forceNegativeColor,
+  forceWarningColor
 }: {
   label: string;
   value: number;
   breakdown?: Array<{ label: string; value: number }>;
   forceNegativeColor?: boolean;
+  forceWarningColor?: boolean;
 }) {
-  const valueClass = forceNegativeColor
+  const valueClass = forceWarningColor
     ? value !== 0
-      ? DEBT_AMOUNT_CLASS
+      ? WARNING_AMOUNT_CLASS
       : "text-muted"
-    : getAmountColorClass(value);
+    : forceNegativeColor
+      ? value !== 0
+        ? DEBT_AMOUNT_CLASS
+        : "text-muted"
+      : getAmountColorClass(value);
   return (
     <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2">
       <p className="text-xs uppercase text-[rgb(var(--text-muted))]">{label}</p>
@@ -51,11 +58,15 @@ function TotalsBox({
               <span>{item.label}</span>
               <span
                 className={
-                  forceNegativeColor
+                  forceWarningColor
                     ? item.value !== 0
-                      ? DEBT_AMOUNT_CLASS
+                      ? WARNING_AMOUNT_CLASS
                       : "text-muted"
-                    : getAmountColorClass(item.value)
+                    : forceNegativeColor
+                      ? item.value !== 0
+                        ? DEBT_AMOUNT_CLASS
+                        : "text-muted"
+                      : getAmountColorClass(item.value)
                 }
               >
                 {formatAmount(item.value, { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
@@ -72,10 +83,7 @@ export function BigBookMetricsSkeleton() {
   return (
     <div className="space-y-4" aria-busy="true">
       <section className="card h-72 animate-pulse bg-[rgb(var(--surface-muted))]" />
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <section className="card h-40 min-w-0 animate-pulse bg-[rgb(var(--surface-muted))]" />
-        <section className="card h-40 min-w-0 animate-pulse bg-[rgb(var(--surface-muted))]" />
-      </div>
+      <section className="card h-56 animate-pulse bg-[rgb(var(--surface-muted))]" />
     </div>
   );
 }
@@ -84,12 +92,14 @@ export function BigBookMetricsCardsView({
   actorCurrencyMetrics,
   actorPocketMetrics: _actorPocketMetrics,
   vendorActorOutstanding,
+  vendorActorOutstandingFuture,
   vendorActorOutstandingDebt,
   onOutstandingSettled
 }: {
   actorCurrencyMetrics: BigBookActorCurrencyMetrics[];
   actorPocketMetrics: BigBookActorPocketMetrics[];
   vendorActorOutstanding: BigBookVendorActorOutstandingRow[];
+  vendorActorOutstandingFuture: BigBookVendorActorOutstandingRow[];
   vendorActorOutstandingDebt: BigBookVendorActorOutstandingDebtRow[];
   onOutstandingSettled?: () => void;
 }) {
@@ -111,6 +121,18 @@ export function BigBookMetricsCardsView({
         }))
       ),
     [vendorActorOutstanding]
+  );
+
+  const futureCreditTotals = useMemo(
+    () =>
+      sumOutstandingByCurrency(
+        vendorActorOutstandingFuture.map((row) => ({
+          currency: row.currency,
+          outstanding: row.outstanding,
+          openCount: row.open_credit_count
+        }))
+      ),
+    [vendorActorOutstandingFuture]
   );
 
   const debtTotals = useMemo(
@@ -164,10 +186,11 @@ export function BigBookMetricsCardsView({
         <div className="mt-6 rounded-lg border border-[rgb(var(--border))] border-l-[3px] border-l-[rgb(var(--primary))] bg-[rgb(var(--surface-muted))]/70 p-4">
           <h3 className="text-base font-semibold">Outstanding Credit & Debt Totals</h3>
           <p className="mt-1 text-sm text-muted">
-            Open (unsettled) credit and debt balances by currency. Credit amounts use the usual signed
-            color; debt amounts are shown in red as outflow liability.
+            Open (unsettled) balances by currency. Credit uses the usual signed color; Future Credit is
+            shown in warning amber (excluded from cash totals until actualized, but still settleable);
+            debt is red as outflow liability.
           </p>
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
             <article className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-4">
               <p className="font-semibold">Total outstanding credit</p>
               <div className="mt-3 space-y-2 text-sm">
@@ -181,6 +204,23 @@ export function BigBookMetricsCardsView({
                   ))
                 ) : (
                   <p className="text-sm text-muted">No open credits.</p>
+                )}
+              </div>
+            </article>
+            <article className="rounded-md border border-[rgb(var(--warning)/0.45)] bg-[rgb(var(--warning)/0.08)] p-4">
+              <p className="font-semibold text-[rgb(var(--warning))]">Total outstanding Future Credit</p>
+              <div className="mt-3 space-y-2 text-sm">
+                {futureCreditTotals.length ? (
+                  futureCreditTotals.map((total) => (
+                    <TotalsBox
+                      key={total.currency}
+                      label={`${total.currency} · ${total.openCount} open`}
+                      value={total.outstanding}
+                      forceWarningColor
+                    />
+                  ))
+                ) : (
+                  <p className="text-sm text-muted">No open Future Credits.</p>
                 )}
               </div>
             </article>
@@ -205,32 +245,13 @@ export function BigBookMetricsCardsView({
         </div>
       </section>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <section className="card min-w-0 overflow-hidden">
-          <h2 className="text-lg font-semibold">Outstanding Credit by Vendor and Actor (All Time)</h2>
-          <p className="mt-1 text-sm text-muted">
-            Total of open credits (not yet marked settled) by vendor and actor, per currency. Settle one
-            vendor row or multi-select rows/credits for bulk settlement.
-          </p>
-          <BigBookVendorActorOutstandingTable
-            rows={vendorActorOutstanding}
-            onSettled={onOutstandingSettled}
-          />
-        </section>
-
-        <section className="card min-w-0 overflow-hidden">
-          <h2 className="text-lg font-semibold">Outstanding Debt by Grouped Transaction and Actor (All Time)</h2>
-          <p className="mt-1 text-sm text-muted">
-            Total of open debts (we owe the counterparty, not yet settled) by grouped transaction and
-            actor, per currency. Ungrouped debts appear as their own row. Amounts are shown in red.
-            Record payment creates an Out ledger entry that hits totals and can close the debt.
-          </p>
-          <BigBookVendorActorOutstandingDebtTable
-            rows={vendorActorOutstandingDebt}
-            onSettled={onOutstandingSettled}
-          />
-        </section>
-      </div>
+      <BigBookOutstandingTabs
+        title="Outstanding by Vendor / Group and Actor (All Time)"
+        vendorActorOutstanding={vendorActorOutstanding}
+        vendorActorOutstandingFuture={vendorActorOutstandingFuture}
+        vendorActorOutstandingDebt={vendorActorOutstandingDebt}
+        onChanged={onOutstandingSettled}
+      />
     </>
   );
 }
@@ -248,6 +269,7 @@ function BigBookMetricsFromPromise({
       actorCurrencyMetrics={metrics.actorMetrics}
       actorPocketMetrics={metrics.actorPocketMetrics}
       vendorActorOutstanding={metrics.vendorActorOutstanding}
+      vendorActorOutstandingFuture={metrics.vendorActorOutstandingFuture}
       vendorActorOutstandingDebt={metrics.vendorActorOutstandingDebt}
       onOutstandingSettled={onOutstandingSettled}
     />
@@ -273,6 +295,7 @@ export function BigBookMetricsSection({
         actorCurrencyMetrics={override.actorMetrics}
         actorPocketMetrics={override.actorPocketMetrics}
         vendorActorOutstanding={override.vendorActorOutstanding}
+        vendorActorOutstandingFuture={override.vendorActorOutstandingFuture}
         vendorActorOutstandingDebt={override.vendorActorOutstandingDebt}
         onOutstandingSettled={onOutstandingSettled}
       />

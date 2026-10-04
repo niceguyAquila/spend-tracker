@@ -15,7 +15,8 @@ export async function GET(request: Request) {
     currency: searchParams.get("currency") ?? "",
     vendorId: searchParams.get("vendorId") ?? "none",
     dateFrom: searchParams.get("dateFrom") ?? "",
-    dateTo: searchParams.get("dateTo") ?? ""
+    dateTo: searchParams.get("dateTo") ?? "",
+    creditKind: searchParams.get("creditKind") ?? undefined
   });
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
@@ -27,7 +28,8 @@ export async function GET(request: Request) {
       actorId: parsed.data.actorId,
       currency: parsed.data.currency,
       dateFrom: parsed.data.dateFrom,
-      dateTo: parsed.data.dateTo
+      dateTo: parsed.data.dateTo,
+      futureOnly: parsed.data.creditKind === "future"
     });
     return NextResponse.json(result);
   } catch (error) {

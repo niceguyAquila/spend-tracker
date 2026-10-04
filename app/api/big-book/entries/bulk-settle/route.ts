@@ -198,15 +198,6 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-    if (credit.is_future_credit) {
-      return NextResponse.json(
-        {
-          error:
-            "Future Credit must be actualized before settlement. Actualize selected credits and try again."
-        },
-        { status: 400 }
-      );
-    }
     if (credit.settles_entry_id) {
       return NextResponse.json(
         { error: "Settlement targets cannot themselves be settlements." },
