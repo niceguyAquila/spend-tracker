@@ -28,11 +28,9 @@ import {
   type ParentCheckState
 } from "@/lib/big-book/outstanding-parent-check-state";
 
-const COLUMN_COUNT = 9;
 const CURRENCY_ORDER = ["IDR", "MYR", "USDT", "TRX"] as const;
-const WARNING_AMOUNT_CLASS = "text-[rgb(var(--warning))]";
 
-type SortKey = "vendor_name" | "actor_display_name" | "currency" | "outstanding";
+type SortKey = "vendor_name" | "type_name" | "actor_display_name" | "currency" | "outstanding";
 export type OutstandingCreditKind = "credit" | "future";
 
 export type OutstandingDetailFilters = {
@@ -81,8 +79,8 @@ function compareRows(
     const bIdx = CURRENCY_ORDER.indexOf(b.currency);
     if (aIdx !== bIdx) return (aIdx - bIdx) * dir;
   } else {
-    const left = a[sortKey];
-    const right = b[sortKey];
+    const left = a[sortKey] ?? "";
+    const right = b[sortKey] ?? "";
     if (left !== right) return left.localeCompare(right) * dir;
   }
 
@@ -115,6 +113,7 @@ export function BigBookVendorActorOutstandingTable({
   creditKind = "credit"
 }: Props) {
   const isFutureKind = creditKind === "future";
+  const columnCount = isFutureKind ? 8 : 9;
   const [sortKey, setSortKey] = useState<SortKey>("currency");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set());
@@ -186,8 +185,12 @@ export function BigBookVendorActorOutstandingTable({
       const params = new URLSearchParams();
       params.set("actorId", row.actor_id);
       params.set("currency", row.currency);
-      params.set("vendorId", row.vendor_id ?? "none");
       params.set("creditKind", creditKind);
+      if (isFutureKind) {
+        params.set("typeId", row.entry_type_id ?? "none");
+      } else {
+        params.set("vendorId", row.vendor_id ?? "none");
+      }
       if (detailFilters?.dateFrom) params.set("dateFrom", detailFilters.dateFrom);
       if (detailFilters?.dateTo) params.set("dateTo", detailFilters.dateTo);
 
@@ -370,7 +373,9 @@ export function BigBookVendorActorOutstandingTable({
         })),
         totalAmount,
         currency: row.currency,
-        label: `${row.vendor_name} · Actor ${row.actor_display_name}`
+        label: isFutureKind
+          ? `${row.type_name} · Actor ${row.actor_display_name}`
+          : `${row.vendor_name} · Actor ${row.actor_display_name}`
       });
     } catch (error) {
       setSettleError(error instanceof Error ? error.message : "Failed to load credits to settle.");
@@ -489,11 +494,13 @@ export function BigBookVendorActorOutstandingTable({
         return;
       }
       setInvoiceSeed({
-        vendor_name: row.vendor_name,
+        vendor_name: isFutureKind ? row.type_name : row.vendor_name,
         actor_display_name: row.actor_display_name,
         currency: row.currency,
         credits: toInvoiceCredits(detailRows),
-        label: `${row.vendor_name} · ${row.actor_display_name} · ${row.currency}`
+        label: isFutureKind
+          ? `${row.type_name} · ${row.actor_display_name} · ${row.currency}`
+          : `${row.vendor_name} · ${row.actor_display_name} · ${row.currency}`
       });
     } catch (error) {
       setInvoiceError(error instanceof Error ? error.message : "Failed to load credits for invoice.");
@@ -681,7 +688,7 @@ export function BigBookVendorActorOutstandingTable({
           amount: entry.amount
         })),
         currency: row.currency,
-        label: `${row.vendor_name} · Actor ${row.actor_display_name}`
+        label: `${row.type_name} · Actor ${row.actor_display_name}`
       });
     } catch (error) {
       setActualizeError(
@@ -802,17 +809,35 @@ export function BigBookVendorActorOutstandingTable({
       </div>
 
       <div className="overflow-x-auto">
-        <table className="data-table min-w-[980px]">
+        <table className={`data-table ${isFutureKind ? "min-w-[860px]" : "min-w-[980px]"}`}>
           <thead>
             <tr>
               <th className="w-10 px-3 py-2" aria-label="Select" />
               <th className="w-10 px-3 py-2" aria-label="Expand" />
-              <th className="px-3 py-2">Vendor Type</th>
-              <th className="px-3 py-2">
-                <button type="button" className="font-semibold" onClick={() => toggleSort("vendor_name")}>
-                  {sortLabel("Vendor (owes)", "vendor_name")}
-                </button>
-              </th>
+              {isFutureKind ? (
+                <th className="px-3 py-2">
+                  <button
+                    type="button"
+                    className="font-semibold"
+                    onClick={() => toggleSort("type_name")}
+                  >
+                    {sortLabel("Type", "type_name")}
+                  </button>
+                </th>
+              ) : (
+                <>
+                  <th className="px-3 py-2">Vendor Type</th>
+                  <th className="px-3 py-2">
+                    <button
+                      type="button"
+                      className="font-semibold"
+                      onClick={() => toggleSort("vendor_name")}
+                    >
+                      {sortLabel("Vendor (owes)", "vendor_name")}
+                    </button>
+                  </th>
+                </>
+              )}
               <th className="px-3 py-2">
                 <button
                   type="button"
@@ -878,7 +903,7 @@ export function BigBookVendorActorOutstandingTable({
             })}
             {!rows.length ? (
               <TableEmptyState
-                colSpan={COLUMN_COUNT}
+                colSpan={columnCount}
                 message={
                   isFutureKind ? "No open Future Credits right now." : "No open credits right now."
                 }
@@ -886,27 +911,17 @@ export function BigBookVendorActorOutstandingTable({
             ) : null}
           </tbody>
           {currencySubtotals.length ? (
-            <tfoot
-              className={`border-t border-[rgb(var(--border))] ${
-                isFutureKind
-                  ? "bg-[rgb(var(--warning)/0.08)]"
-                  : "bg-[rgb(var(--surface-muted))]"
-              }`}
-            >
+            <tfoot className="border-t border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]">
               {currencySubtotals.map((subtotal) => (
                 <tr key={subtotal.currency}>
                   <td className="px-3 py-2" aria-hidden="true" />
                   <td className="px-3 py-2" aria-hidden="true" />
-                  <td className="px-3 py-2 font-medium" colSpan={3}>
+                  <td className="px-3 py-2 font-medium" colSpan={isFutureKind ? 2 : 3}>
                     Subtotal
                   </td>
                   <td className="px-3 py-2 font-medium">{subtotal.currency}</td>
                   <td
-                    className={`px-3 py-2 font-medium ${
-                      isFutureKind
-                        ? WARNING_AMOUNT_CLASS
-                        : getAmountColorClass(subtotal.outstanding)
-                    }`}
+                    className={`px-3 py-2 font-medium ${getAmountColorClass(subtotal.outstanding)}`}
                   >
                     {formatAmount(subtotal.outstanding, {
                       minimumFractionDigits: 0,
@@ -1107,6 +1122,8 @@ function OutstandingSummaryRows({
   const checkboxRef = useRef<HTMLInputElement>(null);
   const isFutureKind = creditKind === "future";
   const actionsBusy = settleLoading || invoiceLoading || actualizeLoading;
+  const rowLabel = isFutureKind ? row.type_name : row.vendor_name;
+  const columnCount = isFutureKind ? 8 : 9;
 
   useEffect(() => {
     if (checkboxRef.current) {
@@ -1122,7 +1139,7 @@ function OutstandingSummaryRows({
             ref={checkboxRef}
             type="checkbox"
             className="h-4 w-4"
-            aria-label={`Select outstanding for ${row.vendor_name}`}
+            aria-label={`Select outstanding for ${rowLabel}`}
             aria-checked={
               checkState === "indeterminate" ? "mixed" : checkState === "checked"
             }
@@ -1138,8 +1155,8 @@ function OutstandingSummaryRows({
             aria-expanded={expanded}
             aria-label={
               expanded
-                ? `Collapse open ${isFutureKind ? "Future Credits" : "credits"} for ${row.vendor_name}`
-                : `Expand open ${isFutureKind ? "Future Credits" : "credits"} for ${row.vendor_name}`
+                ? `Collapse open ${isFutureKind ? "Future Credits" : "credits"} for ${rowLabel}`
+                : `Expand open ${isFutureKind ? "Future Credits" : "credits"} for ${rowLabel}`
             }
             onClick={(event) => {
               event.stopPropagation();
@@ -1149,15 +1166,17 @@ function OutstandingSummaryRows({
             {expanded ? "▾" : "▸"}
           </button>
         </td>
-        <td className="px-3 py-2">{row.vendor_type_name}</td>
-        <td className="px-3 py-2">{row.vendor_name}</td>
+        {isFutureKind ? (
+          <td className="px-3 py-2">{row.type_name}</td>
+        ) : (
+          <>
+            <td className="px-3 py-2">{row.vendor_type_name}</td>
+            <td className="px-3 py-2">{row.vendor_name}</td>
+          </>
+        )}
         <td className="px-3 py-2">{row.actor_display_name}</td>
         <td className="px-3 py-2">{row.currency}</td>
-        <td
-          className={`px-3 py-2 font-medium ${
-            isFutureKind ? WARNING_AMOUNT_CLASS : getAmountColorClass(row.outstanding)
-          }`}
-        >
+        <td className={`px-3 py-2 font-medium ${getAmountColorClass(row.outstanding)}`}>
           {formatAmount(row.outstanding, {
             minimumFractionDigits: 0,
             maximumFractionDigits: 4
@@ -1205,14 +1224,8 @@ function OutstandingSummaryRows({
         </td>
       </tr>
       {expanded ? (
-        <tr
-          className={`border-b border-[rgb(var(--border))] ${
-            isFutureKind
-              ? "bg-[rgb(var(--warning)/0.06)]"
-              : "bg-[rgb(var(--surface-muted))]/50"
-          }`}
-        >
-          <td className="px-3 py-3" colSpan={COLUMN_COUNT}>
+        <tr className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))]/50">
+          <td className="px-3 py-3" colSpan={columnCount}>
             <OutstandingNestedTable
               details={details}
               creditKind={creditKind}
