@@ -38,7 +38,7 @@ export function BigBookOutstandingTabs({
   detailFilters,
   onChanged,
   title = "Outstanding by Vendor / Group and Actor",
-  description = "Credit and Future Credit can be settled or invoiced. Credit is grouped by Vendor Type + Actor + Currency; Future Credit by ledger Type + Actor + Currency and stays out of cash totals until Actualize. Debt payments create Out ledger entries."
+  description = "Credit and Future Credit can be settled or invoiced. Both are grouped by Type + Actor + Currency; Future Credit stays out of cash totals until Actualize. Debt payments create Out ledger entries."
 }: Props) {
   const [outstandingTab, setOutstandingTab] = useState<OutstandingTabId>("credit");
 
@@ -57,12 +57,11 @@ export function BigBookOutstandingTabs({
 
       {outstandingTab === "credit" ? (
         <div className="mt-4">
-          <h3 className="text-base font-semibold">Outstanding Credit by Vendor Type and Actor</h3>
+          <h3 className="text-base font-semibold">Outstanding Credit by Type and Actor</h3>
           <p className="mt-1 text-sm text-muted">
-            Open actualized credits (not yet marked settled) by vendor type and actor, per currency. The
-            Vendor (Owes) column is the vendor-type bucket (mirroring Type on Future Credit). Expand a row
-            to see credits grouped by ledger Type with vendor names. Settle one row or multi-select for bulk
-            settlement.
+            Open actualized credits (not yet marked settled) grouped by Type + Actor + Currency. The
+            Vendor (Owes) column shows the ledger type. Expand a row for a flat list of open credits
+            (vendor name shown as line metadata). Settle one row or multi-select for bulk settlement.
           </p>
           <BigBookVendorActorOutstandingTable
             rows={vendorActorOutstanding}
