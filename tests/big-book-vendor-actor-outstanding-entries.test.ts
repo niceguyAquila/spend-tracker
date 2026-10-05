@@ -24,9 +24,11 @@ type Payload = {
     currency_code: "MYR";
     remark: string | null;
     entry_type_id: string | null;
+    vendor_id: string | null;
     is_future_credit?: boolean;
     updated_at: string;
     business_ledger_types: { name: string };
+    business_ledger_vendors: { name: string } | null;
   }>;
   error: null;
   count: number;
@@ -76,7 +78,7 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 const ACTOR_ID = "22222222-2222-4222-8222-222222222222";
-const VENDOR_ID = "77777777-7777-4777-8777-777777777777";
+const VENDOR_TYPE_ID = "88888888-8888-4888-8888-888888888888";
 
 describe("getBigBookVendorActorOutstandingEntries", () => {
   beforeEach(() => {
@@ -95,9 +97,11 @@ describe("getBigBookVendorActorOutstandingEntries", () => {
           currency_code: "MYR",
           remark: null,
           entry_type_id: "33333333-3333-4333-8333-333333333333",
+          vendor_id: null,
           is_future_credit: false,
           updated_at: "2026-09-01T10:00:00.000Z",
-          business_ledger_types: { name: "Float" }
+          business_ledger_types: { name: "Float" },
+          business_ledger_vendors: null
         }
       ],
       error: null,
@@ -106,15 +110,15 @@ describe("getBigBookVendorActorOutstandingEntries", () => {
     vi.clearAllMocks();
   });
 
-  it("looks up unassigned vendors with vendor_id IS NULL", async () => {
+  it("looks up unassigned vendor types with vendor_type_id IS NULL", async () => {
     const { getBigBookVendorActorOutstandingEntries } = await import("@/lib/db/queries");
     const result = await getBigBookVendorActorOutstandingEntries({
-      vendorId: null,
+      vendorTypeId: null,
       actorId: ACTOR_ID,
       currency: "MYR"
     });
 
-    expect(callsRef.is).toContainEqual(["vendor_id", null]);
+    expect(callsRef.is).toContainEqual(["vendor_type_id", null]);
     expect(callsRef.eq).toContainEqual(["responsible_actor_id", ACTOR_ID]);
     expect(callsRef.eq).toContainEqual(["currency_code", "MYR"]);
     expect(callsRef.eq).toContainEqual(["is_credit", true]);
@@ -127,6 +131,7 @@ describe("getBigBookVendorActorOutstandingEntries", () => {
         entry_direction: "spending",
         entry_type_id: "33333333-3333-4333-8333-333333333333",
         type_name: "Float",
+        vendor_name: "(No vendor)",
         explanation: "Open credit",
         amount: 8100,
         currency_code: "MYR",
@@ -138,18 +143,18 @@ describe("getBigBookVendorActorOutstandingEntries", () => {
     expect(result.totalCount).toBe(1);
   });
 
-  it("eq-filters a concrete vendor and optional dates", async () => {
+  it("eq-filters a concrete vendor type and optional dates", async () => {
     const { getBigBookVendorActorOutstandingEntries } = await import("@/lib/db/queries");
     await getBigBookVendorActorOutstandingEntries({
-      vendorId: VENDOR_ID,
+      vendorTypeId: VENDOR_TYPE_ID,
       actorId: ACTOR_ID,
       currency: "MYR",
       dateFrom: "2026-01-01",
       dateTo: "2026-01-31"
     });
 
-    expect(callsRef.eq).toContainEqual(["vendor_id", VENDOR_ID]);
-    expect(callsRef.is).not.toContainEqual(["vendor_id", null]);
+    expect(callsRef.eq).toContainEqual(["vendor_type_id", VENDOR_TYPE_ID]);
+    expect(callsRef.is).not.toContainEqual(["vendor_type_id", null]);
     expect(callsRef.gte).toContainEqual(["entry_date", "2026-01-01"]);
     expect(callsRef.lte).toContainEqual(["entry_date", "2026-01-31"]);
   });
@@ -166,6 +171,6 @@ describe("getBigBookVendorActorOutstandingEntries", () => {
 
     expect(callsRef.eq).toContainEqual(["is_future_credit", true]);
     expect(callsRef.eq).toContainEqual(["entry_type_id", TYPE_ID]);
-    expect(callsRef.is).not.toContainEqual(["vendor_id", null]);
+    expect(callsRef.is).not.toContainEqual(["vendor_type_id", null]);
   });
 });

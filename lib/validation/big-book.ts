@@ -518,7 +518,8 @@ export const bigBookVendorActorOutstandingEntriesQuerySchema = z
   .object({
     actorId: z.string().uuid(),
     currency: bigBookCurrencySchema,
-    vendorId: z.union([z.string().uuid(), z.literal("none")]).optional(),
+    /** Vendor type id for Credit buckets (`none` = null vendor type). */
+    vendorTypeId: z.union([z.string().uuid(), z.literal("none")]).optional(),
     /** Ledger type id for Future Credit buckets (`none` = null type). */
     typeId: z.union([z.string().uuid(), z.literal("none")]).optional(),
     dateFrom: optionalString,
@@ -537,11 +538,11 @@ export const bigBookVendorActorOutstandingEntriesQuerySchema = z
       }
       return;
     }
-    if (!value.vendorId) {
+    if (!value.vendorTypeId) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "vendorId is required for Credit outstanding detail.",
-        path: ["vendorId"]
+        message: "vendorTypeId is required for Credit outstanding detail.",
+        path: ["vendorTypeId"]
       });
     }
   });
