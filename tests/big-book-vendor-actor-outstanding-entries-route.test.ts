@@ -12,7 +12,6 @@ vi.mock("@/lib/db/queries", () => ({
 }));
 
 const ACTOR_ID = "22222222-2222-4222-8222-222222222222";
-const VENDOR_TYPE_ID = "88888888-8888-4888-8888-888888888888";
 const TYPE_ID = "55555555-5555-4555-8555-555555555555";
 
 describe("big book vendor-actor outstanding entries route", () => {
@@ -37,7 +36,7 @@ describe("big book vendor-actor outstanding entries route", () => {
     });
     const { GET } = await import("@/app/api/big-book/vendor-actor-outstanding/entries/route");
     const request = new Request(
-      `https://app.localhost/api/big-book/vendor-actor-outstanding/entries?actorId=${ACTOR_ID}&currency=MYR&vendorTypeId=none`
+      `https://app.localhost/api/big-book/vendor-actor-outstanding/entries?actorId=${ACTOR_ID}&currency=MYR&typeId=none`
     );
 
     const response = await GET(request);
@@ -48,7 +47,7 @@ describe("big book vendor-actor outstanding entries route", () => {
   it("returns 400 when actorId or currency is missing", async () => {
     const { GET } = await import("@/app/api/big-book/vendor-actor-outstanding/entries/route");
     const request = new Request(
-      "https://app.localhost/api/big-book/vendor-actor-outstanding/entries?vendorTypeId=none"
+      "https://app.localhost/api/big-book/vendor-actor-outstanding/entries?typeId=none"
     );
 
     const response = await GET(request);
@@ -56,16 +55,15 @@ describe("big book vendor-actor outstanding entries route", () => {
     expect(getBigBookVendorActorOutstandingEntriesMock).not.toHaveBeenCalled();
   });
 
-  it("maps vendorTypeId=none to a null vendor type lookup", async () => {
+  it("maps typeId=none to a null type lookup for Credit", async () => {
     const { GET } = await import("@/app/api/big-book/vendor-actor-outstanding/entries/route");
     const request = new Request(
-      `https://app.localhost/api/big-book/vendor-actor-outstanding/entries?actorId=${ACTOR_ID}&currency=MYR&vendorTypeId=none&dateFrom=2026-01-01&dateTo=2026-01-31`
+      `https://app.localhost/api/big-book/vendor-actor-outstanding/entries?actorId=${ACTOR_ID}&currency=MYR&typeId=none&dateFrom=2026-01-01&dateTo=2026-01-31`
     );
 
     const response = await GET(request);
     expect(response.status).toBe(200);
     expect(getBigBookVendorActorOutstandingEntriesMock).toHaveBeenCalledWith({
-      vendorTypeId: null,
       typeId: null,
       actorId: ACTOR_ID,
       currency: "MYR",
@@ -75,7 +73,7 @@ describe("big book vendor-actor outstanding entries route", () => {
     });
   });
 
-  it("forwards a vendor type uuid and returns the query result", async () => {
+  it("forwards a type uuid and returns the query result for Credit", async () => {
     getBigBookVendorActorOutstandingEntriesMock.mockResolvedValueOnce({
       rows: [
         {
@@ -93,7 +91,7 @@ describe("big book vendor-actor outstanding entries route", () => {
     });
     const { GET } = await import("@/app/api/big-book/vendor-actor-outstanding/entries/route");
     const request = new Request(
-      `https://app.localhost/api/big-book/vendor-actor-outstanding/entries?actorId=${ACTOR_ID}&currency=MYR&vendorTypeId=${VENDOR_TYPE_ID}`
+      `https://app.localhost/api/big-book/vendor-actor-outstanding/entries?actorId=${ACTOR_ID}&currency=MYR&typeId=${TYPE_ID}`
     );
 
     const response = await GET(request);
@@ -101,8 +99,7 @@ describe("big book vendor-actor outstanding entries route", () => {
 
     expect(response.status).toBe(200);
     expect(getBigBookVendorActorOutstandingEntriesMock).toHaveBeenCalledWith({
-      vendorTypeId: VENDOR_TYPE_ID,
-      typeId: null,
+      typeId: TYPE_ID,
       actorId: ACTOR_ID,
       currency: "MYR",
       dateFrom: undefined,
@@ -122,7 +119,6 @@ describe("big book vendor-actor outstanding entries route", () => {
     const response = await GET(request);
     expect(response.status).toBe(200);
     expect(getBigBookVendorActorOutstandingEntriesMock).toHaveBeenCalledWith({
-      vendorTypeId: null,
       typeId: TYPE_ID,
       actorId: ACTOR_ID,
       currency: "MYR",
@@ -130,6 +126,17 @@ describe("big book vendor-actor outstanding entries route", () => {
       dateTo: undefined,
       futureOnly: true
     });
+  });
+
+  it("returns 400 for Credit detail without typeId", async () => {
+    const { GET } = await import("@/app/api/big-book/vendor-actor-outstanding/entries/route");
+    const request = new Request(
+      `https://app.localhost/api/big-book/vendor-actor-outstanding/entries?actorId=${ACTOR_ID}&currency=MYR`
+    );
+
+    const response = await GET(request);
+    expect(response.status).toBe(400);
+    expect(getBigBookVendorActorOutstandingEntriesMock).not.toHaveBeenCalled();
   });
 
   it("returns 400 for Future Credit detail without typeId", async () => {

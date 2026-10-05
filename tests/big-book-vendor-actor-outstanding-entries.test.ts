@@ -78,7 +78,7 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 const ACTOR_ID = "22222222-2222-4222-8222-222222222222";
-const VENDOR_TYPE_ID = "88888888-8888-4888-8888-888888888888";
+const TYPE_ID = "55555555-5555-4555-8555-555555555555";
 
 describe("getBigBookVendorActorOutstandingEntries", () => {
   beforeEach(() => {
@@ -110,20 +110,21 @@ describe("getBigBookVendorActorOutstandingEntries", () => {
     vi.clearAllMocks();
   });
 
-  it("looks up unassigned vendor types with vendor_type_id IS NULL", async () => {
+  it("looks up unassigned types with entry_type_id IS NULL", async () => {
     const { getBigBookVendorActorOutstandingEntries } = await import("@/lib/db/queries");
     const result = await getBigBookVendorActorOutstandingEntries({
-      vendorTypeId: null,
+      typeId: null,
       actorId: ACTOR_ID,
       currency: "MYR"
     });
 
-    expect(callsRef.is).toContainEqual(["vendor_type_id", null]);
+    expect(callsRef.is).toContainEqual(["entry_type_id", null]);
     expect(callsRef.eq).toContainEqual(["responsible_actor_id", ACTOR_ID]);
     expect(callsRef.eq).toContainEqual(["currency_code", "MYR"]);
     expect(callsRef.eq).toContainEqual(["is_credit", true]);
     expect(callsRef.eq).toContainEqual(["is_future_credit", false]);
     expect(callsRef.is).toContainEqual(["credit_settled_at", null]);
+    expect(callsRef.is).not.toContainEqual(["vendor_type_id", null]);
     expect(result.rows).toEqual([
       {
         id: "11111111-1111-4111-8111-111111111111",
@@ -143,24 +144,24 @@ describe("getBigBookVendorActorOutstandingEntries", () => {
     expect(result.totalCount).toBe(1);
   });
 
-  it("eq-filters a concrete vendor type and optional dates", async () => {
+  it("eq-filters a concrete type and optional dates for Credit", async () => {
     const { getBigBookVendorActorOutstandingEntries } = await import("@/lib/db/queries");
     await getBigBookVendorActorOutstandingEntries({
-      vendorTypeId: VENDOR_TYPE_ID,
+      typeId: TYPE_ID,
       actorId: ACTOR_ID,
       currency: "MYR",
       dateFrom: "2026-01-01",
       dateTo: "2026-01-31"
     });
 
-    expect(callsRef.eq).toContainEqual(["vendor_type_id", VENDOR_TYPE_ID]);
-    expect(callsRef.is).not.toContainEqual(["vendor_type_id", null]);
+    expect(callsRef.eq).toContainEqual(["entry_type_id", TYPE_ID]);
+    expect(callsRef.is).not.toContainEqual(["entry_type_id", null]);
+    expect(callsRef.eq).not.toContainEqual(["vendor_type_id", TYPE_ID]);
     expect(callsRef.gte).toContainEqual(["entry_date", "2026-01-01"]);
     expect(callsRef.lte).toContainEqual(["entry_date", "2026-01-31"]);
   });
 
   it("filters Future Credit by type when futureOnly is true", async () => {
-    const TYPE_ID = "55555555-5555-4555-8555-555555555555";
     const { getBigBookVendorActorOutstandingEntries } = await import("@/lib/db/queries");
     await getBigBookVendorActorOutstandingEntries({
       typeId: TYPE_ID,

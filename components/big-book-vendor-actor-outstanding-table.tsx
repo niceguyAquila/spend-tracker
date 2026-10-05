@@ -31,14 +31,13 @@ import {
 const CURRENCY_ORDER = ["IDR", "MYR", "USDT", "TRX"] as const;
 
 type SortKey =
-  | "vendor_type_name"
   | "type_name"
   | "actor_display_name"
   | "currency"
   | "outstanding";
 
-function primaryGroupLabel(row: BigBookVendorActorOutstandingRow, isFutureKind: boolean) {
-  return isFutureKind ? row.type_name : row.vendor_type_name;
+function primaryGroupLabel(row: BigBookVendorActorOutstandingRow) {
+  return row.type_name;
 }
 export type OutstandingCreditKind = "credit" | "future";
 
@@ -123,7 +122,7 @@ export function BigBookVendorActorOutstandingTable({
 }: Props) {
   const isFutureKind = creditKind === "future";
   const columnCount = 8;
-  const primarySortKey: SortKey = isFutureKind ? "type_name" : "vendor_type_name";
+  const primarySortKey: SortKey = "type_name";
   const [sortKey, setSortKey] = useState<SortKey>("currency");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set());
@@ -196,11 +195,7 @@ export function BigBookVendorActorOutstandingTable({
       params.set("actorId", row.actor_id);
       params.set("currency", row.currency);
       params.set("creditKind", creditKind);
-      if (isFutureKind) {
-        params.set("typeId", row.entry_type_id ?? "none");
-      } else {
-        params.set("vendorTypeId", row.vendor_type_id ?? "none");
-      }
+      params.set("typeId", row.entry_type_id ?? "none");
       if (detailFilters?.dateFrom) params.set("dateFrom", detailFilters.dateFrom);
       if (detailFilters?.dateTo) params.set("dateTo", detailFilters.dateTo);
 
@@ -383,9 +378,7 @@ export function BigBookVendorActorOutstandingTable({
         })),
         totalAmount,
         currency: row.currency,
-        label: isFutureKind
-          ? `${row.type_name} · Actor ${row.actor_display_name}`
-          : `${row.vendor_type_name} · Actor ${row.actor_display_name}`
+        label: `${row.type_name} · Actor ${row.actor_display_name}`
       });
     } catch (error) {
       setSettleError(error instanceof Error ? error.message : "Failed to load credits to settle.");
@@ -504,13 +497,11 @@ export function BigBookVendorActorOutstandingTable({
         return;
       }
       setInvoiceSeed({
-        vendor_name: isFutureKind ? row.type_name : row.vendor_type_name,
+        vendor_name: row.type_name,
         actor_display_name: row.actor_display_name,
         currency: row.currency,
         credits: toInvoiceCredits(detailRows),
-        label: isFutureKind
-          ? `${row.type_name} · ${row.actor_display_name} · ${row.currency}`
-          : `${row.vendor_type_name} · ${row.actor_display_name} · ${row.currency}`
+        label: `${row.type_name} · ${row.actor_display_name} · ${row.currency}`
       });
     } catch (error) {
       setInvoiceError(error instanceof Error ? error.message : "Failed to load credits for invoice.");
@@ -571,14 +562,14 @@ export function BigBookVendorActorOutstandingTable({
 
       const primary = sourceRows[0] ?? rows.find((row) => row.currency === credits[0].currency_code);
       const currencies = new Set(credits.map((row) => row.currency_code));
-      const vendors = new Set(sourceRows.map((row) => primaryGroupLabel(row, isFutureKind)));
+      const vendors = new Set(sourceRows.map((row) => primaryGroupLabel(row)));
 
       setInvoiceSeed({
         vendor_name:
           vendors.size === 1
             ? [...vendors][0]
             : primary
-              ? primaryGroupLabel(primary, isFutureKind)
+              ? primaryGroupLabel(primary)
               : "",
         actor_display_name: primary?.actor_display_name || "—",
         currency:
@@ -1122,7 +1113,7 @@ function OutstandingSummaryRows({
   const checkboxRef = useRef<HTMLInputElement>(null);
   const isFutureKind = creditKind === "future";
   const actionsBusy = settleLoading || invoiceLoading || actualizeLoading;
-  const rowLabel = primaryGroupLabel(row, isFutureKind);
+  const rowLabel = primaryGroupLabel(row);
   const columnCount = 8;
 
   useEffect(() => {
@@ -1166,7 +1157,7 @@ function OutstandingSummaryRows({
             {expanded ? "▾" : "▸"}
           </button>
         </td>
-        <td className="px-3 py-2">{primaryGroupLabel(row, isFutureKind)}</td>
+        <td className="px-3 py-2">{primaryGroupLabel(row)}</td>
         <td className="px-3 py-2">{row.actor_display_name}</td>
         <td className="px-3 py-2">{row.currency}</td>
         <td className={`px-3 py-2 font-medium ${getAmountColorClass(row.outstanding)}`}>
@@ -1314,23 +1305,9 @@ function OutstandingNestedTableLoaded({
   }, [someChildrenSelected, allChildrenSelected]);
 
   const groupedRows = useMemo(() => {
-    if (isFutureKind) {
-      return rows.map((entry) => ({ kind: "entry" as const, entry }));
-    }
-    const sorted = [...rows].sort((a, b) => a.type_name.localeCompare(b.type_name));
-    const sections: Array<
-      { kind: "header"; typeName: string } | { kind: "entry"; entry: BigBookVendorActorOutstandingEntry }
-    > = [];
-    let lastType: string | null = null;
-    for (const entry of sorted) {
-      if (entry.type_name !== lastType) {
-        sections.push({ kind: "header", typeName: entry.type_name });
-        lastType = entry.type_name;
-      }
-      sections.push({ kind: "entry", entry });
-    }
-    return sections;
-  }, [isFutureKind, rows]);
+    // Flat list for both Credit and Future Credit (overview already buckets by Type).
+    return rows.map((entry) => ({ kind: "entry" as const, entry }));
+  }, [rows]);
 
   return (
     <div className="space-y-2">
@@ -1372,22 +1349,7 @@ function OutstandingNestedTableLoaded({
           </tr>
         </thead>
         <tbody>
-          {groupedRows.map((item, index) => {
-            if (item.kind === "header") {
-              return (
-                <tr
-                  key={`type-header-${item.typeName}-${index}`}
-                  className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface))]"
-                >
-                  <td
-                    className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted"
-                    colSpan={isFutureKind ? 9 : 9}
-                  >
-                    Type · {item.typeName}
-                  </td>
-                </tr>
-              );
-            }
+          {groupedRows.map((item) => {
             const entry = item.entry;
             const amount = signedAmount(entry);
             return (

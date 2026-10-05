@@ -72,8 +72,9 @@ export type VendorActorOutstandingCreditInput = {
 
 export type AggregateVendorActorOutstandingOptions = {
   /**
-   * When true, only Future Credit rows bucketed by ledger Type + Actor + Currency.
-   * When false/omitted, only actualized Credit bucketed by Vendor Type + Actor + Currency.
+   * When true, only Future Credit rows.
+   * When false/omitted, only actualized Credit.
+   * Both bucket by ledger Type + Actor + Currency.
    */
   futureOnly?: boolean;
 };
@@ -81,7 +82,7 @@ export type AggregateVendorActorOutstandingOptions = {
 /**
  * Aggregate open credit balances.
  * Callers must pass only open credits (credit_settled_at is null).
- * Credit: vendor type + actor + currency. Future Credit: ledger type + actor + currency.
+ * Credit and Future Credit both bucket by ledger type + actor + currency.
  */
 export function aggregateVendorActorOutstanding(
   credits: VendorActorOutstandingCreditInput[],
@@ -98,10 +99,7 @@ export function aggregateVendorActorOutstanding(
     if (!(amount > 0)) continue;
 
     const typeKey = credit.entry_type_id ?? "none";
-    const vendorTypeKey = credit.vendor_type_id ?? "none";
-    const key = futureOnly
-      ? `type:${typeKey}:${credit.responsible_actor_id}:${credit.currency_code}`
-      : `vendor_type:${vendorTypeKey}:${credit.responsible_actor_id}:${credit.currency_code}`;
+    const key = `type:${typeKey}:${credit.responsible_actor_id}:${credit.currency_code}`;
     const existing = byKey.get(key);
     if (existing) {
       existing.outstanding += amount;
@@ -114,10 +112,10 @@ export function aggregateVendorActorOutstanding(
       row_key: key,
       vendor_id: null,
       vendor_name: "-",
-      vendor_type_id: futureOnly ? null : credit.vendor_type_id,
-      vendor_type_name: futureOnly ? "-" : (credit.vendor_type_name ?? "-"),
-      entry_type_id: futureOnly ? (credit.entry_type_id ?? null) : null,
-      type_name: futureOnly ? (credit.type_name ?? "-") : "-",
+      vendor_type_id: null,
+      vendor_type_name: "-",
+      entry_type_id: credit.entry_type_id ?? null,
+      type_name: credit.type_name ?? "-",
       actor_id: credit.responsible_actor_id,
       actor_code: credit.actor_code,
       actor_display_name: credit.actor_display_name,
@@ -140,11 +138,7 @@ export function aggregateVendorActorOutstanding(
       currencyOrder.indexOf(a.currency) - currencyOrder.indexOf(b.currency);
     if (currencyDiff !== 0) return currencyDiff;
     if (a.outstanding !== b.outstanding) return b.outstanding - a.outstanding;
-    if (futureOnly) {
-      if (a.type_name !== b.type_name) return a.type_name.localeCompare(b.type_name);
-    } else if (a.vendor_type_name !== b.vendor_type_name) {
-      return a.vendor_type_name.localeCompare(b.vendor_type_name);
-    }
+    if (a.type_name !== b.type_name) return a.type_name.localeCompare(b.type_name);
     return a.actor_display_name.localeCompare(b.actor_display_name);
   });
 }

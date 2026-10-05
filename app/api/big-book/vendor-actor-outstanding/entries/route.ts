@@ -13,7 +13,6 @@ export async function GET(request: Request) {
   const parsed = bigBookVendorActorOutstandingEntriesQuerySchema.safeParse({
     actorId: searchParams.get("actorId") ?? "",
     currency: searchParams.get("currency") ?? "",
-    vendorTypeId: searchParams.get("vendorTypeId") ?? undefined,
     typeId: searchParams.get("typeId") ?? undefined,
     dateFrom: searchParams.get("dateFrom") ?? "",
     dateTo: searchParams.get("dateTo") ?? "",
@@ -26,18 +25,10 @@ export async function GET(request: Request) {
   try {
     const futureOnly = parsed.data.creditKind === "future";
     const result = await getBigBookVendorActorOutstandingEntries({
-      vendorTypeId:
-        futureOnly || parsed.data.vendorTypeId == null
-          ? null
-          : parsed.data.vendorTypeId === "none"
-            ? null
-            : parsed.data.vendorTypeId,
       typeId:
-        !futureOnly || parsed.data.typeId == null
+        parsed.data.typeId == null || parsed.data.typeId === "none"
           ? null
-          : parsed.data.typeId === "none"
-            ? null
-            : parsed.data.typeId,
+          : parsed.data.typeId,
       actorId: parsed.data.actorId,
       currency: parsed.data.currency,
       dateFrom: parsed.data.dateFrom,

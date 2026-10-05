@@ -1856,8 +1856,8 @@ export async function getBigBookVendorActorOutstanding(filters?: {
   const supabase = await createClient();
   const { data, error } = await tryRpc<
     Array<{
-      vendor_type_id: string | null;
-      vendor_type_name: string;
+      entry_type_id: string | null;
+      type_name: string;
       actor_id: string;
       actor_code: "A" | "B";
       actor_display_name: string;
@@ -1879,8 +1879,8 @@ export async function getBigBookVendorActorOutstanding(filters?: {
 
   if (!error && data) {
     return (data as Array<{
-      vendor_type_id: string | null;
-      vendor_type_name: string;
+      entry_type_id: string | null;
+      type_name: string;
       actor_id: string;
       actor_code: "A" | "B";
       actor_display_name: string;
@@ -1889,15 +1889,15 @@ export async function getBigBookVendorActorOutstanding(filters?: {
       open_credit_count: number;
       open_future_credit_count?: number;
     }>).map((row) => {
-      const vendorTypeKey = row.vendor_type_id ?? "none";
+      const typeKey = row.entry_type_id ?? "none";
       return {
-        row_key: `vendor_type:${vendorTypeKey}:${row.actor_id}:${row.currency}`,
+        row_key: `type:${typeKey}:${row.actor_id}:${row.currency}`,
         vendor_id: null,
         vendor_name: "-",
-        vendor_type_id: row.vendor_type_id,
-        vendor_type_name: row.vendor_type_name,
-        entry_type_id: null,
-        type_name: "-",
+        vendor_type_id: null,
+        vendor_type_name: "-",
+        entry_type_id: row.entry_type_id,
+        type_name: row.type_name,
         actor_id: row.actor_id,
         actor_code: row.actor_code,
         actor_display_name: row.actor_display_name,
@@ -1915,13 +1915,11 @@ export async function getBigBookVendorActorOutstanding(filters?: {
   type CreditScanRow = {
     id: string;
     responsible_actor_id: string;
-    vendor_id: string | null;
-    vendor_type_id: string | null;
+    entry_type_id: string | null;
     currency_code: BigBookVendorActorOutstandingRow["currency"];
     amount: number | string;
     is_future_credit: boolean | null;
-    business_ledger_vendors: { id: string; name: string } | { id: string; name: string }[] | null;
-    business_ledger_vendor_types: { id: string; name: string } | { id: string; name: string }[] | null;
+    business_ledger_types: { id: string; name: string } | { id: string; name: string }[] | null;
     big_book_actors:
       | { id: string; actor_code: "A" | "B"; display_name: string }
       | { id: string; actor_code: "A" | "B"; display_name: string }[]
@@ -1934,9 +1932,8 @@ export async function getBigBookVendorActorOutstanding(filters?: {
       .from("business_ledger_entries")
       .select(
         `
-        id, responsible_actor_id, vendor_id, vendor_type_id, currency_code, amount, is_future_credit,
-        business_ledger_vendors(id, name),
-        business_ledger_vendor_types(id, name),
+        id, responsible_actor_id, entry_type_id, currency_code, amount, is_future_credit,
+        business_ledger_types(id, name),
         big_book_actors(id, actor_code, display_name)
       `
       )
@@ -1965,24 +1962,23 @@ export async function getBigBookVendorActorOutstanding(filters?: {
 
   return aggregateVendorActorOutstanding(
     creditRows.map((row) => {
-      const vendor = Array.isArray(row.business_ledger_vendors)
-        ? row.business_ledger_vendors[0]
-        : row.business_ledger_vendors;
-      const vendorType = Array.isArray(row.business_ledger_vendor_types)
-        ? row.business_ledger_vendor_types[0]
-        : row.business_ledger_vendor_types;
+      const type = Array.isArray(row.business_ledger_types)
+        ? row.business_ledger_types[0]
+        : row.business_ledger_types;
       const actor = Array.isArray(row.big_book_actors)
         ? row.big_book_actors[0]
         : row.big_book_actors;
       return {
         id: row.id,
         responsible_actor_id: row.responsible_actor_id,
-        vendor_id: row.vendor_id,
-        vendor_type_id: row.vendor_type_id,
+        vendor_id: null,
+        vendor_type_id: null,
+        entry_type_id: row.entry_type_id,
+        type_name: type?.name ?? null,
         currency_code: row.currency_code,
         amount: Number(row.amount),
-        vendor_name: vendor?.name ?? null,
-        vendor_type_name: vendorType?.name ?? null,
+        vendor_name: null,
+        vendor_type_name: null,
         actor_code: (actor?.actor_code ?? "A") as "A" | "B",
         actor_display_name: actor?.display_name ?? "Unknown Actor",
         is_future_credit: false
@@ -2137,9 +2133,7 @@ export async function getBigBookVendorActorFutureOutstanding(filters?: {
 export const BIG_BOOK_VENDOR_ACTOR_OUTSTANDING_ENTRIES_LIMIT = 500;
 
 export async function getBigBookVendorActorOutstandingEntries(params: {
-  /** Required for Credit detail rows (Vendor Type + Actor + Currency buckets). */
-  vendorTypeId?: string | null;
-  /** Required for Future Credit detail rows (ledger Type + Actor + Currency buckets). */
+  /** Required for Credit and Future Credit detail rows (ledger Type + Actor + Currency buckets). */
   typeId?: string | null;
   actorId: string;
   currency: BigBookVendorActorOutstandingRow["currency"];
@@ -2169,17 +2163,10 @@ export async function getBigBookVendorActorOutstandingEntries(params: {
     .eq("responsible_actor_id", params.actorId)
     .eq("currency_code", params.currency);
 
-  if (futureOnly) {
-    query =
-      params.typeId == null
-        ? query.is("entry_type_id", null)
-        : query.eq("entry_type_id", params.typeId);
-  } else {
-    query =
-      params.vendorTypeId == null
-        ? query.is("vendor_type_id", null)
-        : query.eq("vendor_type_id", params.vendorTypeId);
-  }
+  query =
+    params.typeId == null
+      ? query.is("entry_type_id", null)
+      : query.eq("entry_type_id", params.typeId);
 
   if (params.dateFrom) query = query.gte("entry_date", params.dateFrom);
   if (params.dateTo) query = query.lte("entry_date", params.dateTo);
