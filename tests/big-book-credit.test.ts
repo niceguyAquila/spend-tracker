@@ -29,7 +29,7 @@ describe("big book credit helpers", () => {
 });
 
 describe("aggregateVendorActorOutstanding", () => {
-  it("splits by currency and buckets missing vendors", () => {
+  it("splits by currency and buckets missing vendor types", () => {
     const rows = aggregateVendorActorOutstanding([
       {
         id: "c1",
@@ -81,33 +81,69 @@ describe("aggregateVendorActorOutstanding", () => {
       }
     ]);
 
-    // Currencies never merged; missing vendor buckets as "(No vendor)".
     expect(rows).toHaveLength(4);
 
-    const kiloUsdt = rows.find(
-      (row) => row.vendor_name === "Kilo" && row.currency === "USDT"
+    const partnerUsdt = rows.find(
+      (row) => row.vendor_type_name === "Partner" && row.currency === "USDT"
     );
-    expect(kiloUsdt).toMatchObject({
+    expect(partnerUsdt).toMatchObject({
       outstanding: 1000,
       open_credit_count: 1,
       open_future_credit_count: 0,
-      actor_display_name: "Actor A"
+      actor_display_name: "Actor A",
+      row_key: "vendor_type:type-partner:actor-a:USDT"
     });
 
-    const kiloIdr = rows.find(
-      (row) => row.vendor_name === "Kilo" && row.currency === "IDR"
+    const partnerIdr = rows.find(
+      (row) => row.vendor_type_name === "Partner" && row.currency === "IDR"
     );
-    expect(kiloIdr?.outstanding).toBe(45000000);
+    expect(partnerIdr?.outstanding).toBe(45000000);
 
-    const noVendor = rows.find((row) => row.vendor_name === "(No vendor)");
-    expect(noVendor).toMatchObject({
+    const noVendorType = rows.find((row) => row.vendor_type_name === "-");
+    expect(noVendorType).toMatchObject({
       outstanding: 100,
-      vendor_type_name: "-",
       actor_display_name: "Actor B"
     });
   });
 
-  it("aggregates multiple open credits for the same vendor-actor-currency", () => {
+  it("aggregates actualized Credit outstanding by Vendor Type + Actor + Currency", () => {
+    const rows = aggregateVendorActorOutstanding([
+      {
+        id: "c1",
+        responsible_actor_id: "actor-a",
+        vendor_id: "vendor-rbee",
+        vendor_type_id: "type-merchant",
+        currency_code: "MYR",
+        amount: 100,
+        vendor_name: "Rbee",
+        vendor_type_name: "Merchant",
+        actor_code: "A",
+        actor_display_name: "Actor A"
+      },
+      {
+        id: "c2",
+        responsible_actor_id: "actor-a",
+        vendor_id: "vendor-other",
+        vendor_type_id: "type-merchant",
+        currency_code: "MYR",
+        amount: 50,
+        vendor_name: "Other Shop",
+        vendor_type_name: "Merchant",
+        actor_code: "A",
+        actor_display_name: "Actor A"
+      }
+    ]);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      vendor_type_name: "Merchant",
+      outstanding: 150,
+      open_credit_count: 2,
+      open_future_credit_count: 0
+    });
+  });
+
+  it("aggregates multiple open credits for the same vendor-type-actor-currency", () => {
     const rows = aggregateVendorActorOutstanding([
       {
         id: "c1",

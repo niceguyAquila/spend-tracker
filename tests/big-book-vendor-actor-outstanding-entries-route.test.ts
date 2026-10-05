@@ -12,7 +12,7 @@ vi.mock("@/lib/db/queries", () => ({
 }));
 
 const ACTOR_ID = "22222222-2222-4222-8222-222222222222";
-const VENDOR_ID = "77777777-7777-4777-8777-777777777777";
+const VENDOR_TYPE_ID = "88888888-8888-4888-8888-888888888888";
 const TYPE_ID = "55555555-5555-4555-8555-555555555555";
 
 describe("big book vendor-actor outstanding entries route", () => {
@@ -37,7 +37,7 @@ describe("big book vendor-actor outstanding entries route", () => {
     });
     const { GET } = await import("@/app/api/big-book/vendor-actor-outstanding/entries/route");
     const request = new Request(
-      `https://app.localhost/api/big-book/vendor-actor-outstanding/entries?actorId=${ACTOR_ID}&currency=MYR&vendorId=none`
+      `https://app.localhost/api/big-book/vendor-actor-outstanding/entries?actorId=${ACTOR_ID}&currency=MYR&vendorTypeId=none`
     );
 
     const response = await GET(request);
@@ -48,7 +48,7 @@ describe("big book vendor-actor outstanding entries route", () => {
   it("returns 400 when actorId or currency is missing", async () => {
     const { GET } = await import("@/app/api/big-book/vendor-actor-outstanding/entries/route");
     const request = new Request(
-      "https://app.localhost/api/big-book/vendor-actor-outstanding/entries?vendorId=none"
+      "https://app.localhost/api/big-book/vendor-actor-outstanding/entries?vendorTypeId=none"
     );
 
     const response = await GET(request);
@@ -56,16 +56,16 @@ describe("big book vendor-actor outstanding entries route", () => {
     expect(getBigBookVendorActorOutstandingEntriesMock).not.toHaveBeenCalled();
   });
 
-  it("maps vendorId=none to a null vendor lookup", async () => {
+  it("maps vendorTypeId=none to a null vendor type lookup", async () => {
     const { GET } = await import("@/app/api/big-book/vendor-actor-outstanding/entries/route");
     const request = new Request(
-      `https://app.localhost/api/big-book/vendor-actor-outstanding/entries?actorId=${ACTOR_ID}&currency=MYR&vendorId=none&dateFrom=2026-01-01&dateTo=2026-01-31`
+      `https://app.localhost/api/big-book/vendor-actor-outstanding/entries?actorId=${ACTOR_ID}&currency=MYR&vendorTypeId=none&dateFrom=2026-01-01&dateTo=2026-01-31`
     );
 
     const response = await GET(request);
     expect(response.status).toBe(200);
     expect(getBigBookVendorActorOutstandingEntriesMock).toHaveBeenCalledWith({
-      vendorId: null,
+      vendorTypeId: null,
       typeId: null,
       actorId: ACTOR_ID,
       currency: "MYR",
@@ -75,7 +75,7 @@ describe("big book vendor-actor outstanding entries route", () => {
     });
   });
 
-  it("forwards a vendor uuid and returns the query result", async () => {
+  it("forwards a vendor type uuid and returns the query result", async () => {
     getBigBookVendorActorOutstandingEntriesMock.mockResolvedValueOnce({
       rows: [
         {
@@ -93,7 +93,7 @@ describe("big book vendor-actor outstanding entries route", () => {
     });
     const { GET } = await import("@/app/api/big-book/vendor-actor-outstanding/entries/route");
     const request = new Request(
-      `https://app.localhost/api/big-book/vendor-actor-outstanding/entries?actorId=${ACTOR_ID}&currency=MYR&vendorId=${VENDOR_ID}`
+      `https://app.localhost/api/big-book/vendor-actor-outstanding/entries?actorId=${ACTOR_ID}&currency=MYR&vendorTypeId=${VENDOR_TYPE_ID}`
     );
 
     const response = await GET(request);
@@ -101,7 +101,7 @@ describe("big book vendor-actor outstanding entries route", () => {
 
     expect(response.status).toBe(200);
     expect(getBigBookVendorActorOutstandingEntriesMock).toHaveBeenCalledWith({
-      vendorId: VENDOR_ID,
+      vendorTypeId: VENDOR_TYPE_ID,
       typeId: null,
       actorId: ACTOR_ID,
       currency: "MYR",
@@ -122,7 +122,7 @@ describe("big book vendor-actor outstanding entries route", () => {
     const response = await GET(request);
     expect(response.status).toBe(200);
     expect(getBigBookVendorActorOutstandingEntriesMock).toHaveBeenCalledWith({
-      vendorId: null,
+      vendorTypeId: null,
       typeId: TYPE_ID,
       actorId: ACTOR_ID,
       currency: "MYR",

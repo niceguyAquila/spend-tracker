@@ -72,8 +72,8 @@ export type VendorActorOutstandingCreditInput = {
 
 export type AggregateVendorActorOutstandingOptions = {
   /**
-   * When true, only Future Credit rows bucketed by Type + Actor + Currency.
-   * When false/omitted, only actualized Credit bucketed by Vendor + Actor + Currency.
+   * When true, only Future Credit rows bucketed by ledger Type + Actor + Currency.
+   * When false/omitted, only actualized Credit bucketed by Vendor Type + Actor + Currency.
    */
   futureOnly?: boolean;
 };
@@ -81,7 +81,7 @@ export type AggregateVendorActorOutstandingOptions = {
 /**
  * Aggregate open credit balances.
  * Callers must pass only open credits (credit_settled_at is null).
- * Credit: vendor + actor + currency. Future Credit: type + actor + currency.
+ * Credit: vendor type + actor + currency. Future Credit: ledger type + actor + currency.
  */
 export function aggregateVendorActorOutstanding(
   credits: VendorActorOutstandingCreditInput[],
@@ -98,10 +98,10 @@ export function aggregateVendorActorOutstanding(
     if (!(amount > 0)) continue;
 
     const typeKey = credit.entry_type_id ?? "none";
-    const vendorKey = credit.vendor_id ?? "none";
+    const vendorTypeKey = credit.vendor_type_id ?? "none";
     const key = futureOnly
       ? `type:${typeKey}:${credit.responsible_actor_id}:${credit.currency_code}`
-      : `${vendorKey}:${credit.responsible_actor_id}:${credit.currency_code}`;
+      : `vendor_type:${vendorTypeKey}:${credit.responsible_actor_id}:${credit.currency_code}`;
     const existing = byKey.get(key);
     if (existing) {
       existing.outstanding += amount;
@@ -112,8 +112,8 @@ export function aggregateVendorActorOutstanding(
 
     byKey.set(key, {
       row_key: key,
-      vendor_id: futureOnly ? null : credit.vendor_id,
-      vendor_name: futureOnly ? "-" : (credit.vendor_name ?? "(No vendor)"),
+      vendor_id: null,
+      vendor_name: "-",
       vendor_type_id: futureOnly ? null : credit.vendor_type_id,
       vendor_type_name: futureOnly ? "-" : (credit.vendor_type_name ?? "-"),
       entry_type_id: futureOnly ? (credit.entry_type_id ?? null) : null,
@@ -142,8 +142,8 @@ export function aggregateVendorActorOutstanding(
     if (a.outstanding !== b.outstanding) return b.outstanding - a.outstanding;
     if (futureOnly) {
       if (a.type_name !== b.type_name) return a.type_name.localeCompare(b.type_name);
-    } else if (a.vendor_name !== b.vendor_name) {
-      return a.vendor_name.localeCompare(b.vendor_name);
+    } else if (a.vendor_type_name !== b.vendor_type_name) {
+      return a.vendor_type_name.localeCompare(b.vendor_type_name);
     }
     return a.actor_display_name.localeCompare(b.actor_display_name);
   });

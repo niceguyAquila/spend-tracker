@@ -1856,8 +1856,6 @@ export async function getBigBookVendorActorOutstanding(filters?: {
   const supabase = await createClient();
   const { data, error } = await tryRpc<
     Array<{
-      vendor_id: string | null;
-      vendor_name: string;
       vendor_type_id: string | null;
       vendor_type_name: string;
       actor_id: string;
@@ -1881,8 +1879,6 @@ export async function getBigBookVendorActorOutstanding(filters?: {
 
   if (!error && data) {
     return (data as Array<{
-      vendor_id: string | null;
-      vendor_name: string;
       vendor_type_id: string | null;
       vendor_type_name: string;
       actor_id: string;
@@ -1893,11 +1889,11 @@ export async function getBigBookVendorActorOutstanding(filters?: {
       open_credit_count: number;
       open_future_credit_count?: number;
     }>).map((row) => {
-      const vendorKey = row.vendor_id ?? "none";
+      const vendorTypeKey = row.vendor_type_id ?? "none";
       return {
-        row_key: `${vendorKey}:${row.actor_id}:${row.currency}`,
-        vendor_id: row.vendor_id,
-        vendor_name: row.vendor_name,
+        row_key: `vendor_type:${vendorTypeKey}:${row.actor_id}:${row.currency}`,
+        vendor_id: null,
+        vendor_name: "-",
         vendor_type_id: row.vendor_type_id,
         vendor_type_name: row.vendor_type_name,
         entry_type_id: null,
@@ -2141,8 +2137,9 @@ export async function getBigBookVendorActorFutureOutstanding(filters?: {
 export const BIG_BOOK_VENDOR_ACTOR_OUTSTANDING_ENTRIES_LIMIT = 500;
 
 export async function getBigBookVendorActorOutstandingEntries(params: {
-  vendorId?: string | null;
-  /** Required for Future Credit detail rows (Type + Actor + Currency buckets). */
+  /** Required for Credit detail rows (Vendor Type + Actor + Currency buckets). */
+  vendorTypeId?: string | null;
+  /** Required for Future Credit detail rows (ledger Type + Actor + Currency buckets). */
   typeId?: string | null;
   actorId: string;
   currency: BigBookVendorActorOutstandingRow["currency"];
@@ -2160,7 +2157,9 @@ export async function getBigBookVendorActorOutstandingEntries(params: {
     .select(
       `
       id, entry_date, entry_direction, entry_type_id, explanation, amount, currency_code, remark, is_future_credit, updated_at,
-      business_ledger_types(name)
+      vendor_id,
+      business_ledger_types(name),
+      business_ledger_vendors(name)
     `,
       { count: "exact" }
     )
@@ -2177,9 +2176,9 @@ export async function getBigBookVendorActorOutstandingEntries(params: {
         : query.eq("entry_type_id", params.typeId);
   } else {
     query =
-      params.vendorId == null
-        ? query.is("vendor_id", null)
-        : query.eq("vendor_id", params.vendorId);
+      params.vendorTypeId == null
+        ? query.is("vendor_type_id", null)
+        : query.eq("vendor_type_id", params.vendorTypeId);
   }
 
   if (params.dateFrom) query = query.gte("entry_date", params.dateFrom);
@@ -2196,12 +2195,16 @@ export async function getBigBookVendorActorOutstandingEntries(params: {
     const type = Array.isArray(row.business_ledger_types)
       ? row.business_ledger_types[0]
       : row.business_ledger_types;
+    const vendor = Array.isArray(row.business_ledger_vendors)
+      ? row.business_ledger_vendors[0]
+      : row.business_ledger_vendors;
     return {
       id: row.id,
       entry_date: row.entry_date,
       entry_direction: row.entry_direction === "profit" ? "profit" : "spending",
       entry_type_id: row.entry_type_id ?? null,
       type_name: type?.name ?? "-",
+      vendor_name: vendor?.name ?? "(No vendor)",
       explanation: row.explanation,
       amount: Math.abs(Number(row.amount)),
       currency_code: row.currency_code,

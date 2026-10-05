@@ -300,8 +300,8 @@ export type BigBookVendorActorOutstandingRow = {
   vendor_type_id: string | null;
   vendor_type_name: string;
   /**
-   * Ledger entry type. Future Credit outstanding is bucketed by Type + Actor + Currency;
-   * Credit outstanding leaves this null / "-".
+   * Ledger entry type. Future Credit outstanding is bucketed by ledger Type + Actor + Currency;
+   * actualized Credit outstanding is bucketed by Vendor Type + Actor + Currency (this stays null / "-").
    */
   entry_type_id: string | null;
   type_name: string;
@@ -341,6 +341,8 @@ export type BigBookVendorActorOutstandingEntry = {
   entry_direction: "spending" | "profit";
   entry_type_id: string | null;
   type_name: string;
+  /** Populated for actualized Credit detail rows (vendor type buckets). */
+  vendor_name?: string;
   explanation: string;
   amount: number;
   currency_code: BigBookCashflowCurrency;
