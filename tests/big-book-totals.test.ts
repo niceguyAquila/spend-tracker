@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { summarizeCurrencies } from "@/lib/big-book/totals";
+import { summarizeCurrencies, summarizeGroupCurrencies } from "@/lib/big-book/totals";
 
 type Entry = Parameters<typeof summarizeCurrencies>[0][number];
+type GroupEntry = Parameters<typeof summarizeGroupCurrencies>[0][number];
 
 function entry(
   amount: number,
@@ -9,6 +10,19 @@ function entry(
   entry_direction: Entry["entry_direction"]
 ): Entry {
   return { amount, currency_code, entry_direction };
+}
+
+function groupEntry(
+  amount: number,
+  currency_code: GroupEntry["currency_code"],
+  entry_direction: GroupEntry["entry_direction"],
+  flags: {
+    is_future_credit?: boolean;
+    is_debt?: boolean;
+    settles_entry_id?: string | null;
+  } = {}
+): GroupEntry {
+  return { amount, currency_code, entry_direction, ...flags };
 }
 
 describe("summarizeCurrencies", () => {
@@ -79,5 +93,69 @@ describe("summarizeCurrencies", () => {
     ]);
 
     expect(totals[0].spending).toBe(50);
+  });
+});
+
+describe("summarizeGroupCurrencies", () => {
+  it("sums all members for ordinary groups", () => {
+    const totals = summarizeGroupCurrencies([
+      groupEntry(100, "MYR", "profit"),
+      groupEntry(25, "MYR", "spending")
+    ]);
+    expect(totals).toEqual([{ currency: "MYR", spending: 25, profit: 100, net: 75 }]);
+  });
+
+  it("counts only settlement rows for Future Credit + settlement groups", () => {
+    const totals = summarizeGroupCurrencies([
+      groupEntry(50_000, "MYR", "profit", { is_future_credit: true }),
+      groupEntry(50_000, "MYR", "profit", { settles_entry_id: "future-1" })
+    ]);
+    expect(totals).toEqual([{ currency: "MYR", spending: 0, profit: 50_000, net: 50_000 }]);
+  });
+
+  it("uses settlement currency only when Future Credit currency differs", () => {
+    const totals = summarizeGroupCurrencies([
+      groupEntry(50_000, "MYR", "profit", { is_future_credit: true }),
+      groupEntry(95, "USDT", "profit", { settles_entry_id: "future-1" })
+    ]);
+    expect(totals).toEqual([{ currency: "USDT", spending: 0, profit: 95, net: 95 }]);
+  });
+
+  it("still sums Future Credit-only groups without settlements", () => {
+    const totals = summarizeGroupCurrencies([
+      groupEntry(50_000, "MYR", "profit", { is_future_credit: true }),
+      groupEntry(10_000, "MYR", "profit", { is_future_credit: true })
+    ]);
+    expect(totals).toEqual([{ currency: "MYR", spending: 0, profit: 60_000, net: 60_000 }]);
+  });
+
+  it("counts only settlement rows for debt + settlement groups", () => {
+    const totals = summarizeGroupCurrencies([
+      groupEntry(100_000, "IDR", "spending", { is_debt: true }),
+      groupEntry(120_000, "IDR", "spending", { is_debt: true }),
+      groupEntry(169_024.5, "IDR", "spending", { is_debt: true }),
+      groupEntry(389_024.5, "IDR", "spending", { settles_entry_id: "debt-1" })
+    ]);
+    expect(totals).toEqual([
+      { currency: "IDR", spending: 389_024.5, profit: 0, net: -389_024.5 }
+    ]);
+  });
+
+  it("still sums open debt groups without settlements", () => {
+    const totals = summarizeGroupCurrencies([
+      groupEntry(100_000, "IDR", "spending", { is_debt: true }),
+      groupEntry(50_000, "IDR", "spending", { is_debt: true })
+    ]);
+    expect(totals).toEqual([
+      { currency: "IDR", spending: 150_000, profit: 0, net: -150_000 }
+    ]);
+  });
+
+  it("uses settlement currency only when debt currency differs", () => {
+    const totals = summarizeGroupCurrencies([
+      groupEntry(50_000, "MYR", "spending", { is_debt: true }),
+      groupEntry(95, "USDT", "spending", { settles_entry_id: "debt-1" })
+    ]);
+    expect(totals).toEqual([{ currency: "USDT", spending: 95, profit: 0, net: -95 }]);
   });
 });

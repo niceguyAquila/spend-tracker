@@ -51,3 +51,42 @@ export function describeGroupedMissingFields(
 
   return null;
 }
+
+export type SettlementFormValidationInput = {
+  explanation: string;
+  amount: string;
+  currencyCode: string;
+  creditCurrencyCode: string | null | undefined;
+  settlementConversionRate: string | number | null | undefined;
+};
+
+/**
+ * Conversion rate / credit-currency equivalent are never required to submit.
+ * Same-currency settlements derive rate = 1 and credit-currency amount in the API.
+ * Cross-currency FX fields are optional notes/calc only.
+ */
+export function settlementNeedsConversionRate(
+  _settlementCurrencyCode: string,
+  _creditCurrencyCode: string | null | undefined
+): boolean {
+  return false;
+}
+
+export function parsePositiveConversionRate(
+  value: string | number | null | undefined
+): number | null {
+  if (value == null || value === "") return null;
+  const raw = typeof value === "number" ? value : Number(String(value).replace(/,/g, "").trim());
+  if (!Number.isFinite(raw) || raw <= 0) return null;
+  return raw;
+}
+
+/**
+ * Blocking hint for Record Settlement.
+ * FX / credit-currency amount is never a submit blocker — only explanation + settle amount.
+ */
+export function describeSettlementMissingFields(
+  fields: SettlementFormValidationInput
+): string | null {
+  return describeMissingFields(missingEntryFields(fields));
+}

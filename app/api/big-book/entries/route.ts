@@ -10,12 +10,33 @@ import {
 } from "@/lib/validation/big-book";
 import { buildGasFeeEntry, buildGasFeeGroupLabel } from "@/lib/big-book/gas-fee-entry";
 import {
+  ensureDebtPaymentGroup,
+  rollbackDebtPaymentGroup
+} from "@/lib/big-book/debt-payment-group";
+import {
+  ensureCreditSettlementGroup,
+  rollbackCreditSettlementGroup
+} from "@/lib/big-book/credit-settlement-group";
+import {
+  buildKursEntry,
+  findKursTypeId,
+  KURS_TYPE_MISSING_ERROR,
+  KURS_TYPE_NAME,
+  resolveKursCompanionAmount
+} from "@/lib/big-book/kurs-usdt-entry";
+import {
   getBigBookActorCurrencyMetrics,
   getBigBookActorPocketMetrics,
   getBigBookEntriesPaged,
   getBigBookLedgerRowsPaged,
-  getBigBookVendorActorOutstanding
+  getBigBookVendorActorOutstanding,
+  getBigBookVendorActorFutureOutstanding,
+  getBigBookVendorActorOutstandingDebt
 } from "@/lib/db/queries";
+import {
+  parseExpectedUpdatedAt,
+  resolveOptimisticMiss
+} from "@/lib/db/optimistic-lock";
 
 type BigBookCurrency = "IDR" | "MYR" | "USDT" | "TRX";
 
@@ -42,6 +63,9 @@ async function resolveSettlementFields(
       settles_entry_id: string | null;
       settlement_conversion_rate: number | null;
       settlement_amount_in_credit_currency: number | null;
+      target_kind: "credit" | "debt" | null;
+      target_group_id: string | null;
+      target_explanation: string | null;
     }
   | { ok: false; status: number; error: string }
 > {
@@ -50,26 +74,44 @@ async function resolveSettlementFields(
       ok: true,
       settles_entry_id: null,
       settlement_conversion_rate: null,
-      settlement_amount_in_credit_currency: null
+      settlement_amount_in_credit_currency: null,
+      target_kind: null,
+      target_group_id: null,
+      target_explanation: null
     };
   }
 
-  const { data: creditEntry, error: creditError } = await supabase
+  const { data: targetEntry, error: targetError } = await supabase
     .from("business_ledger_entries")
-    .select("id, is_credit, settles_entry_id, currency_code")
+    .select(
+      "id, is_credit, is_debt, settles_entry_id, currency_code, group_id, explanation"
+    )
     .eq("id", payload.settles_entry_id)
     .maybeSingle();
 
-  if (creditError) {
-    return { ok: false, status: 400, error: creditError.message };
+  if (targetError) {
+    return { ok: false, status: 400, error: targetError.message };
   }
-  if (!creditEntry) {
+  if (!targetEntry) {
     return { ok: false, status: 404, error: "Settlement target entry not found." };
   }
-  if (!creditEntry.is_credit) {
-    return { ok: false, status: 400, error: "Settlement target is not marked as credit." };
+  const isCredit = Boolean(targetEntry.is_credit);
+  const isDebt = Boolean(targetEntry.is_debt);
+  if (!isCredit && !isDebt) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Settlement target is not marked as credit or debt."
+    };
   }
-  if (creditEntry.settles_entry_id) {
+  if (isCredit && isDebt) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Settlement target cannot be both credit and debt."
+    };
+  }
+  if (targetEntry.settles_entry_id) {
     return {
       ok: false,
       status: 400,
@@ -77,23 +119,53 @@ async function resolveSettlementFields(
     };
   }
 
-  const creditCurrency = creditEntry.currency_code as BigBookCurrency;
-  const conversionRate =
-    payload.currency_code === creditCurrency
-      ? 1
-      : Number(payload.settlement_conversion_rate);
-  if (!Number.isFinite(conversionRate) || conversionRate <= 0) {
-    return { ok: false, status: 400, error: "Conversion rate must be greater than 0." };
+  const targetKind = isDebt ? ("debt" as const) : ("credit" as const);
+  const targetGroupId = (targetEntry.group_id as string | null) ?? null;
+  const targetExplanation = (targetEntry.explanation as string | null) ?? null;
+  const targetCurrency = targetEntry.currency_code as BigBookCurrency;
+  if (payload.currency_code === targetCurrency) {
+    return {
+      ok: true,
+      settles_entry_id: payload.settles_entry_id,
+      settlement_conversion_rate: 1,
+      settlement_amount_in_credit_currency: computeSettlementAmountInCreditCurrency(
+        payload.amount,
+        1
+      ),
+      target_kind: targetKind,
+      target_group_id: targetGroupId,
+      target_explanation: targetExplanation
+    };
+  }
+
+  const typedRate = Number(payload.settlement_conversion_rate);
+  const hasRate = Number.isFinite(typedRate) && typedRate > 0;
+
+  // Cross-currency: FX rate and obligation-currency equivalent are optional.
+  // When omitted, store nulls — settlement stands in settle currency only.
+  if (!hasRate) {
+    return {
+      ok: true,
+      settles_entry_id: payload.settles_entry_id,
+      settlement_conversion_rate: null,
+      settlement_amount_in_credit_currency: null,
+      target_kind: targetKind,
+      target_group_id: targetGroupId,
+      target_explanation: targetExplanation
+    };
   }
 
   return {
     ok: true,
     settles_entry_id: payload.settles_entry_id,
-    settlement_conversion_rate: conversionRate,
+    settlement_conversion_rate: typedRate,
     settlement_amount_in_credit_currency: computeSettlementAmountInCreditCurrency(
       payload.amount,
-      conversionRate
-    )
+      typedRate
+    ),
+    target_kind: targetKind,
+    target_group_id: targetGroupId,
+    target_explanation: targetExplanation
   };
 }
 
@@ -138,7 +210,9 @@ export async function GET(request: Request) {
       ? Promise.all([
           getBigBookActorCurrencyMetrics(),
           getBigBookActorPocketMetrics(),
-          getBigBookVendorActorOutstanding()
+          getBigBookVendorActorOutstanding(),
+          getBigBookVendorActorFutureOutstanding(),
+          getBigBookVendorActorOutstandingDebt()
         ])
       : null;
 
@@ -148,12 +222,20 @@ export async function GET(request: Request) {
         metricsPromise
       ]);
       if (!metrics) return NextResponse.json(result);
-      const [actorMetrics, actorPocketMetrics, vendorActorOutstanding] = metrics;
+      const [
+        actorMetrics,
+        actorPocketMetrics,
+        vendorActorOutstanding,
+        vendorActorOutstandingFuture,
+        vendorActorOutstandingDebt
+      ] = metrics;
       return NextResponse.json({
         ...result,
         actorMetrics,
         actorPocketMetrics,
-        vendorActorOutstanding
+        vendorActorOutstanding,
+        vendorActorOutstandingFuture,
+        vendorActorOutstandingDebt
       });
     }
 
@@ -162,12 +244,20 @@ export async function GET(request: Request) {
       metricsPromise
     ]);
     if (!metrics) return NextResponse.json(result);
-    const [actorMetrics, actorPocketMetrics, vendorActorOutstanding] = metrics;
+    const [
+      actorMetrics,
+      actorPocketMetrics,
+      vendorActorOutstanding,
+      vendorActorOutstandingFuture,
+      vendorActorOutstandingDebt
+    ] = metrics;
     return NextResponse.json({
       ...result,
       actorMetrics,
       actorPocketMetrics,
-      vendorActorOutstanding
+      vendorActorOutstanding,
+      vendorActorOutstandingFuture,
+      vendorActorOutstandingDebt
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to load ledger entries.";
@@ -193,7 +283,12 @@ export async function POST(request: Request) {
 
   const supabase = await createClient();
   const actorId = authCheck.user.id;
-  const { gas_fee_amount: gasFeeAmount, ...payload } = parsed.data;
+  const {
+    gas_fee_amount: gasFeeAmount,
+    kurs_rate: kursRate,
+    kurs_amount: kursAmountInput,
+    ...payload
+  } = parsed.data;
 
   const settlement = await resolveSettlementFields(supabase, {
     settles_entry_id: payload.settles_entry_id ?? null,
@@ -205,8 +300,101 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: settlement.error }, { status: settlement.status });
   }
 
+  if (payload.is_debt && payload.entry_direction !== "spending") {
+    return NextResponse.json(
+      { error: "Debt entries must use Cash Flow Out (spending)." },
+      { status: 400 }
+    );
+  }
+
+  if (settlement.target_kind === "debt" && payload.entry_direction !== "spending") {
+    return NextResponse.json(
+      { error: "Debt payment settlements must use Cash Flow Out (spending)." },
+      { status: 400 }
+    );
+  }
+
+  if (payload.close_credit && settlement.target_kind === "debt") {
+    return NextResponse.json(
+      { error: "Cannot close a debt target with close_credit." },
+      { status: 400 }
+    );
+  }
+  if (payload.close_debt && settlement.target_kind === "credit") {
+    return NextResponse.json(
+      { error: "Cannot close a credit target with close_debt." },
+      { status: 400 }
+    );
+  }
+
+  const kursAmount = resolveKursCompanionAmount({
+    currencyCode: payload.currency_code,
+    entryDirection: payload.entry_direction,
+    mainAmount: payload.amount,
+    kursRate,
+    kursAmount: kursAmountInput
+  });
+
+  let kursTypeId: string | null = null;
+  if (kursAmount != null) {
+    const { data: kursTypes, error: kursTypeError } = await supabase
+      .from("business_ledger_types")
+      .select("id, name, is_active")
+      .ilike("name", KURS_TYPE_NAME);
+
+    if (kursTypeError) {
+      return NextResponse.json({ error: kursTypeError.message }, { status: 400 });
+    }
+    kursTypeId = findKursTypeId(kursTypes ?? []);
+    if (!kursTypeId) {
+      return NextResponse.json({ error: KURS_TYPE_MISSING_ERROR }, { status: 400 });
+    }
+  }
+
+  const needsCompanions = gasFeeAmount != null || kursAmount != null;
+  const isDebtPayment =
+    settlement.target_kind === "debt" && Boolean(settlement.settles_entry_id);
+  const isCreditSettlement =
+    settlement.target_kind === "credit" && Boolean(settlement.settles_entry_id);
+
   let groupId: string | null = null;
-  if (gasFeeAmount != null) {
+  let createdGroupId: string | null = null;
+  let attachedDebtId: string | null = null;
+  let attachedCreditId: string | null = null;
+
+  if (isDebtPayment && settlement.settles_entry_id) {
+    const grouped = await ensureDebtPaymentGroup(
+      supabase,
+      {
+        id: settlement.settles_entry_id,
+        group_id: settlement.target_group_id,
+        explanation: settlement.target_explanation || payload.explanation
+      },
+      actorId
+    );
+    if (!grouped.ok) {
+      return NextResponse.json({ error: grouped.error }, { status: 400 });
+    }
+    groupId = grouped.groupId;
+    createdGroupId = grouped.createdGroupId;
+    attachedDebtId = grouped.attachedDebtId;
+  } else if (isCreditSettlement && settlement.settles_entry_id) {
+    const grouped = await ensureCreditSettlementGroup(
+      supabase,
+      {
+        id: settlement.settles_entry_id,
+        group_id: settlement.target_group_id,
+        explanation: settlement.target_explanation || payload.explanation
+      },
+      actorId
+    );
+    if (!grouped.ok) {
+      return NextResponse.json({ error: grouped.error }, { status: 400 });
+    }
+    groupId = grouped.groupId;
+    createdGroupId = grouped.createdGroupId;
+    attachedCreditId = grouped.attachedCreditId;
+  } else if (needsCompanions) {
     const { data: group, error: groupError } = await supabase
       .from("business_ledger_entry_groups")
       .insert({
@@ -220,19 +408,23 @@ export async function POST(request: Request) {
 
     if (groupError || !group) {
       return NextResponse.json(
-        { error: groupError?.message ?? "Failed to create gas fee group." },
+        { error: groupError?.message ?? "Failed to create companion entry group." },
         { status: 400 }
       );
     }
     groupId = group.id;
+    createdGroupId = group.id;
   }
+
+  const isCredit = settlement.settles_entry_id ? false : Boolean(payload.is_credit);
+  const isFutureCredit = isCredit && Boolean(payload.is_future_credit);
+  const isDebt = settlement.settles_entry_id || isCredit ? false : Boolean(payload.is_debt);
 
   const mainRow = {
     group_id: groupId,
     entry_date: payload.entry_date,
     entry_direction: payload.entry_direction,
     entry_type_id: payload.entry_type_id,
-    entry_sub_type_id: payload.entry_sub_type_id ?? null,
     vendor_type_id: payload.vendor_type_id ?? null,
     vendor_id: payload.vendor_id ?? null,
     pocket_id: payload.pocket_id ?? null,
@@ -242,7 +434,9 @@ export async function POST(request: Request) {
     currency_code: payload.currency_code,
     remark: payload.remark || null,
     responsible_actor_id: payload.responsible_actor_id,
-    is_credit: settlement.settles_entry_id ? false : Boolean(payload.is_credit),
+    is_credit: isCredit,
+    is_future_credit: isFutureCredit,
+    is_debt: isDebt,
     settles_entry_id: settlement.settles_entry_id,
     settlement_conversion_rate: settlement.settlement_conversion_rate,
     settlement_amount_in_credit_currency: settlement.settlement_amount_in_credit_currency,
@@ -253,35 +447,78 @@ export async function POST(request: Request) {
 
   let createdEntryId: string;
 
-  if (groupId && gasFeeAmount != null) {
-    const gasEntry = buildGasFeeEntry(payload, gasFeeAmount);
-    const gasRow = {
-      group_id: groupId,
-      entry_date: gasEntry.entry_date,
-      entry_direction: gasEntry.entry_direction,
-      entry_type_id: gasEntry.entry_type_id,
-      entry_sub_type_id: gasEntry.entry_sub_type_id,
-      vendor_type_id: gasEntry.vendor_type_id,
-      vendor_id: gasEntry.vendor_id,
-      pocket_id: gasEntry.pocket_id,
-      action_by_id: gasEntry.action_by_id,
-      explanation: gasEntry.explanation,
-      amount: gasEntry.amount,
-      currency_code: gasEntry.currency_code,
-      remark: gasEntry.remark || null,
-      responsible_actor_id: gasEntry.responsible_actor_id,
-      is_credit: false,
-      created_by: actorId,
-      updated_by: actorId
-    };
+  async function rollbackCreatedGroup() {
+    if (attachedDebtId && createdGroupId) {
+      await rollbackDebtPaymentGroup(supabase, createdGroupId, attachedDebtId, actorId);
+      return;
+    }
+    if (attachedCreditId && createdGroupId) {
+      await rollbackCreditSettlementGroup(supabase, createdGroupId, attachedCreditId, actorId);
+      return;
+    }
+    if (createdGroupId) {
+      await supabase.from("business_ledger_entry_groups").delete().eq("id", createdGroupId);
+    }
+  }
+
+  if (groupId && needsCompanions) {
+    const companionRows: Array<Record<string, unknown>> = [];
+
+    if (kursAmount != null && kursTypeId) {
+      const kursEntry = buildKursEntry(payload, kursTypeId, kursAmount);
+      companionRows.push({
+        group_id: groupId,
+        entry_date: kursEntry.entry_date,
+        entry_direction: kursEntry.entry_direction,
+        entry_type_id: kursEntry.entry_type_id,
+        vendor_type_id: kursEntry.vendor_type_id,
+        vendor_id: kursEntry.vendor_id,
+        pocket_id: kursEntry.pocket_id,
+        action_by_id: kursEntry.action_by_id,
+        explanation: kursEntry.explanation,
+        amount: kursEntry.amount,
+        currency_code: kursEntry.currency_code,
+        remark: kursEntry.remark || null,
+        responsible_actor_id: kursEntry.responsible_actor_id,
+        is_credit: false,
+        is_future_credit: false,
+        is_debt: false,
+        created_by: actorId,
+        updated_by: actorId
+      });
+    }
+
+    if (gasFeeAmount != null) {
+      const gasEntry = buildGasFeeEntry(payload, gasFeeAmount);
+      companionRows.push({
+        group_id: groupId,
+        entry_date: gasEntry.entry_date,
+        entry_direction: gasEntry.entry_direction,
+        entry_type_id: gasEntry.entry_type_id,
+        vendor_type_id: gasEntry.vendor_type_id,
+        vendor_id: gasEntry.vendor_id,
+        pocket_id: gasEntry.pocket_id,
+        action_by_id: gasEntry.action_by_id,
+        explanation: gasEntry.explanation,
+        amount: gasEntry.amount,
+        currency_code: gasEntry.currency_code,
+        remark: gasEntry.remark || null,
+        responsible_actor_id: gasEntry.responsible_actor_id,
+        is_credit: false,
+        is_future_credit: false,
+        is_debt: false,
+        created_by: actorId,
+        updated_by: actorId
+      });
+    }
 
     const { data: inserted, error } = await supabase
       .from("business_ledger_entries")
-      .insert([mainRow, gasRow])
+      .insert([mainRow, ...companionRows])
       .select("id");
 
     if (error || !inserted?.[0]) {
-      await supabase.from("business_ledger_entry_groups").delete().eq("id", groupId);
+      await rollbackCreatedGroup();
       return NextResponse.json(
         { error: error?.message ?? "Failed to create ledger entry." },
         { status: 400 }
@@ -292,12 +529,13 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.from("business_ledger_entries").insert(mainRow).select("id").single();
 
     if (error || !data) {
+      await rollbackCreatedGroup();
       return NextResponse.json({ error: error?.message ?? "Failed to create ledger entry." }, { status: 400 });
     }
     createdEntryId = data.id;
   }
 
-  if (payload.close_credit && settlement.settles_entry_id) {
+  if (payload.close_credit && settlement.settles_entry_id && settlement.target_kind === "credit") {
     const { error: closeError } = await supabase
       .from("business_ledger_entries")
       .update({
@@ -313,11 +551,32 @@ export async function POST(request: Request) {
     }
   }
 
+  if (payload.close_debt && settlement.settles_entry_id && settlement.target_kind === "debt") {
+    const { error: closeError } = await supabase
+      .from("business_ledger_entries")
+      .update({
+        debt_settled_at: new Date().toISOString(),
+        debt_settled_by: actorId,
+        debt_settlement_note: payload.debt_settlement_note ?? null,
+        updated_by: actorId
+      })
+      .eq("id", settlement.settles_entry_id);
+
+    if (closeError) {
+      return NextResponse.json({ error: closeError.message }, { status: 400 });
+    }
+  }
+
   return NextResponse.json({
     id: createdEntryId,
     settlement_conversion_rate: settlement.settlement_conversion_rate,
     settlement_amount_in_credit_currency: settlement.settlement_amount_in_credit_currency,
-    credit_closed: Boolean(payload.close_credit && settlement.settles_entry_id)
+    credit_closed: Boolean(
+      payload.close_credit && settlement.settles_entry_id && settlement.target_kind === "credit"
+    ),
+    debt_closed: Boolean(
+      payload.close_debt && settlement.settles_entry_id && settlement.target_kind === "debt"
+    )
   });
 }
 
@@ -337,7 +596,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { id, ...payload } = parsed.data;
+  const { id, expected_updated_at, ...payload } = parsed.data;
   const supabase = await createClient();
 
   const settlement = await resolveSettlementFields(supabase, {
@@ -350,13 +609,29 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: settlement.error }, { status: settlement.status });
   }
 
-  const { error } = await supabase
+  if (payload.is_debt && payload.entry_direction !== "spending") {
+    return NextResponse.json(
+      { error: "Debt entries must use Cash Flow Out (spending)." },
+      { status: 400 }
+    );
+  }
+  if (settlement.target_kind === "debt" && payload.entry_direction !== "spending") {
+    return NextResponse.json(
+      { error: "Debt payment settlements must use Cash Flow Out (spending)." },
+      { status: 400 }
+    );
+  }
+
+  const isCredit = settlement.settles_entry_id ? false : Boolean(payload.is_credit);
+  const isFutureCredit = isCredit && Boolean(payload.is_future_credit);
+  const isDebt = settlement.settles_entry_id || isCredit ? false : Boolean(payload.is_debt);
+
+  const { data: updated, error } = await supabase
     .from("business_ledger_entries")
     .update({
       entry_date: payload.entry_date,
       entry_direction: payload.entry_direction,
       entry_type_id: payload.entry_type_id,
-      entry_sub_type_id: payload.entry_sub_type_id ?? null,
       vendor_type_id: payload.vendor_type_id ?? null,
       vendor_id: payload.vendor_id ?? null,
       pocket_id: payload.pocket_id ?? null,
@@ -366,20 +641,34 @@ export async function PATCH(request: Request) {
       currency_code: payload.currency_code,
       remark: payload.remark || null,
       responsible_actor_id: payload.responsible_actor_id,
-      is_credit: settlement.settles_entry_id ? false : Boolean(payload.is_credit),
+      is_credit: isCredit,
+      is_future_credit: isFutureCredit,
+      is_debt: isDebt,
       settles_entry_id: settlement.settles_entry_id,
       settlement_conversion_rate: settlement.settlement_conversion_rate,
       settlement_amount_in_credit_currency: settlement.settlement_amount_in_credit_currency,
       settlement_note: settlement.settles_entry_id ? payload.settlement_note ?? null : null,
       updated_by: authCheck.user.id
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("updated_at", expected_updated_at)
+    .select("id, updated_at")
+    .maybeSingle();
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
+  if (!updated) {
+    const { data: existing } = await supabase
+      .from("business_ledger_entries")
+      .select("id, updated_at")
+      .eq("id", id)
+      .maybeSingle();
+    return resolveOptimisticMiss({ existing });
+  }
   return NextResponse.json({
     ok: true,
+    updated_at: updated.updated_at,
     settlement_conversion_rate: settlement.settlement_conversion_rate,
     settlement_amount_in_credit_currency: settlement.settlement_amount_in_credit_currency
   });
@@ -400,26 +689,143 @@ export async function DELETE(request: Request) {
   if (!id) {
     return NextResponse.json({ error: "Entry ID is required." }, { status: 400 });
   }
+  const expectedUpdatedAt = parseExpectedUpdatedAt(searchParams.get("expected_updated_at"));
+  if (!expectedUpdatedAt.ok) {
+    return expectedUpdatedAt.response;
+  }
+  const cascadeLinked = searchParams.get("cascadeLinked") === "1";
 
   const supabase = await createClient();
+
+  const { data: target, error: targetError } = await supabase
+    .from("business_ledger_entries")
+    .select("id, is_credit, is_debt, settles_entry_id, updated_at")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (targetError) {
+    return NextResponse.json({ error: targetError.message }, { status: 400 });
+  }
+  if (!target) {
+    return NextResponse.json({ error: "Entry not found." }, { status: 404 });
+  }
+  if (target.updated_at !== expectedUpdatedAt.value) {
+    return resolveOptimisticMiss({ existing: target });
+  }
+
+  const isObligation = Boolean(target.is_credit) || Boolean(target.is_debt);
+  const obligationId = isObligation
+    ? target.id
+    : target.settles_entry_id
+      ? (target.settles_entry_id as string)
+      : null;
+
+  if (obligationId) {
+    const { data: linkedSettlements, error: linkedError } = await supabase
+      .from("business_ledger_entries")
+      .select("id")
+      .eq("settles_entry_id", obligationId);
+
+    if (linkedError) {
+      return NextResponse.json({ error: linkedError.message }, { status: 400 });
+    }
+
+    const settlementIds = (linkedSettlements ?? []).map((row) => row.id as string);
+    const isSettlementRow = Boolean(target.settles_entry_id) && !isObligation;
+    const hasLinkedSet = isSettlementRow || settlementIds.length > 0;
+
+    if (hasLinkedSet) {
+      if (!cascadeLinked) {
+        return NextResponse.json(
+          {
+            error:
+              "This credit or debt has linked settlements. Delete the linked set together, or remove settlements first."
+          },
+          { status: 400 }
+        );
+      }
+
+      // Children first — settles_entry_id is ON DELETE RESTRICT.
+      if (settlementIds.length) {
+        const { error: settleDeleteError } = await supabase
+          .from("business_ledger_entries")
+          .delete()
+          .in("id", settlementIds);
+
+        if (settleDeleteError) {
+          return NextResponse.json({ error: settleDeleteError.message }, { status: 400 });
+        }
+      }
+
+      const obligationDeleteQuery = supabase
+        .from("business_ledger_entries")
+        .delete()
+        .eq("id", obligationId);
+      // When the user deleted the obligation itself, re-check its timestamp.
+      const { data: deletedObligation, error: obligationDeleteError } = await (
+        obligationId === id
+          ? obligationDeleteQuery.eq("updated_at", expectedUpdatedAt.value)
+          : obligationDeleteQuery
+      )
+        .select("id")
+        .maybeSingle();
+
+      if (obligationDeleteError) {
+        if (isFkRestrictError(obligationDeleteError.message)) {
+          return NextResponse.json(
+            {
+              error:
+                "This credit or debt still has linked settlements. Refresh and try linked delete again."
+            },
+            { status: 400 }
+          );
+        }
+        return NextResponse.json({ error: obligationDeleteError.message }, { status: 400 });
+      }
+      if (!deletedObligation) {
+        const { data: existing } = await supabase
+          .from("business_ledger_entries")
+          .select("id, updated_at")
+          .eq("id", obligationId)
+          .maybeSingle();
+        return resolveOptimisticMiss({ existing });
+      }
+
+      return NextResponse.json({
+        ok: true,
+        cascaded: true,
+        deleted_ids: [...settlementIds, obligationId]
+      });
+    }
+  }
+
   const { data, error } = await supabase
     .from("business_ledger_entries")
     .delete()
     .eq("id", id)
+    .eq("updated_at", expectedUpdatedAt.value)
     .select("id")
     .maybeSingle();
 
   if (error) {
     if (isFkRestrictError(error.message)) {
       return NextResponse.json(
-        { error: "This credit has settlements. Delete them first." },
+        {
+          error:
+            "This credit or debt has linked settlements. Delete the linked set together, or remove settlements first."
+        },
         { status: 400 }
       );
     }
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
   if (!data) {
-    return NextResponse.json({ error: "Entry not found." }, { status: 404 });
+    const { data: existing } = await supabase
+      .from("business_ledger_entries")
+      .select("id, updated_at")
+      .eq("id", id)
+      .maybeSingle();
+    return resolveOptimisticMiss({ existing });
   }
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, cascaded: false, deleted_ids: [id] });
 }

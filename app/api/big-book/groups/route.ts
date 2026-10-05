@@ -12,7 +12,6 @@ type EntryPayload = {
   entry_date: string;
   entry_direction: "spending" | "profit";
   entry_type_id: string;
-  entry_sub_type_id?: string | null;
   vendor_type_id?: string | null;
   vendor_id?: string | null;
   pocket_id?: string | null;
@@ -22,15 +21,20 @@ type EntryPayload = {
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
   remark?: string;
   responsible_actor_id: string;
+  is_credit?: boolean;
+  is_future_credit?: boolean;
+  is_debt?: boolean;
 };
 
 function toEntryInsertRow(payload: EntryPayload, groupId: string, actorId: string) {
+  const isCredit = Boolean(payload.is_credit) && !payload.is_debt;
+  const isFutureCredit = isCredit && Boolean(payload.is_future_credit);
+  const isDebt = Boolean(payload.is_debt) && !payload.is_credit;
   return {
     group_id: groupId,
     entry_date: payload.entry_date,
     entry_direction: payload.entry_direction,
     entry_type_id: payload.entry_type_id,
-    entry_sub_type_id: payload.entry_sub_type_id ?? null,
     vendor_type_id: payload.vendor_type_id ?? null,
     vendor_id: payload.vendor_id ?? null,
     pocket_id: payload.pocket_id ?? null,
@@ -40,6 +44,9 @@ function toEntryInsertRow(payload: EntryPayload, groupId: string, actorId: strin
     currency_code: payload.currency_code,
     remark: payload.remark || null,
     responsible_actor_id: payload.responsible_actor_id,
+    is_credit: isCredit,
+    is_future_credit: isFutureCredit,
+    is_debt: isDebt,
     created_by: actorId,
     updated_by: actorId
   };
@@ -164,13 +171,15 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: `Entry ${entry.id} does not belong to this group.` }, { status: 400 });
       }
       const { id: entryId, ...payload } = entry;
+      const isCredit = Boolean(payload.is_credit) && !payload.is_debt;
+      const isFutureCredit = isCredit && Boolean(payload.is_future_credit);
+      const isDebt = Boolean(payload.is_debt) && !payload.is_credit;
       const { error: updateError } = await supabase
         .from("business_ledger_entries")
         .update({
           entry_date: payload.entry_date,
           entry_direction: payload.entry_direction,
           entry_type_id: payload.entry_type_id,
-          entry_sub_type_id: payload.entry_sub_type_id ?? null,
           vendor_type_id: payload.vendor_type_id ?? null,
           vendor_id: payload.vendor_id ?? null,
           pocket_id: payload.pocket_id ?? null,
@@ -180,6 +189,9 @@ export async function PATCH(request: Request) {
           currency_code: payload.currency_code,
           remark: payload.remark || null,
           responsible_actor_id: payload.responsible_actor_id,
+          is_credit: isCredit,
+          is_future_credit: isFutureCredit,
+          is_debt: isDebt,
           updated_by: actorId
         })
         .eq("id", entryId)

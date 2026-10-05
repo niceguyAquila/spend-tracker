@@ -5,7 +5,6 @@ import type {
   BigBookActionBy,
   BigBookActor,
   BigBookActorPocket,
-  BigBookLedgerSubType,
   BigBookLedgerType,
   BigBookSettlementTargetRef,
   BigBookTypeVendorTypeMap,
@@ -13,12 +12,14 @@ import type {
   BigBookVendorType
 } from "@/lib/types";
 import { formatAmount } from "@/lib/display-format";
+import { FieldHintTooltip } from "@/components/ui/field-hint-tooltip";
 import { FormSection } from "@/components/ui/form-section";
 import {
   computeSettlementAmountFromCredit,
   computeSettlementAmountInCreditCurrency
 } from "@/lib/big-book/credit";
 import { mappedVendorTypeIdForType } from "@/lib/big-book/type-vendor-type-map";
+import { sortByDisplayLabel } from "@/lib/ui/sort-by-display-label";
 
 export { mappedVendorTypeIdForType } from "@/lib/big-book/type-vendor-type-map";
 
@@ -26,7 +27,6 @@ export type EntryFormState = {
   entry_date: string;
   entry_direction: "spending" | "profit";
   entry_type_id: string;
-  entry_sub_type_id: string;
   vendor_type_id: string;
   vendor_id: string;
   pocket_id: string;
@@ -35,14 +35,22 @@ export type EntryFormState = {
   amount: string;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
   gas_fee_amount: string;
+  /** Create-only USDT inflow companion rate (e.g. 0.999423). */
+  kurs_rate: string;
+  /** Create-only companion USDT amount = A × (1 − r), editable override. */
+  kurs_amount: string;
   remark: string;
   responsible_actor_id: string;
   is_credit: boolean;
+  is_future_credit: boolean;
+  is_debt: boolean;
   settles_entry_id: string;
   settlement_conversion_rate: string;
   settlement_note: string;
   close_credit: boolean;
   credit_settlement_note: string;
+  close_debt: boolean;
+  debt_settlement_note: string;
 };
 
 const amountFormatter = new Intl.NumberFormat("en-US", {
@@ -92,7 +100,6 @@ export function createEmptyEntryForm(options: {
     entry_date: options.today,
     entry_direction: "spending",
     entry_type_id: options.defaultTypeId,
-    entry_sub_type_id: "",
     vendor_type_id: mappedVendorTypeId,
     vendor_id: "",
     pocket_id: "",
@@ -101,14 +108,20 @@ export function createEmptyEntryForm(options: {
     amount: "",
     currency_code: "IDR",
     gas_fee_amount: "",
+    kurs_rate: "",
+    kurs_amount: "",
     remark: "",
     responsible_actor_id: options.defaultActorId,
     is_credit: false,
+    is_future_credit: false,
+    is_debt: false,
     settles_entry_id: "",
     settlement_conversion_rate: "",
     settlement_note: "",
     close_credit: false,
-    credit_settlement_note: ""
+    credit_settlement_note: "",
+    close_debt: false,
+    debt_settlement_note: ""
   };
 }
 
@@ -116,7 +129,6 @@ type Props = {
   value: EntryFormState;
   onChange: (next: EntryFormState) => void;
   types: BigBookLedgerType[];
-  subTypes: BigBookLedgerSubType[];
   vendorTypes: BigBookVendorType[];
   vendors: BigBookVendor[];
   actionByOptions: BigBookActionBy[];
@@ -133,7 +145,7 @@ type Props = {
   onFetchConversionRate?: () => void;
   fetchingConversionRate?: boolean;
   hideCreditToggle?: boolean;
-  /** Create-only: show an optional TRX gas-fee amount when currency is USDT. */
+  /** Create-only: show optional TRX gas-fee / KURS companions when applicable. */
   showGasFee?: boolean;
   /**
    * `full` shows labeled sections with a 1/2/3-column grid.
@@ -164,7 +176,10 @@ export function BigBookEntryFields({
   showGasFee = false,
   layout = "full"
 }: Props) {
-  const activeTypes = types.filter((row) => row.is_active);
+  const activeTypes = sortByDisplayLabel(
+    types.filter((row) => row.is_active),
+    (row) => row.name
+  );
   const activeVendorTypes = vendorTypes.filter((row) => row.is_active);
   const mappedVendorTypeId = mappedVendorTypeIdForType(value.entry_type_id, typeVendorTypeMaps);
   const mappedVendorType =
@@ -181,30 +196,57 @@ export function BigBookEntryFields({
       const selected = vendorTypes.find((row) => row.id === value.vendor_type_id);
       if (selected) byId.set(selected.id, selected);
     }
-    return [...byId.values()];
+    return sortByDisplayLabel([...byId.values()], (row) => row.name);
   })();
-  const activeActionBy = actionByOptions.filter((row) => row.is_active);
-  const pocketsForForm = pockets.filter(
-    (row) =>
-      row.is_active &&
-      row.actor_id === value.responsible_actor_id &&
-      row.currency_code === value.currency_code
+  const activeActionBy = sortByDisplayLabel(
+    actionByOptions.filter((row) => row.is_active),
+    (row) => row.name
   );
-  const pocketDisabled = value.currency_code !== "IDR" || !pocketsForForm.length;
-  const pocketHint =
-    value.currency_code !== "IDR"
-      ? "Pockets are IDR-only"
-      : !pocketsForForm.length
-        ? "No pockets for this actor yet"
-        : null;
+  const sortedActors = sortByDisplayLabel(actors, (row) => row.display_name);
+  const sortedCurrencies = sortByDisplayLabel(currencies, (row) => row);
+  // Pocket UI removed from create/edit; pocket_id stays in state/API (optional/empty).
+  void pockets;
   const isSettlementMode = Boolean(settlesEntry || value.settles_entry_id);
-  // Conversion UI is USDT-settlement only (plan): admin enters company rate under Amount.
-  // Convention: rate = credit_currency per 1 USDT; amount_usdt = credit_amount / rate.
-  const showUsdtConversionRate =
+  const settlementKind: "none" | "credit" | "future_credit" | "debt" = value.is_debt
+    ? "debt"
+    : value.is_credit && value.is_future_credit
+      ? "future_credit"
+      : value.is_credit
+        ? "credit"
+        : "none";
+  const showSettlementType = !hideCreditToggle && !isSettlementMode;
+
+  function applySettlementKind(next: "none" | "credit" | "future_credit" | "debt") {
+    patch({
+      is_credit: next === "credit" || next === "future_credit",
+      is_future_credit: next === "future_credit",
+      is_debt: next === "debt",
+      entry_direction:
+        next === "debt" ? "spending" : next === "future_credit" ? "profit" : value.entry_direction,
+      settles_entry_id: "",
+      settlement_conversion_rate: "",
+      settlement_note: "",
+      close_credit: false,
+      credit_settlement_note: "",
+      close_debt: false,
+      debt_settlement_note: "",
+      ...(next === "debt" ? { kurs_rate: "", kurs_amount: "" } : {})
+    });
+  }
+  const cashFlowLockedOut =
+    settlementKind === "debt" || Boolean(settlesEntry?.is_debt);
+  const cashFlowLockedIn =
+    settlementKind === "future_credit" || Boolean(settlesEntry?.is_future_credit);
+  const cashFlowLocked = cashFlowLockedOut || cashFlowLockedIn;
+  // Cross-currency settlement: admin enters company rate under Amount.
+  // Convention: rate = credit_currency units per 1 settlement_currency unit;
+  // settlement_amount = credit_amount / rate.
+  const showConversionRate =
     isSettlementMode &&
     settlesEntry != null &&
-    value.currency_code === "USDT" &&
-    settlesEntry.currency_code !== "USDT";
+    value.currency_code !== settlesEntry.currency_code;
+  const showKursFields =
+    showGasFee && value.currency_code === "USDT" && value.entry_direction === "profit";
 
   const moreDetailsFilled =
     Boolean(value.remark.trim()) || (showAttachments && attachmentFiles.length > 0);
@@ -231,8 +273,7 @@ export function BigBookEntryFields({
     const nextMappedVendorTypeId = mappedVendorTypeIdForType(nextTypeId, typeVendorTypeMaps);
     patch({
       entry_type_id: nextTypeId,
-      entry_sub_type_id: "",
-      vendor_type_id: nextMappedVendorTypeId,
+        vendor_type_id: nextMappedVendorTypeId,
       vendor_id: ""
     });
   }
@@ -265,17 +306,18 @@ export function BigBookEntryFields({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value.entry_type_id, typeVendorTypeMaps]);
 
-  // When USDT conversion rate changes (typed or fetched), populate Amount in USDT.
-  // Formula: usdt_amount = credit_amount / rate  (rate = credit units per 1 USDT).
-  const prevUsdtRateRef = useRef<string | null>(null);
+  // When conversion rate changes (typed or fetched), populate settlement Amount.
+  // Formula: settlement_amount = credit_amount / rate
+  // (rate = credit units per 1 settlement-currency unit).
+  const prevConversionRateRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!showUsdtConversionRate || !settlesEntry) {
-      prevUsdtRateRef.current = null;
+    if (!showConversionRate || !settlesEntry) {
+      prevConversionRateRef.current = null;
       return;
     }
     const rateRaw = value.settlement_conversion_rate;
-    if (prevUsdtRateRef.current === rateRaw) return;
-    prevUsdtRateRef.current = rateRaw;
+    if (prevConversionRateRef.current === rateRaw) return;
+    prevConversionRateRef.current = rateRaw;
     const rate = Number(rateRaw);
     if (!Number.isFinite(rate) || rate <= 0) return;
     const nextAmount = formatAmountInput(
@@ -286,11 +328,43 @@ export function BigBookEntryFields({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    showUsdtConversionRate,
+    showConversionRate,
     value.settlement_conversion_rate,
     settlesEntry?.id,
     settlesEntry?.amount
   ]);
+
+  // Recompute KURS companion amount whenever main amount or rate changes.
+  // Manual edits to kurs_amount stick until A or r changes again.
+  useEffect(() => {
+    if (!showKursFields) {
+      if (value.kurs_rate || value.kurs_amount) {
+        onChange({ ...value, kurs_rate: "", kurs_amount: "" });
+      }
+      return;
+    }
+    const rateRaw = value.kurs_rate.trim();
+    if (!rateRaw) {
+      if (value.kurs_amount) onChange({ ...value, kurs_amount: "" });
+      return;
+    }
+    const mainAmount = Number(parseAmountInput(value.amount));
+    const rate = Number(parseAmountInput(rateRaw));
+    if (!Number.isFinite(mainAmount) || mainAmount <= 0 || !Number.isFinite(rate)) {
+      if (value.kurs_amount) onChange({ ...value, kurs_amount: "" });
+      return;
+    }
+    const computed = mainAmount * (1 - rate);
+    if (!Number.isFinite(computed) || computed <= 0) {
+      if (value.kurs_amount) onChange({ ...value, kurs_amount: "" });
+      return;
+    }
+    const nextAmount = formatAmountInput(String(Math.round(computed * 1e4) / 1e4));
+    if (nextAmount !== value.kurs_amount) {
+      onChange({ ...value, kurs_amount: nextAmount });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showKursFields, value.amount, value.kurs_rate]);
 
   const moneyFields = (
     <>
@@ -307,16 +381,35 @@ export function BigBookEntryFields({
         Cash Flow *
         <select
           className="field mt-1"
-          value={value.entry_direction}
-          onChange={(event) =>
-            patch({
-              entry_direction: event.target.value as "spending" | "profit"
-            })
+          value={
+            cashFlowLockedOut ? "spending" : cashFlowLockedIn ? "profit" : value.entry_direction
           }
+          disabled={cashFlowLocked}
+          title={
+            cashFlowLockedOut
+              ? "Debt and debt payments always use Cash Flow Out."
+              : cashFlowLockedIn
+                ? "Future Credit and its settlements always use Cash Flow In."
+                : undefined
+          }
+          onChange={(event) => {
+            const nextDirection = event.target.value as "spending" | "profit";
+            patch({
+              entry_direction: nextDirection,
+              ...(nextDirection !== "profit"
+                ? { kurs_rate: "", kurs_amount: "" }
+                : {})
+            });
+          }}
         >
           <option value="spending">Out</option>
           <option value="profit">In</option>
         </select>
+        {cashFlowLockedOut ? (
+          <span className="mt-1 block text-xs text-muted">Locked to Out for Debt.</span>
+        ) : cashFlowLockedIn ? (
+          <span className="mt-1 block text-xs text-muted">Locked to In for Future Credit.</span>
+        ) : null}
       </label>
       <label className="text-sm">
         Amount *
@@ -336,24 +429,21 @@ export function BigBookEntryFields({
               const sameAsCredit = Boolean(
                 settlesEntry && nextCurrency === settlesEntry.currency_code
               );
-              const needsUsdtRate =
-                Boolean(settlesEntry) &&
-                nextCurrency === "USDT" &&
-                settlesEntry!.currency_code !== "USDT";
+              const keepUsdtCompanions = nextCurrency === "USDT";
               patch({
                 currency_code: nextCurrency,
                 pocket_id: "",
-                gas_fee_amount: nextCurrency === "USDT" ? value.gas_fee_amount : "",
-                settlement_conversion_rate: sameAsCredit
-                  ? "1"
-                  : needsUsdtRate
-                    ? ""
-                    : value.settlement_conversion_rate
+                gas_fee_amount: keepUsdtCompanions ? value.gas_fee_amount : "",
+                kurs_rate: keepUsdtCompanions && value.entry_direction === "profit" ? value.kurs_rate : "",
+                kurs_amount:
+                  keepUsdtCompanions && value.entry_direction === "profit" ? value.kurs_amount : "",
+                // Same-currency settlements force rate = 1; cross-currency requires an explicit rate.
+                settlement_conversion_rate: sameAsCredit ? "1" : settlesEntry ? "" : value.settlement_conversion_rate
               });
             }}
             aria-label="Currency"
           >
-            {currencies.map((currency) => (
+            {sortedCurrencies.map((currency) => (
               <option key={currency} value={currency}>
                 {currency}
               </option>
@@ -361,14 +451,25 @@ export function BigBookEntryFields({
           </select>
         </div>
       </label>
-      {showUsdtConversionRate && settlesEntry ? (
+      {showConversionRate && settlesEntry ? (
         <label className={`text-sm ${spanClass}`}>
-          Conversion Rate * (1 USDT = ? {settlesEntry.currency_code})
+          <span className="inline-flex items-center gap-1.5">
+            Conversion Rate (1 {value.currency_code} = ? {settlesEntry.currency_code})
+            <FieldHintTooltip
+              label="Conversion rate help"
+              content={
+                <>
+                  Optional. When set, amount in {value.currency_code} = credit amount ÷ rate.
+                  Credit-currency equivalent is not required to save.
+                </>
+              }
+            />
+          </span>
           <div className="mt-1 flex gap-2">
             <input
               className="field flex-1"
               inputMode="decimal"
-              placeholder="Enter today's company rate"
+              placeholder="Optional — today’s company rate"
               value={value.settlement_conversion_rate}
               onChange={(event) =>
                 patch({ settlement_conversion_rate: formatRateInput(event.target.value) })
@@ -385,13 +486,13 @@ export function BigBookEntryFields({
               </button>
             ) : null}
           </div>
-          <span className="mt-1 block text-xs text-muted">
-            Amount in USDT = credit amount ÷ rate. Equivalent in {settlesEntry.currency_code}:{" "}
+          <span className="mt-1 block text-xs tabular-nums text-muted">
+            Equivalent in {settlesEntry.currency_code}:{" "}
             {(() => {
               const rate = Number(value.settlement_conversion_rate);
-              const usdt = Number(parseAmountInput(value.amount));
-              if (!(rate > 0) || !(usdt > 0)) return "--";
-              return formatAmount(computeSettlementAmountInCreditCurrency(usdt, rate), {
+              const settleAmount = Number(parseAmountInput(value.amount));
+              if (!(rate > 0) || !(settleAmount > 0)) return "--";
+              return formatAmount(computeSettlementAmountInCreditCurrency(settleAmount, rate), {
                 minimumFractionDigits: 0,
                 maximumFractionDigits: 4
               });
@@ -401,7 +502,13 @@ export function BigBookEntryFields({
       ) : null}
       {showGasFee && value.currency_code === "USDT" ? (
         <label className="text-sm">
-          Gas fee
+          <span className="inline-flex items-center gap-1.5">
+            Gas fee
+            <FieldHintTooltip
+              label="Gas fee help"
+              content="Optional. Creates a grouped TRX spending entry."
+            />
+          </span>
           <div className="mt-1 flex overflow-hidden rounded-md border border-[rgb(var(--border))] focus-within:shadow-[0_0_0_3px_rgba(var(--focus),0.25)]">
             <input
               className="min-w-0 flex-1 border-0 bg-[rgb(var(--surface))] px-3 py-2 text-right text-base font-medium text-[rgb(var(--text))] focus:outline-none"
@@ -418,8 +525,53 @@ export function BigBookEntryFields({
               TRX
             </span>
           </div>
-          <span className="mt-1 block text-xs text-muted">Optional. Creates a grouped TRX spending entry.</span>
         </label>
+      ) : null}
+      {showKursFields ? (
+        <>
+          <label className="text-sm">
+            <span className="inline-flex items-center gap-1.5">
+              KURS
+              <FieldHintTooltip
+                label="KURS rate help"
+                content="Optional. Companion amount = amount × (1 − rate)."
+              />
+            </span>
+            <input
+              className="field mt-1 text-right"
+              inputMode="decimal"
+              placeholder="0.999423"
+              value={value.kurs_rate}
+              onChange={(event) => patch({ kurs_rate: formatRateInput(event.target.value) })}
+              aria-label="KURS rate"
+            />
+          </label>
+          <label className="text-sm">
+            <span className="inline-flex items-center gap-1.5">
+              KURS amount
+              <FieldHintTooltip
+                label="KURS amount help"
+                content="Editable. Recalculates when amount or KURS rate changes. Creates a grouped USDT spending entry typed KURS."
+              />
+            </span>
+            <div className="mt-1 flex overflow-hidden rounded-md border border-[rgb(var(--border))] focus-within:shadow-[0_0_0_3px_rgba(var(--focus),0.25)]">
+              <input
+                className="min-w-0 flex-1 border-0 bg-[rgb(var(--surface))] px-3 py-2 text-right text-base font-medium text-[rgb(var(--text))] focus:outline-none"
+                inputMode="decimal"
+                placeholder="0"
+                value={value.kurs_amount}
+                onChange={(event) => patch({ kurs_amount: formatAmountInput(event.target.value) })}
+                aria-label="KURS USDT amount"
+              />
+              <span
+                className="shrink-0 border-0 border-l border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] px-2 py-2 text-sm font-medium text-[rgb(var(--text))]"
+                aria-hidden
+              >
+                USDT
+              </span>
+            </div>
+          </label>
+        </>
       ) : null}
       <label className={`text-sm ${spanClass}`}>
         Explanation *
@@ -450,9 +602,22 @@ export function BigBookEntryFields({
           ))}
         </select>
       </label>
-      {/* Sub-Type and Vendor Name are hidden for now; values remain stored and linked. */}
       <label className="text-sm">
-        Vendor Type
+        <span className="inline-flex items-center gap-1.5">
+          Vendor Type
+          <FieldHintTooltip
+            label="Vendor Type mapping help"
+            content={
+              mappedVendorType
+                ? value.vendor_type_id === mappedVendorType.id
+                  ? `Auto-filled from Type mapping: ${mappedVendorType.name}`
+                  : `Type mapping suggests ${mappedVendorType.name} (currently overridden).`
+                : typeVendorTypeMaps.length
+                  ? "No Vendor Type mapping for this Type."
+                  : "Set Type → Vendor Type mappings in Big Book Settings to auto-fill."
+            }
+          />
+        </span>
         <select
           className="field mt-1"
           value={value.vendor_type_id}
@@ -462,7 +627,6 @@ export function BigBookEntryFields({
               vendor_id: ""
             })
           }
-          aria-describedby="vendor-type-mapping-hint"
         >
           <option value="">(none)</option>
           {vendorTypesForSelect.map((vendorType) => (
@@ -472,42 +636,75 @@ export function BigBookEntryFields({
             </option>
           ))}
         </select>
-        <span id="vendor-type-mapping-hint" className="mt-1 block text-xs text-muted">
-          {mappedVendorType
-            ? value.vendor_type_id === mappedVendorType.id
-              ? `Auto-filled from Type mapping: ${mappedVendorType.name}`
-              : `Type mapping suggests ${mappedVendorType.name} (currently overridden).`
-            : typeVendorTypeMaps.length
-              ? "No Vendor Type mapping for this Type."
-              : "Set Type → Vendor Type mappings in Big Book Settings to auto-fill."}
-        </span>
       </label>
-      {!hideCreditToggle && !isSettlementMode ? (
-        <label className={`flex items-start gap-2 text-sm ${spanClass}`}>
-          <input
-            className="mt-1"
-            type="checkbox"
-            checked={value.is_credit}
-            onChange={(event) =>
-              patch({
-                is_credit: event.target.checked,
-                settles_entry_id: "",
-                settlement_conversion_rate: "",
-                settlement_note: "",
-                close_credit: false,
-                credit_settlement_note: ""
-              })
-            }
-          />
-          <span>
-            <span className="font-medium">Mark as Credit</span>
-            <span className="mt-0.5 block text-xs text-muted">
-              Vendor owes our company this amount. You can record settlement payments later.
-            </span>
-          </span>
-        </label>
-      ) : null}
     </>
+  );
+
+  const settlementTypeFields = (
+    <div
+      className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${spanClass}`}
+      role="radiogroup"
+      aria-label="Settlement Type"
+    >
+      {(
+        [
+          {
+            kind: "credit" as const,
+            title: "Credit",
+            hint: "Vendor owes our company now"
+          },
+          {
+            kind: "future_credit" as const,
+            title: "Future Credit",
+            hint: "Expected later — excluded from cash totals until actualized; settlements still allowed"
+          },
+          {
+            kind: "debt" as const,
+            title: "Debt",
+            hint: "Our company owes the vendor"
+          }
+        ] as const
+      ).map((option) => {
+        const selected = settlementKind === option.kind;
+        return (
+          <div
+            key={option.kind}
+            role="radio"
+            aria-checked={selected}
+            tabIndex={0}
+            className={`cursor-pointer rounded-lg border px-4 py-3 text-left transition ${
+              selected
+                ? "border-[rgb(var(--primary))] bg-[rgb(var(--primary)/0.08)] shadow-[0_0_0_1px_rgb(var(--primary)/0.35)]"
+                : "border-[rgb(var(--border))] bg-[rgb(var(--surface))] hover:border-[rgb(var(--primary)/0.45)] hover:bg-[rgb(var(--surface-muted))]"
+            }`}
+            onClick={() => applySettlementKind(selected ? "none" : option.kind)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                applySettlementKind(selected ? "none" : option.kind);
+              }
+            }}
+          >
+            <span className="flex items-start gap-3">
+              <span
+                className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                  selected
+                    ? "border-[rgb(var(--primary))] bg-[rgb(var(--primary))]"
+                    : "border-[rgb(var(--border))] bg-[rgb(var(--surface))]"
+                }`}
+                aria-hidden
+              >
+                {selected ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="text-sm font-semibold text-[rgb(var(--text))]">{option.title}</span>
+                <FieldHintTooltip label={`${option.title} help`} content={option.hint} />
+              </span>
+            </span>
+          </div>
+        );
+      })}
+    </div>
   );
 
   const attributionFields = (
@@ -524,7 +721,7 @@ export function BigBookEntryFields({
             })
           }
         >
-          {actors.map((actor) => (
+          {sortedActors.map((actor) => (
             <option key={actor.id} value={actor.id}>
               {actor.display_name}
             </option>
@@ -545,23 +742,6 @@ export function BigBookEntryFields({
             </option>
           ))}
         </select>
-      </label>
-      <label className="text-sm">
-        Pocket
-        <select
-          className="field mt-1"
-          value={value.pocket_id}
-          onChange={(event) => patch({ pocket_id: event.target.value })}
-          disabled={pocketDisabled}
-        >
-          <option value="">(none)</option>
-          {pocketsForForm.map((pocket) => (
-            <option key={pocket.id} value={pocket.id}>
-              {pocket.name}
-            </option>
-          ))}
-        </select>
-        {pocketHint ? <span className="mt-1 block text-xs text-muted">{pocketHint}</span> : null}
       </label>
     </>
   );
@@ -610,16 +790,18 @@ export function BigBookEntryFields({
   );
 
   return (
-    <div className="space-y-5">
+    <div className={isNested ? "space-y-4" : "space-y-6"}>
       {settlesEntry ? (
         <div className="rounded-md border border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] p-3 text-sm">
-          <p className="font-medium">Settling credit</p>
+          <p className="font-medium">
+            {settlesEntry.is_debt ? "Paying debt" : "Settling credit"}
+          </p>
           <p className="mt-1 text-muted">
             {settlesEntry.entry_date} · {settlesEntry.explanation}
             {settlesEntry.vendor_name ? ` · ${settlesEntry.vendor_name}` : ""}
           </p>
           <p className="mt-1">
-            Credit amount:{" "}
+            {settlesEntry.is_debt ? "Debt" : "Credit"} amount:{" "}
             <span className="font-medium">
               {formatAmount(settlesEntry.amount, {
                 minimumFractionDigits: 0,
@@ -629,30 +811,45 @@ export function BigBookEntryFields({
             </span>
             {" · "}
             Status:{" "}
-            <span className="font-medium capitalize">{settlesEntry.credit_status}</span>
+            <span className="font-medium capitalize">
+              {settlesEntry.is_debt
+                ? settlesEntry.debt_status ?? "open"
+                : settlesEntry.credit_status ?? "open"}
+            </span>
           </p>
         </div>
       ) : null}
 
       {isNested ? (
-        <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2`}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {moneyFields}
           {classificationFields}
+          {showSettlementType ? settlementTypeFields : null}
           {attributionFields}
           {moreDetailsFields}
         </div>
       ) : (
         <>
-          <FormSection title="Money & timing" columns={columns}>
+          <FormSection step="01" title="Money & timing" columns={columns}>
             {moneyFields}
           </FormSection>
-          <FormSection title="Classification" columns={columns}>
+          <FormSection step="02" title="Classification" columns={columns}>
             {classificationFields}
           </FormSection>
-          <FormSection title="Attribution" columns={columns}>
+          {showSettlementType ? (
+            <FormSection step="03" title="Settlement Type" columns={columns}>
+              {settlementTypeFields}
+            </FormSection>
+          ) : null}
+          <FormSection
+            step={showSettlementType ? "04" : "03"}
+            title="Attribution"
+            columns={columns}
+          >
             {attributionFields}
           </FormSection>
           <FormSection
+            step={showSettlementType ? "05" : "04"}
             title="More details"
             columns={columns}
             collapsible
@@ -675,36 +872,79 @@ export function BigBookEntryFields({
               placeholder="Optional note about this settlement payment"
             />
           </label>
-          <label className="flex items-start gap-2 text-sm">
-            <input
-              className="mt-1"
-              type="checkbox"
-              checked={value.close_credit}
-              onChange={(event) =>
-                patch({
-                  close_credit: event.target.checked,
-                  credit_settlement_note: event.target.checked ? value.credit_settlement_note : ""
-                })
-              }
-            />
-            <span>
-              <span className="font-medium">Mark this credit as settled</span>
-              <span className="mt-0.5 block text-xs text-muted">
-                Closing is an admin decision — payment amount does not need to match the credit.
-              </span>
-            </span>
-          </label>
-          {value.close_credit ? (
-            <label className="block text-sm">
-              Closure Note
-              <input
-                className="field mt-1"
-                value={value.credit_settlement_note}
-                onChange={(event) => patch({ credit_settlement_note: event.target.value })}
-                placeholder="Why is this credit being closed? (e.g. short/over payment approved)"
-              />
-            </label>
-          ) : null}
+          {settlesEntry?.is_debt ? (
+            <>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  className="mt-1"
+                  type="checkbox"
+                  checked={value.close_debt}
+                  onChange={(event) =>
+                    patch({
+                      close_debt: event.target.checked,
+                      debt_settlement_note: event.target.checked
+                        ? value.debt_settlement_note
+                        : ""
+                    })
+                  }
+                />
+                <span className="inline-flex items-center gap-1.5 font-medium">
+                  Mark this debt as settled
+                  <FieldHintTooltip
+                    label="Mark debt settled help"
+                    content="Closing is an admin decision — payment amount does not need to match the debt."
+                  />
+                </span>
+              </label>
+              {value.close_debt ? (
+                <label className="block text-sm">
+                  Closure Note
+                  <input
+                    className="field mt-1"
+                    value={value.debt_settlement_note}
+                    onChange={(event) => patch({ debt_settlement_note: event.target.value })}
+                    placeholder="Why is this debt being closed?"
+                  />
+                </label>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  className="mt-1"
+                  type="checkbox"
+                  checked={value.close_credit}
+                  onChange={(event) =>
+                    patch({
+                      close_credit: event.target.checked,
+                      credit_settlement_note: event.target.checked
+                        ? value.credit_settlement_note
+                        : ""
+                    })
+                  }
+                />
+                <span className="inline-flex items-center gap-1.5 font-medium">
+                  Mark this credit as settled
+                  <FieldHintTooltip
+                    label="Mark credit settled help"
+                    content="Closing is an admin decision — payment amount does not need to match the credit."
+                  />
+                </span>
+              </label>
+              {value.close_credit ? (
+                <label className="block text-sm">
+                  Closure Note
+                  <input
+                    className="field mt-1"
+                    value={value.credit_settlement_note}
+                    onChange={(event) => patch({ credit_settlement_note: event.target.value })}
+                    placeholder="Why is this credit being closed? (e.g. short/over payment approved)"
+                  />
+                </label>
+              ) : null}
+            </>
+          )}
         </div>
       ) : null}
     </div>

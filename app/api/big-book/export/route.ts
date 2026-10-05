@@ -2,8 +2,12 @@ import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/auth-api";
 import { BIG_BOOK_CSV_EXPORT_HEADERS } from "@/lib/big-book/csv";
 import { compareLedgerSortValues, type BigBookLedgerSortKey } from "@/lib/big-book/ledger-display-keys";
+import {
+  escapeCsvCellSpreadsheetSafe,
+  formatAmountForCsv
+} from "@/lib/csv/primitives";
 import { bigBookEntriesQuerySchema } from "@/lib/validation/big-book";
-import { getBigBookEntries } from "@/lib/db/queries";
+import { BIG_BOOK_ENTRIES_MAX_ROWS, getBigBookEntries } from "@/lib/db/queries";
 import { createClient } from "@/lib/supabase/server";
 import type { BigBookEntry } from "@/lib/types";
 
@@ -15,8 +19,6 @@ function exportSortValue(entry: BigBookEntry, sortBy: BigBookLedgerSortKey): str
       return entry.entry_direction || null;
     case "type_name":
       return entry.type_name?.trim() || null;
-    case "sub_type_name":
-      return entry.sub_type_name?.trim() || null;
     case "vendor_type_name":
       return entry.vendor_type_name?.trim() || null;
     case "vendor_name":
@@ -34,21 +36,6 @@ function exportSortValue(entry: BigBookEntry, sortBy: BigBookLedgerSortKey): str
     default:
       return null;
   }
-}
-
-function escapeCsvCell(value: string | null | undefined): string {
-  const str = value == null ? "" : String(value);
-  if (str.length === 0) return "";
-  if (/[",\r\n]/.test(str)) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
-}
-
-function formatAmountForCsv(amount: number): string {
-  if (!Number.isFinite(amount)) return "0";
-  const fixed = Number(amount).toFixed(4);
-  return fixed.replace(/\.?0+$/, "");
 }
 
 export async function GET(request: Request) {
@@ -96,7 +83,7 @@ export async function GET(request: Request) {
       dateFrom: parsed.data.dateFrom,
       dateTo: parsed.data.dateTo,
       query: parsed.data.query,
-      limit: 100000
+      limit: BIG_BOOK_ENTRIES_MAX_ROWS
     });
 
     const groupIds = [...new Set(entries.map((entry) => entry.group_id).filter((id): id is string => Boolean(id)))];
@@ -145,7 +132,6 @@ export async function GET(request: Request) {
         entry.entry_date,
         entry.entry_direction,
         entry.type_name,
-        entry.sub_type_name ?? "",
         entry.vendor_type_name ?? "",
         entry.vendor_name ?? "",
         entry.explanation,
@@ -158,10 +144,11 @@ export async function GET(request: Request) {
         group?.label ?? "",
         group?.remark ?? "",
         entry.is_credit ? "true" : "false",
+        entry.is_future_credit ? "true" : "false",
         entry.credit_status ?? "",
         entry.credit_settled_at ?? "",
         entry.settles_entry?.explanation ?? ""
-      ].map(escapeCsvCell);
+      ].map(escapeCsvCellSpreadsheetSafe);
       lines.push(cells.join(","));
     }
 

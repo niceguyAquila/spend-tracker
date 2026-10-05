@@ -10,6 +10,8 @@ type ScanRow = {
   entry_direction: "spending" | "profit";
   pocket_id: string | null;
   is_credit: boolean;
+  is_future_credit?: boolean;
+  is_debt?: boolean;
 };
 
 type Payload = { data: unknown[]; error: null };
@@ -80,6 +82,7 @@ function scanRow(overrides: Partial<ScanRow> = {}): ScanRow {
     entry_direction: "spending",
     pocket_id: null,
     is_credit: false,
+    is_debt: false,
     ...overrides
   };
 }
@@ -181,6 +184,43 @@ describe("getBigBookLedgerRowsPaged totals", () => {
     expect(netFor(totals, "grandTotals", "IDR")).toBe(-1_000);
     expect(totals.grandEntryCount).toBe(2);
     expect(totals.grandPocketExcludedCount).toBe(1);
+  });
+
+  it("excludes open debt obligations from cash totals", async () => {
+    scanRowsRef.rows = [
+      scanRow({ id: "cash-out", amount: 100, entry_direction: "spending" }),
+      scanRow({ id: "debt-out", amount: 500, entry_direction: "spending", is_debt: true })
+    ];
+
+    const totals = await loadTotals();
+    expect(netFor(totals, "grandTotals", "IDR")).toBe(-100);
+    expect(totals.grandEntryCount).toBe(2);
+    // Debt exclusion is not pocket exclusion.
+    expect(totals.grandPocketExcludedCount).toBe(0);
+  });
+
+  it("excludes future credit obligations from cash totals until actualized", async () => {
+    scanRowsRef.rows = [
+      scanRow({ id: "cash-in", amount: 100, entry_direction: "profit" }),
+      scanRow({
+        id: "future-credit",
+        amount: 500,
+        entry_direction: "profit",
+        is_credit: true,
+        is_future_credit: true
+      }),
+      scanRow({
+        id: "actualized-credit",
+        amount: 50,
+        entry_direction: "profit",
+        is_credit: true,
+        is_future_credit: false
+      })
+    ];
+
+    const totals = await loadTotals();
+    expect(netFor(totals, "grandTotals", "IDR")).toBe(150);
+    expect(totals.grandEntryCount).toBe(3);
   });
 
   it("separates inflow from outflow across currencies", async () => {

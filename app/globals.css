@@ -11,6 +11,11 @@
     --text: 15 23 42;
     --text-muted: 71 85 105;
     --border: 203 213 225;
+    /* Ink slate table headers (#334155) — keep CTAs on --primary */
+    --table-header-bg: 51 65 85;
+    --table-header-fg: 255 255 255;
+    --table-header-fg-muted: 226 232 240;
+    --table-header-border: 71 85 105;
     --primary: 59 130 246;
     --primary-strong: 79 70 229;
     --focus: 96 165 250;
@@ -19,6 +24,37 @@
     --warning: 217 119 6;
     --info: 37 99 235;
     --stripe: 241 245 249;
+    /* Soft muted amber for Debt obligation ledger rows (not bright yellow) */
+    --debt-row: 250 240 210;
+    /* Grouped ledger rows — light uses a darker magenta for contrast (default / normal) */
+    --group-accent-rgb: 192, 38, 211;
+    --group-header-bg: rgba(192, 38, 211, 0.14);
+    --group-child-bg: rgba(192, 38, 211, 0.06);
+    --group-child-hover-bg: rgba(192, 38, 211, 0.12);
+    --group-child-bar: rgba(192, 38, 211, 0.45);
+    --group-divider: rgba(192, 38, 211, 0.14);
+    --group-chip-text: #a21caf;
+    --group-chip-bg: rgba(192, 38, 211, 0.22);
+    /* Credit groups — teal */
+    --group-credit-accent-rgb: 13, 148, 136;
+    --group-credit-header-bg: rgba(13, 148, 136, 0.14);
+    --group-credit-child-bg: rgba(13, 148, 136, 0.06);
+    --group-credit-child-hover-bg: rgba(13, 148, 136, 0.12);
+    --group-credit-child-bar: rgba(13, 148, 136, 0.45);
+    --group-credit-divider: rgba(13, 148, 136, 0.14);
+    --group-credit-chip-text: #0f766e;
+    --group-credit-chip-bg: rgba(13, 148, 136, 0.22);
+    /* Debt groups — maroon */
+    --group-debt-accent-rgb: 136, 19, 55;
+    --group-debt-header-bg: rgba(136, 19, 55, 0.14);
+    --group-debt-child-bg: rgba(136, 19, 55, 0.06);
+    --group-debt-child-hover-bg: rgba(136, 19, 55, 0.12);
+    --group-debt-child-bar: rgba(136, 19, 55, 0.45);
+    --group-debt-divider: rgba(136, 19, 55, 0.14);
+    --group-debt-chip-text: #9f1239;
+    --group-debt-chip-bg: rgba(136, 19, 55, 0.22);
+    /* Settings category tabs — active accent (not the group-row magenta) */
+    --accent-magenta: #993556;
   }
 
   .dark {
@@ -29,6 +65,10 @@
     --text: 229 231 235;
     --text-muted: 148 163 184;
     --border: 71 85 105;
+    --table-header-bg: 51 65 85;
+    --table-header-fg: 255 255 255;
+    --table-header-fg-muted: 226 232 240;
+    --table-header-border: 100 116 139;
     --primary: 96 165 250;
     --primary-strong: 129 140 248;
     --focus: 125 211 252;
@@ -37,6 +77,32 @@
     --warning: 251 191 36;
     --info: 96 165 250;
     --stripe: 30 41 59;
+    --debt-row: 58 48 22;
+    --group-accent-rgb: 232, 121, 249;
+    --group-header-bg: rgba(232, 121, 249, 0.16);
+    --group-child-bg: rgba(232, 121, 249, 0.07);
+    --group-child-hover-bg: rgba(232, 121, 249, 0.12);
+    --group-child-bar: rgba(232, 121, 249, 0.45);
+    --group-divider: rgba(232, 121, 249, 0.14);
+    --group-chip-text: #f5d0fe;
+    --group-chip-bg: rgba(232, 121, 249, 0.22);
+    --group-credit-accent-rgb: 45, 212, 191;
+    --group-credit-header-bg: rgba(45, 212, 191, 0.16);
+    --group-credit-child-bg: rgba(45, 212, 191, 0.07);
+    --group-credit-child-hover-bg: rgba(45, 212, 191, 0.12);
+    --group-credit-child-bar: rgba(45, 212, 191, 0.45);
+    --group-credit-divider: rgba(45, 212, 191, 0.14);
+    --group-credit-chip-text: #ccfbf1;
+    --group-credit-chip-bg: rgba(45, 212, 191, 0.22);
+    --group-debt-accent-rgb: 251, 113, 133;
+    --group-debt-header-bg: rgba(190, 18, 60, 0.22);
+    --group-debt-child-bg: rgba(190, 18, 60, 0.1);
+    --group-debt-child-hover-bg: rgba(190, 18, 60, 0.16);
+    --group-debt-child-bar: rgba(251, 113, 133, 0.5);
+    --group-debt-divider: rgba(251, 113, 133, 0.18);
+    --group-debt-chip-text: #fecdd3;
+    --group-debt-chip-bg: rgba(190, 18, 60, 0.28);
+    --accent-magenta: #ed93b1;
   }
 
   body {
@@ -50,6 +116,115 @@
   .text-muted {
     color: rgb(var(--text-muted));
   }
+
+  .bg-debt-row {
+    background-color: rgb(var(--debt-row));
+  }
+}
+
+/* Grouped ledger rows — visual structure only; ungrouped rows untouched.
+   Default tokens are magenta (normal). Credit/debt groups remap --group-* via tone classes. */
+.data-table tbody tr.group-tone-credit {
+  --group-accent-rgb: var(--group-credit-accent-rgb);
+  --group-header-bg: var(--group-credit-header-bg);
+  --group-child-bg: var(--group-credit-child-bg);
+  --group-child-hover-bg: var(--group-credit-child-hover-bg);
+  --group-child-bar: var(--group-credit-child-bar);
+  --group-divider: var(--group-credit-divider);
+  --group-chip-text: var(--group-credit-chip-text);
+  --group-chip-bg: var(--group-credit-chip-bg);
+}
+
+.data-table tbody tr.group-tone-debt {
+  --group-accent-rgb: var(--group-debt-accent-rgb);
+  --group-header-bg: var(--group-debt-header-bg);
+  --group-child-bg: var(--group-debt-child-bg);
+  --group-child-hover-bg: var(--group-debt-child-hover-bg);
+  --group-child-bar: var(--group-debt-child-bar);
+  --group-divider: var(--group-debt-divider);
+  --group-chip-text: var(--group-debt-chip-text);
+  --group-chip-bg: var(--group-debt-chip-bg);
+}
+
+.data-table tbody tr.group-header {
+  background-color: var(--group-header-bg);
+  border-color: var(--group-divider);
+}
+
+.data-table tbody tr.group-header:hover {
+  background-color: var(--group-header-bg);
+}
+
+.data-table tbody tr.group-header > td:first-child {
+  box-shadow: inset 3px 0 0 rgb(var(--group-accent-rgb));
+}
+
+.data-table tbody tr.group-child {
+  background-color: var(--group-child-bg);
+  border-color: var(--group-divider);
+}
+
+.data-table tbody tr.group-child:hover {
+  background-color: var(--group-child-hover-bg);
+}
+
+/* Debt rows inside a group: keep amber readable, overlay group tint + accents */
+.data-table tbody tr.group-child.bg-debt-row {
+  background-color: rgb(var(--debt-row));
+  background-image: linear-gradient(var(--group-child-bg), var(--group-child-bg));
+}
+
+.data-table tbody tr.group-child.bg-debt-row:hover {
+  background-color: rgb(var(--debt-row));
+  background-image: linear-gradient(var(--group-child-hover-bg), var(--group-child-hover-bg));
+}
+
+.data-table tbody tr.group-child > td:first-child {
+  box-shadow: inset 3px 0 0 var(--group-child-bar);
+}
+
+/* First visible content cell (Date) — ~16px indent without shifting layout elsewhere */
+.data-table tbody tr.group-child > td:nth-child(2) {
+  padding-left: 1rem;
+}
+
+.group-chevron {
+  display: inline-block;
+  color: rgb(var(--group-accent-rgb));
+  transition: transform 150ms ease;
+}
+
+.group-chevron--expanded {
+  transform: rotate(90deg);
+}
+
+.group-item-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 0.25rem;
+  background-color: var(--group-chip-bg);
+  color: var(--group-chip-text);
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+/* Transparent spacer rows (~7px). Margins on <tr> are ignored under
+   border-collapse: collapse (Tailwind preflight); sticky-head already assumes collapse. */
+.data-table tbody tr.group-block-spacer,
+.data-table tbody tr.group-block-spacer:hover {
+  background: transparent;
+  border: none;
+}
+
+.data-table tbody tr.group-block-spacer > td {
+  padding: 0;
+  border: none;
+  height: 7px;
+  line-height: 0;
+  font-size: 0;
 }
 
 body {
@@ -103,8 +278,20 @@ body {
 }
 
 .data-table thead {
-  @apply border-b bg-[rgb(var(--surface-muted))] text-left;
-  border-color: rgb(var(--border));
+  @apply border-b text-left;
+  background-color: rgb(var(--table-header-bg));
+  color: rgb(var(--table-header-fg));
+  border-color: rgb(var(--table-header-border));
+}
+
+.data-table thead th,
+.data-table thead th button {
+  color: inherit;
+}
+
+/* Secondary header labels stay readable on the dark ink slate header */
+.data-table thead .text-muted {
+  color: rgb(var(--table-header-fg-muted));
 }
 
 .data-table th,
@@ -137,6 +324,65 @@ body {
   position: sticky;
   top: 0;
   z-index: 20;
-  background-color: rgb(var(--surface-muted));
-  box-shadow: inset 0 -1px 0 rgb(var(--border));
+  background-color: rgb(var(--table-header-bg));
+  color: rgb(var(--table-header-fg));
+  box-shadow: inset 0 -1px 0 rgb(var(--table-header-border));
+}
+
+/* Settings category tabs: plain text + clipped vertical dividers; no pill chrome,
+   no horizontal scrollbar, no rule under the tab row. */
+.settings-category-tab-bar {
+  overflow: hidden;
+}
+
+.settings-category-tab-bar__inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 6px;
+  /* Pull first border-left + padding out of view; outer overflow clips row starts */
+  margin-left: calc(-20px - 1px);
+}
+
+.settings-category-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0;
+  border: 0;
+  border-left: 1px solid rgb(var(--border));
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0.35rem 20px;
+  color: rgb(var(--text-muted));
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.25;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+
+.settings-category-tab:hover {
+  color: rgb(var(--text));
+  background: transparent;
+}
+
+.settings-category-tab.is-active {
+  color: var(--accent-magenta);
+  font-weight: 500;
+  background: transparent;
+}
+
+.settings-category-tab.is-active:hover {
+  color: var(--accent-magenta);
+}
+
+.settings-category-tab__icon {
+  flex-shrink: 0;
+}
+
+.settings-category-tab__label {
+  white-space: nowrap;
 }

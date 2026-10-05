@@ -12,14 +12,14 @@ const REQUIRED_HEADERS = [
 ] as const;
 
 const OPTIONAL_HEADERS = [
-  "sub_type_name",
   "vendor_type_name",
   "vendor_name",
   "pocket_name",
   "action_by_name",
   "group_label",
   "group_remark",
-  "is_credit"
+  "is_credit",
+  "is_future_credit"
 ] as const;
 
 /** Full import/export column order (required + optional + derived export-only). */
@@ -27,7 +27,6 @@ export const BIG_BOOK_CSV_HEADERS = [
   "entry_date",
   "entry_direction",
   "type_name",
-  "sub_type_name",
   "vendor_type_name",
   "vendor_name",
   "explanation",
@@ -39,7 +38,8 @@ export const BIG_BOOK_CSV_HEADERS = [
   "action_by_name",
   "group_label",
   "group_remark",
-  "is_credit"
+  "is_credit",
+  "is_future_credit"
 ] as const;
 
 export const BIG_BOOK_CSV_EXPORT_HEADERS = [
@@ -54,7 +54,6 @@ export function buildBigBookImportTemplateCsv(): string {
     "2026-04-25",
     "spending",
     "Office Supplies",
-    "Stationery",
     "Merchant",
     "Rbee",
     "Printer ink",
@@ -72,7 +71,6 @@ export function buildBigBookImportTemplateCsv(): string {
     "2026-04-26",
     "spending",
     "Office Supplies",
-    "",
     "Merchant",
     "Rbee",
     "Laptop payment IDR leg",
@@ -90,7 +88,6 @@ export function buildBigBookImportTemplateCsv(): string {
     "2026-04-26",
     "spending",
     "Office Supplies",
-    "",
     "Merchant",
     "Rbee",
     "Laptop payment USDT leg",
@@ -115,7 +112,6 @@ export type ParsedBigBookCsvRow = {
   entry_date: string;
   entry_direction: AllowedDirection;
   type_name: string;
-  sub_type_name: string | null;
   vendor_type_name: string | null;
   vendor_name: string | null;
   explanation: string;
@@ -128,6 +124,7 @@ export type ParsedBigBookCsvRow = {
   group_label: string | null;
   group_remark: string | null;
   is_credit: boolean;
+  is_future_credit: boolean;
 };
 
 export type ParseBigBookCsvResult = {
@@ -325,7 +322,6 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
     const entryDateRaw = normalizeRequired(get("entry_date"));
     const entryDirectionRaw = normalizeRequired(get("entry_direction"));
     const typeName = normalizeRequired(get("type_name"));
-    const subTypeName = normalizeOptional(get("sub_type_name"));
     const vendorTypeName = normalizeOptional(get("vendor_type_name"));
     const vendorName = normalizeOptional(get("vendor_name"));
     const explanation = normalizeRequired(get("explanation"));
@@ -338,6 +334,7 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
     const groupLabel = normalizeOptional(get("group_label"));
     const groupRemark = normalizeOptional(get("group_remark"));
     const isCreditRaw = normalizeOptional(get("is_credit"));
+    const isFutureCreditRaw = normalizeOptional(get("is_future_credit"));
 
     if (!entryDateRaw || !entryDirectionRaw || !typeName || !explanation || !amountRaw || !currencyRaw || !actorName) {
       errors.push(`Row ${lineNumber}: required fields must not be empty.`);
@@ -394,11 +391,20 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
       continue;
     }
 
+    const isFutureCredit = parseIsCredit(isFutureCreditRaw);
+    if (isFutureCredit === null) {
+      errors.push(`Row ${lineNumber}: is_future_credit must be true/false (or 1/0, yes/no).`);
+      continue;
+    }
+    if (isFutureCredit && !isCredit) {
+      errors.push(`Row ${lineNumber}: is_future_credit requires is_credit to be true.`);
+      continue;
+    }
+
     parsedRows.push({
       entry_date: entryDate,
       entry_direction: directionParsed.data,
       type_name: typeName,
-      sub_type_name: subTypeName,
       vendor_type_name: vendorTypeName,
       vendor_name: vendorName,
       explanation,
@@ -410,7 +416,8 @@ export function parseBigBookCsv(content: string): ParseBigBookCsvResult {
       action_by_name: actionByName,
       group_label: groupLabel,
       group_remark: groupRemark,
-      is_credit: isCredit
+      is_credit: isCredit,
+      is_future_credit: isFutureCredit
     });
   }
 

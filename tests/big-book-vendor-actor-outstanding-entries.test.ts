@@ -23,6 +23,9 @@ type Payload = {
     amount: number;
     currency_code: "MYR";
     remark: string | null;
+    entry_type_id: string | null;
+    is_future_credit?: boolean;
+    updated_at: string;
     business_ledger_types: { name: string };
   }>;
   error: null;
@@ -91,6 +94,9 @@ describe("getBigBookVendorActorOutstandingEntries", () => {
           amount: 8100,
           currency_code: "MYR",
           remark: null,
+          entry_type_id: "33333333-3333-4333-8333-333333333333",
+          is_future_credit: false,
+          updated_at: "2026-09-01T10:00:00.000Z",
           business_ledger_types: { name: "Float" }
         }
       ],
@@ -112,17 +118,21 @@ describe("getBigBookVendorActorOutstandingEntries", () => {
     expect(callsRef.eq).toContainEqual(["responsible_actor_id", ACTOR_ID]);
     expect(callsRef.eq).toContainEqual(["currency_code", "MYR"]);
     expect(callsRef.eq).toContainEqual(["is_credit", true]);
+    expect(callsRef.eq).toContainEqual(["is_future_credit", false]);
     expect(callsRef.is).toContainEqual(["credit_settled_at", null]);
     expect(result.rows).toEqual([
       {
         id: "11111111-1111-4111-8111-111111111111",
         entry_date: "2026-09-01",
         entry_direction: "spending",
+        entry_type_id: "33333333-3333-4333-8333-333333333333",
         type_name: "Float",
         explanation: "Open credit",
         amount: 8100,
         currency_code: "MYR",
-        remark: null
+        remark: null,
+        is_future_credit: false,
+        updated_at: "2026-09-01T10:00:00.000Z"
       }
     ]);
     expect(result.totalCount).toBe(1);
@@ -142,5 +152,20 @@ describe("getBigBookVendorActorOutstandingEntries", () => {
     expect(callsRef.is).not.toContainEqual(["vendor_id", null]);
     expect(callsRef.gte).toContainEqual(["entry_date", "2026-01-01"]);
     expect(callsRef.lte).toContainEqual(["entry_date", "2026-01-31"]);
+  });
+
+  it("filters Future Credit by type when futureOnly is true", async () => {
+    const TYPE_ID = "55555555-5555-4555-8555-555555555555";
+    const { getBigBookVendorActorOutstandingEntries } = await import("@/lib/db/queries");
+    await getBigBookVendorActorOutstandingEntries({
+      typeId: TYPE_ID,
+      actorId: ACTOR_ID,
+      currency: "MYR",
+      futureOnly: true
+    });
+
+    expect(callsRef.eq).toContainEqual(["is_future_credit", true]);
+    expect(callsRef.eq).toContainEqual(["entry_type_id", TYPE_ID]);
+    expect(callsRef.is).not.toContainEqual(["vendor_id", null]);
   });
 });

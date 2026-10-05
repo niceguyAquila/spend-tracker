@@ -10,6 +10,7 @@ import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/disp
 import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
 import { TableEmptyState } from "@/components/ui/table-empty-state";
 import { rowStripeClass } from "@/lib/ui/table";
+import { sortByDisplayLabel } from "@/lib/ui/sort-by-display-label";
 import { handleUnauthorizedResponse } from "@/lib/client/auth-fetch";
 
 type Props = {
@@ -24,7 +25,11 @@ function formatSignedAmount(value: number, currencyCode: "IDR" | "MYR" | "USDT")
 }
 
 export function BigBookIndividualTypeLedgerPanel({ types }: Props) {
-  const activeTypes = useMemo(() => types.filter((row) => row.is_active), [types]);
+  const activeTypes = useMemo(
+    () => sortByDisplayLabel(types.filter((row) => row.is_active), (row) => row.name),
+    [types]
+  );
+  const typesForSelect = useMemo(() => sortByDisplayLabel(types, (row) => row.name), [types]);
   const [selectedTypeId, setSelectedTypeId] = useState("");
   const [pendingTypeId, setPendingTypeId] = useState(activeTypes[0]?.id ?? types[0]?.id ?? "");
   const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(true);
@@ -186,7 +191,7 @@ export function BigBookIndividualTypeLedgerPanel({ types }: Props) {
         </div>
         <div className="overflow-x-auto">
           <table className="data-table min-w-[680px]">
-            <thead className="border-b text-left bg-[rgb(var(--surface-muted))] text-[rgb(var(--text))]">
+            <thead>
               <tr>
                 <th className="px-3 py-2">Month</th>
                 <th className="px-3 py-2">IDR</th>
@@ -282,7 +287,7 @@ export function BigBookIndividualTypeLedgerPanel({ types }: Props) {
 
         <div className="mt-4 overflow-x-auto">
           <table className="data-table data-table-zebra min-w-[1100px]">
-            <thead className="text-[rgb(var(--text))]">
+            <thead>
               <tr>
                 <th>Date</th>
                 <th>Cash Flow</th>
@@ -366,7 +371,7 @@ export function BigBookIndividualTypeLedgerPanel({ types }: Props) {
             onChange={(event) => setPendingTypeId(event.target.value)}
           >
             <option value="">Select type...</option>
-            {types.map((type) => (
+            {typesForSelect.map((type) => (
               <option key={type.id} value={type.id}>
                 {type.code} - {type.name}
               </option>

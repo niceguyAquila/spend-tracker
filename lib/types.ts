@@ -11,15 +11,20 @@ export type BigBookLedgerType = {
   updated_at: string;
 };
 
-export type BigBookLedgerSubType = {
-  id: string;
-  entry_type_id: string;
-  code: string;
-  name: string;
-  is_active: boolean;
-  sort_order: number;
+/** Invoice PIC + PDF styling preset for a ledger type (group). */
+export type BigBookLedgerTypeInvoiceProfile = {
+  type_id: string;
+  pic_name: string;
+  pic_passport: string;
+  pic_address: string;
+  pic_phone: string;
+  bill_to_company: string;
+  background_color: string | null;
   created_at: string;
   updated_at: string;
+  type_name?: string;
+  type_code?: string;
+  type_is_active?: boolean;
 };
 
 export type BigBookVendorType = {
@@ -116,19 +121,36 @@ export type BigBookEntryGroup = {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+  updater_display_name: string;
+};
+
+export type BigBookEntryAuditAction = "insert" | "update" | "delete";
+
+export type BigBookEntryAuditLog = {
+  id: string;
+  entry_id: string;
+  action: BigBookEntryAuditAction;
+  changed_by: string | null;
+  changed_at: string;
+  old_row: Record<string, unknown> | null;
+  new_row: Record<string, unknown> | null;
+  changer_display_name: string;
 };
 
 export type BigBookCreditStatus = "open" | "settled";
+export type BigBookDebtStatus = "open" | "settled";
 
 export type BigBookSettlementRef = {
   id: string;
   entry_date: string;
   amount: number;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
-  settlement_conversion_rate: number;
-  settlement_amount_in_credit_currency: number;
+  /** Null when USDT settle omitted optional FX rate. */
+  settlement_conversion_rate: number | null;
+  settlement_amount_in_credit_currency: number | null;
   settlement_note: string | null;
   explanation: string;
+  updated_at: string;
 };
 
 export type BigBookSettlementTargetRef = {
@@ -138,8 +160,14 @@ export type BigBookSettlementTargetRef = {
   amount: number;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
   vendor_name: string | null;
-  credit_status: BigBookCreditStatus;
+  /** True when the settlement target is a debt obligation (pay outflow). */
+  is_debt: boolean;
+  /** True when the settlement target is Future Credit (still settleable; excluded from cash totals until actualized). */
+  is_future_credit: boolean;
+  credit_status: BigBookCreditStatus | null;
   credit_settled_at: string | null;
+  debt_status: BigBookDebtStatus | null;
+  debt_settled_at: string | null;
 };
 
 export type BigBookEntry = {
@@ -148,7 +176,6 @@ export type BigBookEntry = {
   entry_date: string;
   entry_direction: "spending" | "profit";
   entry_type_id: string;
-  entry_sub_type_id: string | null;
   vendor_type_id: string | null;
   vendor_id: string | null;
   pocket_id: string | null;
@@ -159,6 +186,9 @@ export type BigBookEntry = {
   remark: string | null;
   responsible_actor_id: string;
   is_credit: boolean;
+  /** True when credit is not yet actualized (excluded from cash totals). Implies is_credit. */
+  is_future_credit: boolean;
+  is_debt: boolean;
   settles_entry_id: string | null;
   settlement_conversion_rate: number | null;
   settlement_amount_in_credit_currency: number | null;
@@ -166,14 +196,15 @@ export type BigBookEntry = {
   credit_settled_at: string | null;
   credit_settled_by: string | null;
   credit_settlement_note: string | null;
+  debt_settled_at: string | null;
+  debt_settled_by: string | null;
+  debt_settlement_note: string | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
   updated_at: string;
   type_name: string;
   type_code: string;
-  sub_type_name: string | null;
-  sub_type_code: string | null;
   vendor_type_name: string | null;
   vendor_name: string | null;
   pocket_name: string | null;
@@ -183,9 +214,11 @@ export type BigBookEntry = {
   creator_display_name: string;
   updater_display_name: string;
   credit_settled_by_display_name: string;
+  debt_settled_by_display_name: string;
   attachments: BigBookAttachment[];
   total_settled: number;
   credit_status: BigBookCreditStatus | null;
+  debt_status: BigBookDebtStatus | null;
   settlements: BigBookSettlementRef[];
   settles_entry: BigBookSettlementTargetRef | null;
 };
@@ -266,23 +299,55 @@ export type BigBookVendorActorOutstandingRow = {
   vendor_name: string;
   vendor_type_id: string | null;
   vendor_type_name: string;
+  /**
+   * Ledger entry type. Future Credit outstanding is bucketed by Type + Actor + Currency;
+   * Credit outstanding leaves this null / "-".
+   */
+  entry_type_id: string | null;
+  type_name: string;
   actor_id: string;
   actor_code: "A" | "B";
   actor_display_name: string;
   currency: BigBookCashflowCurrency;
   outstanding: number;
   open_credit_count: number;
+  /**
+   * For Future Credit outstanding rows this equals open_credit_count.
+   * For actualized Credit outstanding rows this is always 0 (Future is aggregated separately).
+   */
+  open_future_credit_count: number;
+};
+
+export type BigBookVendorActorOutstandingDebtRow = {
+  row_key: string;
+  /** Set when open debts belong to a ledger group; null for standalone debts. */
+  group_id: string | null;
+  group_label: string;
+  /** Standalone (ungrouped) open debt id; null when row is a group aggregate. */
+  entry_id: string | null;
+  vendor_type_id: string | null;
+  vendor_type_name: string;
+  actor_id: string;
+  actor_code: "A" | "B";
+  actor_display_name: string;
+  currency: BigBookCashflowCurrency;
+  outstanding: number;
+  open_debt_count: number;
 };
 
 export type BigBookVendorActorOutstandingEntry = {
   id: string;
   entry_date: string;
   entry_direction: "spending" | "profit";
+  entry_type_id: string | null;
   type_name: string;
   explanation: string;
   amount: number;
   currency_code: BigBookCashflowCurrency;
   remark: string | null;
+  is_future_credit: boolean;
+  /** Optimistic-lock timestamp for Actualize / settle mutations. */
+  updated_at: string;
 };
 
 export type BigBookVendorActorOutstandingEntriesResult = {
@@ -290,158 +355,7 @@ export type BigBookVendorActorOutstandingEntriesResult = {
   totalCount: number;
 };
 
-export type CreditBookLedgerType = {
-  id: string;
-  code: string;
-  name: string;
-  is_active: boolean;
-  sort_order: number;
-  created_at: string;
-  updated_at: string;
-};
-
-export type CreditBookLedgerSubType = {
-  id: string;
-  entry_type_id: string;
-  code: string;
-  name: string;
-  is_active: boolean;
-  sort_order: number;
-  created_at: string;
-  updated_at: string;
-};
-
-export type CreditBookActor = {
-  id: string;
-  actor_code: "A" | "B";
-  display_name: string;
-  user_id: string | null;
-};
-
-export type CreditBookAttachment = {
-  id: string;
-  ledger_entry_id: string;
-  storage_path: string;
-  file_name: string;
-  mime_type: string;
-  file_size: number;
-  uploaded_by: string | null;
-  created_at: string;
-};
-
-export type CreditBookSettlementAttachment = {
-  id: string;
-  settlement_id: string;
-  storage_path: string;
-  file_name: string;
-  mime_type: string;
-  file_size: number;
-  uploaded_by: string | null;
-  created_at: string;
-};
-
-export type CreditBookSettlement = {
-  id: string;
-  entry_id: string;
-  settlement_date: string;
-  amount: number;
-  settlement_currency_code: "IDR" | "MYR" | "USDT" | "TRX";
-  conversion_rate: number;
-  amount_in_entry_currency: number;
-  note: string | null;
-  created_by: string | null;
-  updated_by: string | null;
-  created_at: string;
-  updated_at: string;
-  creator_display_name: string;
-  updater_display_name: string;
-  attachments: CreditBookSettlementAttachment[];
-};
-
-export type CreditBookEntryStatus = "open" | "partial" | "settled";
-
-export type CreditBookEntry = {
-  id: string;
-  entry_date: string;
-  entry_direction: "credit" | "debt";
-  entry_type_id: string;
-  entry_sub_type_id: string | null;
-  explanation: string;
-  amount: number;
-  currency_code: "IDR" | "MYR" | "USDT" | "TRX";
-  remark: string | null;
-  responsible_actor_id: string;
-  created_by: string | null;
-  updated_by: string | null;
-  created_at: string;
-  updated_at: string;
-  type_name: string;
-  type_code: string;
-  sub_type_name: string | null;
-  sub_type_code: string | null;
-  actor_code: "A" | "B";
-  actor_display_name: string;
-  creator_display_name: string;
-  updater_display_name: string;
-  attachments: CreditBookAttachment[];
-  total_settled: number;
-  outstanding: number;
-  status: CreditBookEntryStatus;
-  settlements: CreditBookSettlement[];
-};
-
-export type CreditBookAllowedUserOption = {
-  id: string;
-  display_name: string;
-  email: string;
-};
-
-export type CreditBookActorCurrencyMetrics = {
-  actor_id: string;
-  actor_code: "A" | "B";
-  actor_display_name: string;
-  totals: {
-    IDR: number;
-    MYR: number;
-    USDT: number;
-    TRX: number;
-  };
-};
-
-export type CreditBookActorOutstandingMetrics = {
-  actor_id: string;
-  actor_code: "A" | "B";
-  actor_display_name: string;
-  totals: {
-    IDR: number;
-    MYR: number;
-    USDT: number;
-    TRX: number;
-  };
-};
-
-export type CreditBookCashflowCurrency = "IDR" | "MYR" | "USDT" | "TRX";
-
-export type CreditBookTypeCashflowRow = {
-  row_key: string;
-  actor_id: string;
-  actor_display_name: string;
-  type_id: string;
-  type_code: string;
-  type_name: string;
-  inflow: number;
-  outflow: number;
-  net: number;
-  outstanding: number;
-};
-
-export type CreditBookTypeCashflowByCurrency = {
-  currency: CreditBookCashflowCurrency;
-  rows: CreditBookTypeCashflowRow[];
-  combined: {
-    inflow: number;
-    outflow: number;
-    net: number;
-    outstanding: number;
-  };
+export type BigBookVendorActorOutstandingDebtEntriesResult = {
+  rows: BigBookVendorActorOutstandingEntry[];
+  totalCount: number;
 };

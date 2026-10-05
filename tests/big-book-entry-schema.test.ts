@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  bigBookCreditActualizeSchema,
   bigBookCreditSettleSchema,
   bigBookEntryInputSchema,
   bigBookEntryUpdateSchema,
@@ -11,6 +12,7 @@ const TYPE_ID = "11111111-1111-1111-1111-111111111111";
 const ACTOR_ID = "22222222-2222-2222-2222-222222222222";
 const CREDIT_ID = "33333333-3333-3333-3333-333333333333";
 const ENTRY_ID = "44444444-4444-4444-4444-444444444444";
+const EXPECTED_UPDATED_AT = "2026-08-01T12:00:00.000Z";
 
 // Mirrors what the Big Book panel actually posts, including the `null` notes it
 // sends for fields that do not apply to the current entry.
@@ -18,7 +20,6 @@ const clientPayload = {
   entry_date: "2026-08-01",
   entry_direction: "spending",
   entry_type_id: TYPE_ID,
-  entry_sub_type_id: null,
   vendor_type_id: null,
   vendor_id: null,
   pocket_id: null,
@@ -47,6 +48,41 @@ describe("big book entry schema", () => {
     expect(parsed.success).toBe(true);
   });
 
+  it("accepts a future credit create payload", () => {
+    const parsed = bigBookEntryInputSchema.safeParse({
+      ...clientPayload,
+      is_credit: true,
+      is_future_credit: true
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.is_future_credit).toBe(true);
+    }
+  });
+
+  it("rejects future credit without credit", () => {
+    const parsed = bigBookEntryInputSchema.safeParse({
+      ...clientPayload,
+      is_credit: false,
+      is_future_credit: true
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("accepts a debt create payload", () => {
+    const parsed = bigBookEntryInputSchema.safeParse({ ...clientPayload, is_debt: true });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects credit and debt together", () => {
+    const parsed = bigBookEntryInputSchema.safeParse({
+      ...clientPayload,
+      is_credit: true,
+      is_debt: true
+    });
+    expect(parsed.success).toBe(false);
+  });
+
   it("accepts a settlement that leaves the credit open", () => {
     const parsed = bigBookEntryInputSchema.safeParse({
       ...clientPayload,
@@ -55,6 +91,28 @@ describe("big book entry schema", () => {
       settlement_note: "partial payment",
       close_credit: false,
       credit_settlement_note: null
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("accepts a USDT settlement without a conversion rate", () => {
+    const parsed = bigBookEntryInputSchema.safeParse({
+      ...clientPayload,
+      currency_code: "USDT",
+      settles_entry_id: CREDIT_ID,
+      settlement_conversion_rate: null,
+      close_credit: false
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("accepts any cross-currency settlement without a conversion rate", () => {
+    const parsed = bigBookEntryInputSchema.safeParse({
+      ...clientPayload,
+      currency_code: "IDR",
+      settles_entry_id: CREDIT_ID,
+      settlement_conversion_rate: null,
+      close_credit: false
     });
     expect(parsed.success).toBe(true);
   });
@@ -71,8 +129,17 @@ describe("big book entry schema", () => {
   });
 
   it("accepts an update payload", () => {
-    const parsed = bigBookEntryUpdateSchema.safeParse({ ...clientPayload, id: ENTRY_ID });
+    const parsed = bigBookEntryUpdateSchema.safeParse({
+      ...clientPayload,
+      id: ENTRY_ID,
+      expected_updated_at: EXPECTED_UPDATED_AT
+    });
     expect(parsed.success).toBe(true);
+  });
+
+  it("requires expected_updated_at on update payloads", () => {
+    const parsed = bigBookEntryUpdateSchema.safeParse({ ...clientPayload, id: ENTRY_ID });
+    expect(parsed.success).toBe(false);
   });
 
   it("normalizes empty and null notes to null", () => {
@@ -134,6 +201,7 @@ describe("big book entry schema", () => {
     const parsed = bigBookEntryUpdateSchema.safeParse({
       ...clientPayload,
       id: ENTRY_ID,
+      expected_updated_at: EXPECTED_UPDATED_AT,
       currency_code: "USDT",
       gas_fee_amount: 1.33
     });
@@ -141,25 +209,138 @@ describe("big book entry schema", () => {
     if (parsed.success) expect("gas_fee_amount" in parsed.data).toBe(false);
   });
 
+  it("accepts USDT inflow with kurs_rate and kurs_amount", () => {
+    const parsed = bigBookEntryInputSchema.safeParse({
+      ...clientPayload,
+      entry_direction: "profit",
+      currency_code: "USDT",
+      kurs_rate: 0.999423,
+      kurs_amount: 0.577
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.kurs_rate).toBe(0.999423);
+      expect(parsed.data.kurs_amount).toBe(0.577);
+    }
+  });
+
+  it("treats omitted or empty KURS fields as skipped", () => {
+    const omitted = bigBookEntryInputSchema.safeParse({
+      ...clientPayload,
+      entry_direction: "profit",
+      currency_code: "USDT"
+    });
+    expect(omitted.success).toBe(true);
+    if (omitted.success) {
+      expect(omitted.data.kurs_rate).toBeUndefined();
+      expect(omitted.data.kurs_amount).toBeUndefined();
+    }
+
+    const empty = bigBookEntryInputSchema.safeParse({
+      ...clientPayload,
+      entry_direction: "profit",
+      currency_code: "USDT",
+      kurs_rate: "",
+      kurs_amount: ""
+    });
+    expect(empty.success).toBe(true);
+    if (empty.success) {
+      expect(empty.data.kurs_rate).toBeUndefined();
+      expect(empty.data.kurs_amount).toBeUndefined();
+    }
+  });
+
+  it("rejects KURS fields when not a USDT inflow", () => {
+    const spending = bigBookEntryInputSchema.safeParse({
+      ...clientPayload,
+      entry_direction: "spending",
+      currency_code: "USDT",
+      kurs_rate: 0.999423
+    });
+    expect(spending.success).toBe(false);
+
+    const idr = bigBookEntryInputSchema.safeParse({
+      ...clientPayload,
+      entry_direction: "profit",
+      currency_code: "IDR",
+      kurs_amount: 1.5
+    });
+    expect(idr.success).toBe(false);
+  });
+
+  it("strips kurs fields from update payloads", () => {
+    const parsed = bigBookEntryUpdateSchema.safeParse({
+      ...clientPayload,
+      id: ENTRY_ID,
+      expected_updated_at: EXPECTED_UPDATED_AT,
+      entry_direction: "profit",
+      currency_code: "USDT",
+      kurs_rate: 0.999423,
+      kurs_amount: 0.577
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect("kurs_rate" in parsed.data).toBe(false);
+      expect("kurs_amount" in parsed.data).toBe(false);
+    }
+  });
+
   it("accepts a credit settle payload with a null note", () => {
     const parsed = bigBookCreditSettleSchema.safeParse({
       id: CREDIT_ID,
+      expected_updated_at: EXPECTED_UPDATED_AT,
       settled: true,
       note: null
     });
     expect(parsed.success).toBe(true);
     if (parsed.success) expect(parsed.data.note).toBeNull();
   });
+
+  it("accepts a credit actualize payload", () => {
+    const parsed = bigBookCreditActualizeSchema.safeParse({
+      id: CREDIT_ID,
+      expected_updated_at: EXPECTED_UPDATED_AT,
+      actualized: true
+    });
+    expect(parsed.success).toBe(true);
+  });
 });
 
 describe("big book outstanding entries query schema", () => {
-  it("defaults missing vendorId to none", () => {
-    const parsed = bigBookVendorActorOutstandingEntriesQuerySchema.safeParse({
+  it("requires vendorId for Credit detail and defaults creditKind to credit", () => {
+    const missingVendor = bigBookVendorActorOutstandingEntriesQuerySchema.safeParse({
       actorId: ACTOR_ID,
       currency: "MYR"
     });
+    expect(missingVendor.success).toBe(false);
+
+    const parsed = bigBookVendorActorOutstandingEntriesQuerySchema.safeParse({
+      actorId: ACTOR_ID,
+      currency: "MYR",
+      vendorId: "none"
+    });
     expect(parsed.success).toBe(true);
-    if (parsed.success) expect(parsed.data.vendorId).toBe("none");
+    if (parsed.success) {
+      expect(parsed.data.vendorId).toBe("none");
+      expect(parsed.data.creditKind).toBe("credit");
+    }
+  });
+
+  it("requires typeId for Future Credit detail", () => {
+    const missingType = bigBookVendorActorOutstandingEntriesQuerySchema.safeParse({
+      actorId: ACTOR_ID,
+      currency: "MYR",
+      creditKind: "future"
+    });
+    expect(missingType.success).toBe(false);
+
+    const parsed = bigBookVendorActorOutstandingEntriesQuerySchema.safeParse({
+      actorId: ACTOR_ID,
+      currency: "MYR",
+      creditKind: "future",
+      typeId: "none"
+    });
+    expect(parsed.success).toBe(true);
   });
 
   it("rejects an invalid vendorId", () => {

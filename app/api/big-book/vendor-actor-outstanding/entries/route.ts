@@ -13,21 +13,36 @@ export async function GET(request: Request) {
   const parsed = bigBookVendorActorOutstandingEntriesQuerySchema.safeParse({
     actorId: searchParams.get("actorId") ?? "",
     currency: searchParams.get("currency") ?? "",
-    vendorId: searchParams.get("vendorId") ?? "none",
+    vendorId: searchParams.get("vendorId") ?? undefined,
+    typeId: searchParams.get("typeId") ?? undefined,
     dateFrom: searchParams.get("dateFrom") ?? "",
-    dateTo: searchParams.get("dateTo") ?? ""
+    dateTo: searchParams.get("dateTo") ?? "",
+    creditKind: searchParams.get("creditKind") ?? undefined
   });
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
   try {
+    const futureOnly = parsed.data.creditKind === "future";
     const result = await getBigBookVendorActorOutstandingEntries({
-      vendorId: parsed.data.vendorId === "none" ? null : parsed.data.vendorId,
+      vendorId:
+        futureOnly || parsed.data.vendorId == null
+          ? null
+          : parsed.data.vendorId === "none"
+            ? null
+            : parsed.data.vendorId,
+      typeId:
+        !futureOnly || parsed.data.typeId == null
+          ? null
+          : parsed.data.typeId === "none"
+            ? null
+            : parsed.data.typeId,
       actorId: parsed.data.actorId,
       currency: parsed.data.currency,
       dateFrom: parsed.data.dateFrom,
-      dateTo: parsed.data.dateTo
+      dateTo: parsed.data.dateTo,
+      futureOnly
     });
     return NextResponse.json(result);
   } catch (error) {

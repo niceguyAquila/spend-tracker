@@ -19,21 +19,6 @@ export const bigBookTypeUpdateSchema = z.object({
   sort_order: entitySortOrderSchema()
 });
 
-export const bigBookSubTypeCreateSchema = z.object({
-  entry_type_id: z.string().uuid("Select a parent type."),
-  code: entityCodeSchema("Sub-Type code"),
-  name: entityNameSchema("Sub-Type name"),
-  sort_order: entitySortOrderSchema()
-});
-
-export const bigBookSubTypeUpdateSchema = z.object({
-  id: z.string().uuid(),
-  code: entityCodeSchema("Sub-Type code").optional(),
-  name: entityNameSchema("Sub-Type name").optional(),
-  is_active: z.boolean().optional(),
-  sort_order: entitySortOrderSchema()
-});
-
 export const bigBookVendorTypeCreateSchema = z.object({
   code: entityCodeSchema("Vendor Type code"),
   name: entityNameSchema("Vendor Type name"),
@@ -112,7 +97,7 @@ const optionalUuidOrEmpty = (message: string) =>
     .transform((value) => (value && value.length ? value : null));
 
 export const bigBookCreditStatusSchema = z.enum(["open", "settled"]);
-export const bigBookCreditFlagSchema = z.enum(["credit", "settlement", "none"]);
+export const bigBookCreditFlagSchema = z.enum(["credit", "future_credit", "settlement", "none"]);
 
 // The client sends `null` for notes that do not apply, so accept null/undefined/""
 // interchangeably and normalize them all to null.
@@ -126,7 +111,6 @@ const bigBookEntryBaseSchema = z.object({
   entry_date: z.string().min(1, "Date is required"),
   entry_direction: bigBookEntryDirectionSchema,
   entry_type_id: z.string().uuid("Type is required"),
-  entry_sub_type_id: optionalUuidOrEmpty("Sub-Type must be a valid id"),
   vendor_type_id: optionalUuidOrEmpty("Vendor Type must be a valid id"),
   vendor_id: optionalUuidOrEmpty("Vendor Name must be a valid id"),
   pocket_id: optionalUuidOrEmpty("Pocket must be a valid id"),
@@ -137,11 +121,15 @@ const bigBookEntryBaseSchema = z.object({
   remark: z.string().max(1000).optional().or(z.literal("")),
   responsible_actor_id: z.string().uuid("Responsible actor is required"),
   is_credit: z.boolean().optional().default(false),
+  is_future_credit: z.boolean().optional().default(false),
+  is_debt: z.boolean().optional().default(false),
   settles_entry_id: optionalUuidOrEmpty("Settlement target must be a valid id"),
   settlement_conversion_rate: z.coerce.number().positive().nullable().optional(),
   settlement_note: optionalNoteSchema,
   close_credit: z.boolean().optional().default(false),
-  credit_settlement_note: optionalNoteSchema
+  credit_settlement_note: optionalNoteSchema,
+  close_debt: z.boolean().optional().default(false),
+  debt_settlement_note: optionalNoteSchema
 });
 
 const optionalGasFeeAmountSchema = z.preprocess((value) => {
@@ -149,14 +137,50 @@ const optionalGasFeeAmountSchema = z.preprocess((value) => {
   return value;
 }, z.coerce.number().positive("Gas fee must be greater than 0").optional());
 
+const optionalKursRateSchema = z.preprocess((value) => {
+  if (value === "" || value == null) return undefined;
+  return value;
+}, z.coerce.number().finite("KURS rate must be a number").optional());
+
+const optionalKursAmountSchema = z.preprocess((value) => {
+  if (value === "" || value == null) return undefined;
+  return value;
+}, z.coerce.number().positive("KURS amount must be greater than 0").optional());
+
 function refineBigBookEntryCreditFields<
   T extends {
     is_credit?: boolean;
+    is_future_credit?: boolean;
+    is_debt?: boolean;
+    entry_direction?: string;
     settles_entry_id?: string | null;
     settlement_conversion_rate?: number | null;
     close_credit?: boolean;
+    close_debt?: boolean;
+    currency_code?: string;
   }
 >(value: T, ctx: z.RefinementCtx) {
+  if (value.is_future_credit && !value.is_credit) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Future credit requires the credit settlement type.",
+      path: ["is_future_credit"]
+    });
+  }
+  if (value.is_credit && value.is_debt) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "An entry cannot be marked as both credit and debt.",
+      path: ["is_debt"]
+    });
+  }
+  if (value.is_future_credit && value.is_debt) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "An entry cannot be marked as both future credit and debt.",
+      path: ["is_debt"]
+    });
+  }
   if (value.is_credit && value.settles_entry_id) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -164,15 +188,30 @@ function refineBigBookEntryCreditFields<
       path: ["is_credit"]
     });
   }
-  if (value.settles_entry_id && value.settlement_conversion_rate == null) {
-    // Conversion rate is required when linking a settlement; same-currency
-    // settlements force rate = 1 in the API before insert.
+  if (value.is_future_credit && value.settles_entry_id) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "Conversion rate is required when settling a credit.",
-      path: ["settlement_conversion_rate"]
+      message: "A settlement entry cannot also be marked as future credit.",
+      path: ["is_future_credit"]
     });
   }
+  if (value.is_debt && value.settles_entry_id) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "A settlement entry cannot also be marked as debt.",
+      path: ["is_debt"]
+    });
+  }
+  if (value.is_debt && value.entry_direction && value.entry_direction !== "spending") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Debt entries must use Cash Flow Out (spending).",
+      path: ["entry_direction"]
+    });
+  }
+  // Conversion rate / settlement_amount_in_credit_currency are optional on input.
+  // Same-currency settles derive rate = 1 + credit-currency amount in the API;
+  // cross-currency FX fields stay null unless a positive rate is provided.
   if (value.close_credit && !value.settles_entry_id) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -180,11 +219,51 @@ function refineBigBookEntryCreditFields<
       path: ["close_credit"]
     });
   }
+  if (value.close_debt && !value.settles_entry_id) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Closing a debt requires a settlement target.",
+      path: ["close_debt"]
+    });
+  }
+  if (value.close_credit && value.close_debt) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Cannot close both credit and debt on the same settlement.",
+      path: ["close_debt"]
+    });
+  }
+}
+
+function isUsdtInflow(value: { currency_code: string; entry_direction: string }) {
+  return value.currency_code === "USDT" && value.entry_direction === "profit";
+}
+
+function refineKursFields<
+  T extends {
+    currency_code: string;
+    entry_direction: string;
+    kurs_rate?: number;
+    kurs_amount?: number;
+  }
+>(value: T, ctx: z.RefinementCtx) {
+  const hasKurs = value.kurs_rate != null || value.kurs_amount != null;
+  if (!hasKurs) return;
+  if (!isUsdtInflow(value)) {
+    const path = value.kurs_amount != null ? ["kurs_amount"] : ["kurs_rate"];
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "KURS is only allowed for USDT inflow (In) entries.",
+      path
+    });
+  }
 }
 
 export const bigBookEntryInputSchema = bigBookEntryBaseSchema
   .extend({
-    gas_fee_amount: optionalGasFeeAmountSchema
+    gas_fee_amount: optionalGasFeeAmountSchema,
+    kurs_rate: optionalKursRateSchema,
+    kurs_amount: optionalKursAmountSchema
   })
   .superRefine((value, ctx) => {
     refineBigBookEntryCreditFields(value, ctx);
@@ -195,18 +274,36 @@ export const bigBookEntryInputSchema = bigBookEntryBaseSchema
         path: ["gas_fee_amount"]
       });
     }
+    refineKursFields(value, ctx);
+  });
+
+const expectedUpdatedAtSchema = z
+  .string()
+  .trim()
+  .min(1, "expected_updated_at is required")
+  .refine((value) => Number.isFinite(Date.parse(value)), {
+    message: "expected_updated_at must be a valid ISO timestamp."
   });
 
 export const bigBookEntryUpdateSchema = bigBookEntryBaseSchema
   .extend({
-    id: z.string().uuid()
+    id: z.string().uuid(),
+    expected_updated_at: expectedUpdatedAtSchema
   })
   .superRefine(refineBigBookEntryCreditFields);
 
 export const bigBookCreditSettleSchema = z.object({
   id: z.string().uuid(),
+  expected_updated_at: expectedUpdatedAtSchema,
   settled: z.boolean(),
   note: optionalNoteSchema
+});
+
+/** Toggle Future Credit ↔ actualized Credit without rewriting the full entry. */
+export const bigBookCreditActualizeSchema = z.object({
+  id: z.string().uuid(),
+  expected_updated_at: expectedUpdatedAtSchema,
+  actualized: z.boolean()
 });
 
 export const bigBookTypeVendorTypeMapCreateSchema = z.object({
@@ -226,40 +323,91 @@ export const bigBookTypeVendorTypeMapDeleteSchema = z.object({
 
 export const bigBookBulkSettleModeSchema = z.enum(["single", "per_credit"]);
 
-export const bigBookBulkSettleSchema = z.object({
-  credit_entry_ids: z
+const optionalProfitAmountSchema = z.preprocess((value) => {
+  if (value === "" || value == null) return undefined;
+  return value;
+}, z.coerce.number().positive("PROFIT amount must be greater than 0").optional());
+
+export const bigBookBulkSettleSchema = z
+  .object({
+    credit_entry_ids: z
+      .array(z.string().uuid())
+      .min(1, "Select at least one open credit to settle.")
+      .max(100)
+      .refine((ids) => new Set(ids).size === ids.length, "Duplicate credit ids"),
+    mode: bigBookBulkSettleModeSchema.default("single"),
+    entry_date: z.string().min(1, "Date is required"),
+    close_credits: z.boolean().optional().default(true),
+    settlement_note: optionalNoteSchema,
+    explanation: z.string().trim().min(2).max(500).optional(),
+    /** Override settlement payment currency (defaults to each credit's currency). */
+    currency_code: bigBookCurrencySchema.optional(),
+    /**
+     * Settlement amount in `currency_code`.
+     * - single mode: one combined payment amount (defaults to sum of credit amounts when same currency / rate 1)
+     * - per_credit mode: ignored; each settlement uses that credit's converted amount
+     */
+    amount: z.coerce.number().positive("Amount must be greater than 0").optional(),
+    /**
+     * credit_currency units per 1 settlement_currency unit.
+     * Required when settlement currency differs from credit currency; forced to 1 when same.
+     */
+    settlement_conversion_rate: z.coerce.number().positive().optional(),
+    /**
+     * Optional PROFIT surcharge in the credit currency (creates a separate PROFIT-type ledger row).
+     */
+    profit_amount: optionalProfitAmountSchema,
+    /** Optional KURS rate for USDT settle path (companion USDT spending). */
+    kurs_rate: optionalKursRateSchema,
+    /** Optional KURS amount override (companion USDT spending). */
+    kurs_amount: optionalKursAmountSchema
+  })
+  .superRefine((value, ctx) => {
+    const hasKurs = value.kurs_rate != null || value.kurs_amount != null;
+    if (!hasKurs) return;
+    if (value.currency_code !== "USDT") {
+      const path = value.kurs_amount != null ? ["kurs_amount"] : ["kurs_rate"];
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "KURS is only allowed when settlement currency is USDT.",
+        path
+      });
+    }
+  });
+
+export const bigBookBulkDebtSettleModeSchema = z.enum(["single", "per_debt"]);
+
+export const bigBookBulkDebtSettleSchema = z.object({
+  debt_entry_ids: z
     .array(z.string().uuid())
-    .min(1, "Select at least one open credit to settle.")
+    .min(1, "Select at least one open debt to pay.")
     .max(100)
-    .refine((ids) => new Set(ids).size === ids.length, "Duplicate credit ids"),
-  mode: bigBookBulkSettleModeSchema.default("single"),
+    .refine((ids) => new Set(ids).size === ids.length, "Duplicate debt ids"),
+  mode: bigBookBulkDebtSettleModeSchema.default("single"),
   entry_date: z.string().min(1, "Date is required"),
-  close_credits: z.boolean().optional().default(true),
+  close_debts: z.boolean().optional().default(true),
   settlement_note: optionalNoteSchema,
   explanation: z.string().trim().min(2).max(500).optional(),
-  /** Override settlement payment currency (defaults to each credit's currency). */
   currency_code: bigBookCurrencySchema.optional(),
-  /**
-   * Settlement amount in `currency_code`.
-   * - single mode: one combined payment amount (defaults to sum of credit amounts when same currency / rate 1)
-   * - per_credit mode: ignored; each settlement uses that credit's converted amount
-   */
   amount: z.coerce.number().positive("Amount must be greater than 0").optional(),
-  /**
-   * credit_currency units per 1 settlement_currency unit.
-   * Required when settlement currency differs from credit currency; forced to 1 when same.
-   */
   settlement_conversion_rate: z.coerce.number().positive().optional()
 });
 
-const bigBookGroupEntryInputSchema = bigBookEntryBaseSchema.omit({
-  is_credit: true,
+const bigBookGroupEntryFieldsSchema = bigBookEntryBaseSchema.omit({
   settles_entry_id: true,
   settlement_conversion_rate: true,
   settlement_note: true,
   close_credit: true,
-  credit_settlement_note: true
+  credit_settlement_note: true,
+  close_debt: true,
+  debt_settlement_note: true
 });
+const bigBookGroupEntryInputSchema = bigBookGroupEntryFieldsSchema.superRefine((value, ctx) => {
+  refineBigBookEntryCreditFields(value, ctx);
+});
+// Group create expands companions client-side (gas fee / KURS) into plain entry rows,
+// so group entry schema stays without kurs_rate / gas_fee_amount fields.
+// Settlement Type (is_credit / is_debt) is allowed so grouped Debt/Credit marks persist.
 
 export const bigBookGroupCreateSchema = z.object({
   label: z.string().trim().min(2).max(200),
@@ -267,9 +415,13 @@ export const bigBookGroupCreateSchema = z.object({
   entries: z.array(bigBookGroupEntryInputSchema).min(2).max(50)
 });
 
-export const bigBookGroupEntryUpdateSchema = bigBookGroupEntryInputSchema.extend({
-  id: z.string().uuid().optional()
-});
+export const bigBookGroupEntryUpdateSchema = bigBookGroupEntryFieldsSchema
+  .extend({
+    id: z.string().uuid().optional()
+  })
+  .superRefine((value, ctx) => {
+    refineBigBookEntryCreditFields(value, ctx);
+  });
 
 export const bigBookGroupUpdateSchema = z.object({
   id: z.string().uuid(),
@@ -320,7 +472,6 @@ export const bigBookLedgerSortKeySchema = z.enum([
   "entry_date",
   "entry_direction",
   "type_name",
-  "sub_type_name",
   "vendor_type_name",
   "vendor_name",
   "explanation",
@@ -363,13 +514,57 @@ export const bigBookCreditsPickerQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50)
 });
 
-export const bigBookVendorActorOutstandingEntriesQuerySchema = z.object({
-  actorId: z.string().uuid(),
-  currency: bigBookCurrencySchema,
-  vendorId: z.union([z.string().uuid(), z.literal("none")]).default("none"),
-  dateFrom: optionalString,
-  dateTo: optionalString
-});
+export const bigBookVendorActorOutstandingEntriesQuerySchema = z
+  .object({
+    actorId: z.string().uuid(),
+    currency: bigBookCurrencySchema,
+    vendorId: z.union([z.string().uuid(), z.literal("none")]).optional(),
+    /** Ledger type id for Future Credit buckets (`none` = null type). */
+    typeId: z.union([z.string().uuid(), z.literal("none")]).optional(),
+    dateFrom: optionalString,
+    dateTo: optionalString,
+    /** `future` = Future Credit only; default `credit` = actualized Credit only. */
+    creditKind: z.enum(["credit", "future"]).optional().default("credit")
+  })
+  .superRefine((value, ctx) => {
+    if (value.creditKind === "future") {
+      if (!value.typeId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "typeId is required for Future Credit outstanding detail.",
+          path: ["typeId"]
+        });
+      }
+      return;
+    }
+    if (!value.vendorId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "vendorId is required for Credit outstanding detail.",
+        path: ["vendorId"]
+      });
+    }
+  });
+
+/** Outstanding debt detail rows are keyed by group (or standalone entry id). */
+export const bigBookVendorActorOutstandingDebtEntriesQuerySchema = z
+  .object({
+    actorId: z.string().uuid(),
+    currency: bigBookCurrencySchema,
+    groupId: z.union([z.string().uuid(), z.literal("none")]).default("none"),
+    entryId: z.string().uuid().optional(),
+    dateFrom: optionalString,
+    dateTo: optionalString
+  })
+  .superRefine((value, ctx) => {
+    if (value.groupId === "none" && !value.entryId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "entryId is required when groupId is none.",
+        path: ["entryId"]
+      });
+    }
+  });
 
 export type BigBookEntriesQuery = z.infer<typeof bigBookEntriesQuerySchema>;
 

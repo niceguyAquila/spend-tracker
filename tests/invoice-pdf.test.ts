@@ -49,4 +49,29 @@ describe("renderInvoicePdf", () => {
     expect(pdf.subarray(0, 4).toString("utf8")).toBe("%PDF");
     expect(pdf.length).toBeGreaterThan(500);
   });
+
+  it("accepts an optional group background color", async () => {
+    const pdf = await renderInvoicePdf({
+      title: "COLORED INVOICE",
+      invoice_no: "011026-2",
+      invoice_date: "2026-10-01",
+      due_date: "2026-10-08",
+      terms: "Due on receipt",
+      currency: "USDT",
+      bill_to_company: "HCM",
+      bill_to_name: "",
+      bill_to_passport: "",
+      bill_to_address: "",
+      bill_to_phone: "",
+      subject: "",
+      lines: [{ unit_name: "A", unit_no: "1", period: "Oct", description: "Rent", price: 100 }],
+      notes: "",
+      fx_note: "",
+      wallets: [],
+      background_color: "#336699"
+    });
+
+    expect(Buffer.isBuffer(pdf)).toBe(true);
+    expect(pdf.subarray(0, 4).toString("utf8")).toBe("%PDF");
+  });
 });

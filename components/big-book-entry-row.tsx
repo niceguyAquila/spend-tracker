@@ -1,17 +1,33 @@
 "use client";
 
 import { memo } from "react";
-import type { BigBookCreditStatus, BigBookEntry } from "@/lib/types";
-import { formatAmount, formatDateDisplay, getAmountColorClass } from "@/lib/display-format";
+import type { BigBookCreditStatus, BigBookDebtStatus, BigBookEntry } from "@/lib/types";
+import {
+  formatAmount,
+  formatDateDisplay,
+  formatDateTimeDisplay,
+  getAmountColorClass
+} from "@/lib/display-format";
+import { LinkifyText } from "@/lib/linkify-text";
 
 const CREDIT_STATUS_LABELS: Record<BigBookCreditStatus, string> = {
   open: "Open",
   settled: "Settled"
 };
 
+const DEBT_STATUS_LABELS: Record<BigBookDebtStatus, string> = {
+  open: "Open debt",
+  settled: "Settled debt"
+};
+
 function creditStatusBadgeClass(status: BigBookCreditStatus) {
   if (status === "settled") return "bg-[rgb(var(--success)/0.15)] text-[rgb(var(--success))]";
   return "bg-[rgb(var(--warning)/0.15)] text-[rgb(var(--warning))]";
+}
+
+function debtStatusBadgeClass(status: BigBookDebtStatus) {
+  if (status === "settled") return "bg-[rgb(var(--success)/0.15)] text-[rgb(var(--success))]";
+  return "bg-[rgb(var(--danger)/0.15)] text-[rgb(var(--danger))]";
 }
 
 function truncateText(value: string, maxLength = 28) {
@@ -23,6 +39,8 @@ function truncateText(value: string, maxLength = 28) {
 export type BigBookEntryRowProps = {
   entry: BigBookEntry;
   isGroupMember: boolean;
+  /** Magenta / teal / maroon group accent when this row sits inside a group. */
+  groupToneClass?: string;
   stripeClass: string;
   highlighted?: boolean;
   selected: boolean;
@@ -38,6 +56,7 @@ export type BigBookEntryRowProps = {
 function BigBookEntryRowInner({
   entry,
   isGroupMember,
+  groupToneClass = "",
   stripeClass,
   highlighted = false,
   selected,
@@ -49,11 +68,20 @@ function BigBookEntryRowInner({
   onViewAttachment,
   onToggleActionMenu
 }: BigBookEntryRowProps) {
+  const rowToneClass = highlighted
+    ? " bg-[rgb(var(--info)/0.12)] ring-1 ring-inset ring-[rgb(var(--info))]"
+    : entry.is_debt
+      ? " bg-debt-row"
+      : isGroupMember
+        ? ""
+        : ` ${stripeClass}`;
+  const groupChildClass = isGroupMember
+    ? ` group-child${groupToneClass ? ` ${groupToneClass}` : ""}`
+    : "";
+
   return (
     <tr
-      className={`border-b border-[rgb(var(--border))] align-top ${stripeClass}${
-        highlighted ? " bg-[rgb(var(--info)/0.12)] ring-1 ring-inset ring-[rgb(var(--info))]" : ""
-      }`}
+      className={`border-b border-[rgb(var(--border))] align-top${groupChildClass}${rowToneClass}`}
     >
       <td className="overflow-hidden px-3 py-2">
         {isGroupMember ? null : (
@@ -66,7 +94,7 @@ function BigBookEntryRowInner({
           />
         )}
       </td>
-      <td className={`overflow-hidden break-words px-3 py-2 ${isGroupMember ? "pl-8" : ""}`}>
+      <td className="overflow-hidden break-words px-3 py-2">
         {formatDateDisplay(entry.entry_date)}
       </td>
       <td className="overflow-hidden px-3 py-2">
@@ -108,16 +136,37 @@ function BigBookEntryRowInner({
       <td className="overflow-hidden break-words px-3 py-2">
         {entry.is_credit ? (
           <div className="space-y-1">
-            <span
-              className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${creditStatusBadgeClass(
-                entry.credit_status ?? "open"
-              )}`}
-            >
-              {CREDIT_STATUS_LABELS[entry.credit_status ?? "open"]}
-            </span>
+            {entry.is_future_credit && (entry.credit_status ?? "open") !== "settled" ? (
+              <span className="inline-flex rounded bg-[rgb(var(--warning)/0.18)] px-2 py-0.5 text-xs font-medium text-[rgb(var(--warning))]">
+                Future Credit
+              </span>
+            ) : (
+              <span
+                className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${creditStatusBadgeClass(
+                  entry.credit_status ?? "open"
+                )}`}
+              >
+                {CREDIT_STATUS_LABELS[entry.credit_status ?? "open"]}
+              </span>
+            )}
             {entry.credit_settled_at ? (
               <p className="text-xs text-muted">
                 Closed {formatDateDisplay(entry.credit_settled_at.slice(0, 10))}
+              </p>
+            ) : null}
+          </div>
+        ) : entry.is_debt ? (
+          <div className="space-y-1">
+            <span
+              className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${debtStatusBadgeClass(
+                entry.debt_status ?? "open"
+              )}`}
+            >
+              {DEBT_STATUS_LABELS[entry.debt_status ?? "open"]}
+            </span>
+            {entry.debt_settled_at ? (
+              <p className="text-xs text-muted">
+                Closed {formatDateDisplay(entry.debt_settled_at.slice(0, 10))}
               </p>
             ) : null}
           </div>
@@ -136,7 +185,10 @@ function BigBookEntryRowInner({
       <td className="overflow-hidden break-words px-3 py-2">
         {entry.remark ? (
           <div className="flex items-start gap-2">
-            <span className="truncate">{entry.remark}</span>
+            <span className="truncate">
+              <LinkifyText text={entry.remark} />
+            </span>
+
             <button
               className="shrink-0 text-xs text-[rgb(var(--info))] underline"
               type="button"
@@ -172,7 +224,7 @@ function BigBookEntryRowInner({
         )}
       </td>
       <td className="overflow-hidden px-3 py-2">
-        <div className="relative">
+        <div className="relative flex justify-start">
           <button
             className="btn-secondary btn-sm"
             aria-label="Open actions menu"
@@ -184,6 +236,16 @@ function BigBookEntryRowInner({
             Actions
           </button>
         </div>
+      </td>
+      <td className="overflow-hidden break-words px-3 py-2">
+        {entry.updater_display_name && entry.updater_display_name !== "-"
+          ? entry.updater_display_name
+          : entry.creator_display_name && entry.creator_display_name !== "-"
+            ? entry.creator_display_name
+            : <span className="text-xs text-muted">-</span>}
+      </td>
+      <td className="overflow-hidden break-words px-3 py-2 whitespace-nowrap">
+        {formatDateTimeDisplay(entry.updated_at || entry.created_at)}
       </td>
     </tr>
   );

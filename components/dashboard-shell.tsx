@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { DashboardHeaderTitle } from "@/components/dashboard-header-title";
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
 import type { AppRole } from "@/lib/types";
 
@@ -116,9 +115,6 @@ export function DashboardShell({
                 >
                   <HamburgerIcon />
                 </button>
-                <div className="max-w-3xl">
-                  <DashboardHeaderTitle />
-                </div>
               </div>
               <div className="flex flex-col items-end text-right">
                 <div className="flex items-start gap-2">

@@ -11,7 +11,7 @@ vi.mock("@/lib/supabase/middleware", () => ({
 }));
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  updateSessionMock.mockReset();
 });
 
 afterEach(() => {
@@ -166,17 +166,35 @@ describe("middleware auth gate", () => {
     expect(response.status).toBe(200);
   });
 
-  it("protects /api/big-book/* when unauthenticated", async () => {
+  it("returns JSON 401 for /api/big-book/* when unauthenticated (no HTML login redirect)", async () => {
     updateSessionMock.mockResolvedValueOnce({
       response: NextResponse.next(),
       user: null
     });
 
     const { middleware } = await import("@/middleware");
-    const request = new NextRequest("https://example.com/api/big-book/entries");
+    const request = new NextRequest("https://example.com/api/big-book/export");
     const response = await middleware(request);
 
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain("/login");
+    expect(response.status).toBe(401);
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("content-type")).toContain("application/json");
+    await expect(response.json()).resolves.toEqual({ error: "Unauthorized" });
+  });
+
+  it("returns JSON 401 for /api/* when session-meta cookie is missing", async () => {
+    updateSessionMock.mockResolvedValue({
+      response: NextResponse.next(),
+      user: { id: "user-1" }
+    });
+
+    const { middleware } = await import("@/middleware");
+    const request = new NextRequest("https://example.com/api/big-book/export");
+    const response = await middleware(request);
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("content-type")).toContain("application/json");
+    await expect(response.json()).resolves.toEqual({ error: "Session expired" });
   });
 });

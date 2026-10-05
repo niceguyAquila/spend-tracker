@@ -4,7 +4,7 @@ import {
   getBigBookActorPockets,
   getBigBookAllowedUsers,
   getBigBookInvoiceWallets,
-  getBigBookLedgerSubTypes,
+  getBigBookLedgerTypeInvoiceProfiles,
   getBigBookLedgerTypes,
   getBigBookTypeVendorTypeMaps,
   getBigBookVendorTypes,
@@ -18,7 +18,6 @@ export default async function BigBookSettingsPage() {
   try {
     const [
       types,
-      subTypes,
       vendorTypes,
       vendors,
       actionBy,
@@ -26,10 +25,10 @@ export default async function BigBookSettingsPage() {
       actors,
       allowedUsers,
       typeVendorTypeMaps,
-      wallets
+      wallets,
+      typeInvoiceProfiles
     ] = await Promise.all([
       getBigBookLedgerTypes({ includeInactive: true }),
-      getBigBookLedgerSubTypes({ includeInactive: true }),
       getBigBookVendorTypes({ includeInactive: true }),
       getBigBookVendors({ includeInactive: true }),
       getBigBookActionBy({ includeInactive: true }),
@@ -37,18 +36,18 @@ export default async function BigBookSettingsPage() {
       getBigBookActors(),
       getBigBookAllowedUsers(),
       getBigBookTypeVendorTypeMaps(),
-      getBigBookInvoiceWallets({ includeInactive: true })
+      getBigBookInvoiceWallets({ includeInactive: true }),
+      getBigBookLedgerTypeInvoiceProfiles()
     ]);
 
     return (
       <div className="space-y-6">
         <PageHeader
           title="Big Book Settings"
-          description="Manage types, type→vendor type mappings, sub-types, vendor types, vendor names, Action By, actor pockets, invoice wallets, and global Actor A/B mapping."
+          description="Manage types, invoice group PIC presets, type→vendor type mappings, vendor types, vendor names, Action By, actor pockets, invoice wallets, and global Actor A/B mapping."
         />
         <BigBookSettingsPanel
           initialTypes={types}
-          initialSubTypes={subTypes}
           initialVendorTypes={vendorTypes}
           initialVendors={vendors}
           initialActionBy={actionBy}
@@ -57,6 +56,7 @@ export default async function BigBookSettingsPage() {
           allowedUsers={allowedUsers}
           initialTypeVendorTypeMaps={typeVendorTypeMaps}
           initialWallets={wallets}
+          initialTypeInvoiceProfiles={typeInvoiceProfiles}
         />
       </div>
     );

@@ -4,7 +4,6 @@ export const BIG_BOOK_LEDGER_SORT_KEYS = [
   "entry_date",
   "entry_direction",
   "type_name",
-  "sub_type_name",
   "vendor_type_name",
   "vendor_name",
   "explanation",
@@ -27,9 +26,10 @@ export type LedgerScanRow = {
   entry_direction: "spending" | "profit";
   pocket_id?: string | null;
   is_credit?: boolean;
+  is_future_credit?: boolean;
+  is_debt?: boolean;
   explanation?: string | null;
   entry_type_id?: string | null;
-  entry_sub_type_id?: string | null;
   vendor_type_id?: string | null;
   vendor_id?: string | null;
   action_by_id?: string | null;
@@ -38,7 +38,6 @@ export type LedgerScanRow = {
 
 export type LedgerNameLookups = {
   typeNameById?: Map<string, string>;
-  subTypeNameById?: Map<string, string>;
   vendorTypeNameById?: Map<string, string>;
   vendorNameById?: Map<string, string>;
   actionByNameById?: Map<string, string>;
@@ -72,7 +71,6 @@ export type BuildLedgerDisplayKeysOptions = {
 
 const NAME_SORT_KEYS = new Set<BigBookLedgerSortKey>([
   "type_name",
-  "sub_type_name",
   "vendor_type_name",
   "vendor_name",
   "actor_display_name",
@@ -107,10 +105,6 @@ export function resolveLedgerSortValue(
       return Number(row.amount);
     case "type_name": {
       const name = lookupName(lookups.typeNameById, row.entry_type_id);
-      return name?.trim() ? name : null;
-    }
-    case "sub_type_name": {
-      const name = lookupName(lookups.subTypeNameById, row.entry_sub_type_id);
       return name?.trim() ? name : null;
     }
     case "vendor_type_name": {

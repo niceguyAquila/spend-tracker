@@ -13,15 +13,16 @@ import type {
   BigBookEntry,
   BigBookEntryGroup,
   BigBookLedgerRow,
-  BigBookLedgerSubType,
   BigBookLedgerType,
   BigBookSettlementTargetRef,
   BigBookTypeVendorTypeMap,
   BigBookVendor,
+  BigBookVendorActorOutstandingDebtRow,
   BigBookVendorActorOutstandingRow,
   BigBookVendorType
 } from "@/lib/types";
 import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch";
+import { downloadCsvBlob, readExportErrorMessage } from "@/lib/client/csv-download";
 import {
   createEmptyEntryForm,
   formatAmountInput,
@@ -36,6 +37,11 @@ import {
 } from "@/components/big-book-metrics-cards";
 import { BigBookGroupHeaderRow } from "@/components/big-book-group-row";
 import { BigBookEntryRow } from "@/components/big-book-entry-row";
+import { LinkifyText } from "@/lib/linkify-text";
+import {
+  classifyLedgerGroupTone,
+  ledgerGroupToneClass
+} from "@/lib/big-book/ledger-group-tone";
 
 // Heavy form UI only needed when a create/edit/settlement modal opens.
 const BigBookEntryFields = dynamic(
@@ -47,7 +53,8 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BlockingOverlay } from "@/components/ui/blocking-overlay";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
 import { Modal } from "@/components/ui/modal";
-import { formatAmount, formatDateDisplay } from "@/lib/display-format";
+import { formatAmount, formatDateDisplay, formatDateTimeDisplay } from "@/lib/display-format";
+import { OPTIMISTIC_CONFLICT_MESSAGE } from "@/lib/db/optimistic-lock";
 import { useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
@@ -56,21 +63,27 @@ import type { BigBookLedgerSortDir, BigBookLedgerSortKey } from "@/lib/big-book/
 import {
   describeGroupedMissingFields,
   describeMissingFields,
+  describeSettlementMissingFields,
   missingEntryFields
 } from "@/lib/big-book/entry-form-validation";
 import {
   BIG_BOOK_GROUP_ENTRY_MAX,
-  expandGroupPayloadsWithGasFees,
   parseOptionalGasFeeAmount,
   willCreateGasFeeEntry
 } from "@/lib/big-book/gas-fee-entry";
+import {
+  expandGroupPayloadsWithKursAndGasFees,
+  findKursTypeId,
+  KURS_TYPE_MISSING_ERROR,
+  resolveKursCompanionAmount,
+  willCreateKursEntry
+} from "@/lib/big-book/kurs-usdt-entry";
 import { rowStripeClass } from "@/lib/ui/table";
 import { useColumnWidths } from "@/lib/ui/use-column-widths";
 import { TableEmptyState } from "@/components/ui/table-empty-state";
 
 type Props = {
   initialTypes: BigBookLedgerType[];
-  initialSubTypes: BigBookLedgerSubType[];
   initialVendorTypes: BigBookVendorType[];
   initialVendors: BigBookVendor[];
   initialActionBy: BigBookActionBy[];
@@ -86,6 +99,8 @@ type Props = {
   initialActorMetrics?: BigBookActorCurrencyMetrics[];
   initialActorPocketMetrics?: BigBookActorPocketMetrics[];
   initialVendorActorOutstanding?: BigBookVendorActorOutstandingRow[];
+  initialVendorActorOutstandingFuture?: BigBookVendorActorOutstandingRow[];
+  initialVendorActorOutstandingDebt?: BigBookVendorActorOutstandingDebtRow[];
   initialEntryId?: string;
 };
 
@@ -118,6 +133,51 @@ function extractApiError(error: unknown, fallback: string) {
   return fallback;
 }
 
+type LinkedDeleteInfo = {
+  linked: boolean;
+  kind: "credit" | "debt";
+  obligationLabel: string;
+  settlementCount: number;
+};
+
+function describeLinkedDelete(info: LinkedDeleteInfo) {
+  const noun = info.kind === "debt" ? "debt" : "credit";
+  const paymentNoun = info.kind === "debt" ? "payment" : "settlement";
+  const paymentNounPlural = info.kind === "debt" ? "payments" : "settlements";
+  const countLabel =
+    info.settlementCount === 1
+      ? `1 linked ${paymentNoun}`
+      : `${info.settlementCount} linked ${paymentNounPlural}`;
+  return `This will permanently remove the ${noun} "${info.obligationLabel}" and ${countLabel}, including attachments.`;
+}
+
+function linkedDeleteInfoForEntry(
+  entry: BigBookEntry,
+  findParent: (id: string) => BigBookEntry | null
+): LinkedDeleteInfo | null {
+  if (entry.is_credit || entry.is_debt) {
+    const count = entry.settlements?.length ?? 0;
+    if (count === 0) return null;
+    return {
+      linked: true,
+      kind: entry.is_debt ? "debt" : "credit",
+      obligationLabel: entry.explanation,
+      settlementCount: count
+    };
+  }
+  if (entry.settles_entry_id && entry.settles_entry) {
+    const parent = findParent(entry.settles_entry_id);
+    const count = Math.max(1, parent?.settlements?.length ?? 1);
+    return {
+      linked: true,
+      kind: entry.settles_entry.is_debt ? "debt" : "credit",
+      obligationLabel: entry.settles_entry.explanation,
+      settlementCount: count
+    };
+  }
+  return null;
+}
+
 function arraysEqual(left: string[], right: string[]) {
   if (left.length !== right.length) return false;
   return left.every((value, index) => value === right[index]);
@@ -126,7 +186,6 @@ function arraysEqual(left: string[], right: string[]) {
 const SUPPORTED_CURRENCIES: Array<"IDR" | "MYR" | "USDT" | "TRX"> = ["IDR", "MYR", "USDT", "TRX"];
 
 const LEDGER_SKELETON_ROW_COUNT = 6;
-const LEDGER_COLUMN_COUNT = 12;
 const LEDGER_COLUMN_WIDTH_DEFAULTS: Record<string, number> = {
   select: 44,
   entry_date: 110,
@@ -139,14 +198,23 @@ const LEDGER_COLUMN_WIDTH_DEFAULTS: Record<string, number> = {
   credit: 160,
   remark: 180,
   attachments: 140,
-  actions: 100
+  actions: 110,
+  updated_by: 140,
+  updated_at: 150
 };
 const LEDGER_COLUMN_KEYS = Object.keys(LEDGER_COLUMN_WIDTH_DEFAULTS);
-// Group header rows mirror the ledger layout so their totals land in the Amount
-// column: select cell, one wide label cell, amount, filler, then actions.
+const LEDGER_COLUMN_COUNT = LEDGER_COLUMN_KEYS.length;
+// Group header rows mirror the ledger layout so totals land in Amount and the
+// group label lines up with Explanation. Date is filled; Cash Flow…Action By
+// show "-" because members may differ. Trailing colspan covers columns between
+// Amount and Actions (Credit / Remark / Attachments); the group row renders
+// Credit itself (status badge) and colspan the remainder.
 const LEDGER_AMOUNT_COLUMN_INDEX = LEDGER_COLUMN_KEYS.indexOf("amount");
-const GROUP_ROW_LABEL_COLSPAN = LEDGER_AMOUNT_COLUMN_INDEX - 1;
-const GROUP_ROW_TRAILING_COLSPAN = LEDGER_COLUMN_COUNT - LEDGER_AMOUNT_COLUMN_INDEX - 2;
+const LEDGER_ACTIONS_COLUMN_INDEX = LEDGER_COLUMN_KEYS.indexOf("actions");
+const GROUP_ROW_TRAILING_COLSPAN = Math.max(
+  1,
+  LEDGER_ACTIONS_COLUMN_INDEX - LEDGER_AMOUNT_COLUMN_INDEX - 1
+);
 const DESC_DEFAULT_SORT_KEYS = new Set<BigBookLedgerSortKey>(["entry_date", "amount"]);
 const EMPTY_LEDGER_TOTALS: BigBookLedgerTotals = {
   pageTotals: [],
@@ -175,6 +243,7 @@ const GROUP_MENU_PREFIX = "group:";
 
 const CREDIT_FLAG_OPTIONS = [
   { value: "credit", label: "Credit" },
+  { value: "future_credit", label: "Future Credit" },
   { value: "settlement", label: "Settlement" },
   { value: "none", label: "Not credit-related" }
 ];
@@ -189,30 +258,44 @@ const CREDIT_STATUS_LABELS: Record<BigBookCreditStatus, string> = {
   settled: "Settled"
 };
 
-// Credit fields never travel with grouped entries (the API rejects them there),
-// so this only runs for the single-entry create/edit payloads.
+// Settlement close/link fields only apply to single-entry create/edit payloads
+// (grouped entries persist is_credit / is_debt via toEntryPayload).
 function toCreditPayload(form: EntryFormState, settlesEntry: BigBookSettlementTargetRef | null) {
   const settlesEntryId = form.settles_entry_id || null;
   if (!settlesEntryId) {
+    const isCredit = form.is_credit && !form.is_debt;
+    const isFutureCredit = isCredit && form.is_future_credit;
+    const isDebt = form.is_debt && !form.is_credit;
     return {
-      is_credit: form.is_credit,
+      is_credit: isCredit,
+      is_future_credit: isFutureCredit,
+      is_debt: isDebt,
       settles_entry_id: null,
       settlement_conversion_rate: null,
       settlement_note: "",
       close_credit: false,
-      credit_settlement_note: null
+      credit_settlement_note: null,
+      close_debt: false,
+      debt_settlement_note: null
     };
   }
   const typedRate = Number(form.settlement_conversion_rate);
   const sameCurrency = settlesEntry ? form.currency_code === settlesEntry.currency_code : false;
   const rate = sameCurrency ? 1 : Number.isFinite(typedRate) && typedRate > 0 ? typedRate : null;
+  const settlingDebt = Boolean(settlesEntry?.is_debt);
   return {
     is_credit: false,
+    is_future_credit: false,
+    is_debt: false,
     settles_entry_id: settlesEntryId,
     settlement_conversion_rate: rate,
     settlement_note: form.settlement_note,
-    close_credit: form.close_credit,
-    credit_settlement_note: form.close_credit ? form.credit_settlement_note.trim() || null : null
+    close_credit: settlingDebt ? false : form.close_credit,
+    credit_settlement_note:
+      !settlingDebt && form.close_credit ? form.credit_settlement_note.trim() || null : null,
+    close_debt: settlingDebt ? form.close_debt : false,
+    debt_settlement_note:
+      settlingDebt && form.close_debt ? form.debt_settlement_note.trim() || null : null
   };
 }
 
@@ -224,17 +307,23 @@ function settlementTargetFromEntry(entry: BigBookEntry): BigBookSettlementTarget
     amount: entry.amount,
     currency_code: entry.currency_code,
     vendor_name: entry.vendor_name,
-    credit_status: entry.credit_status ?? "open",
-    credit_settled_at: entry.credit_settled_at
+    is_debt: entry.is_debt,
+    is_future_credit: Boolean(entry.is_future_credit),
+    credit_status: entry.is_credit ? entry.credit_status ?? "open" : null,
+    credit_settled_at: entry.credit_settled_at,
+    debt_status: entry.is_debt ? entry.debt_status ?? "open" : null,
+    debt_settled_at: entry.debt_settled_at
   };
 }
 
 function toEntryPayload(form: EntryFormState) {
+  const isCredit = form.is_credit && !form.is_debt;
+  const isFutureCredit = isCredit && form.is_future_credit;
+  const isDebt = form.is_debt && !form.is_credit;
   return {
     entry_date: form.entry_date,
     entry_direction: form.entry_direction,
     entry_type_id: form.entry_type_id,
-    entry_sub_type_id: form.entry_sub_type_id || null,
     vendor_type_id: form.vendor_type_id || null,
     vendor_id: form.vendor_id || null,
     pocket_id: form.pocket_id || null,
@@ -243,7 +332,10 @@ function toEntryPayload(form: EntryFormState) {
     amount: Number(parseAmountInput(form.amount)),
     currency_code: form.currency_code,
     remark: form.remark,
-    responsible_actor_id: form.responsible_actor_id
+    responsible_actor_id: form.responsible_actor_id,
+    is_credit: isCredit,
+    is_future_credit: isFutureCredit,
+    is_debt: isDebt
   };
 }
 
@@ -253,7 +345,6 @@ function entryFormFromEntry(entry: BigBookEntry): GroupEntryFormState {
     entry_date: entry.entry_date,
     entry_direction: entry.entry_direction,
     entry_type_id: entry.entry_type_id,
-    entry_sub_type_id: entry.entry_sub_type_id ?? "",
     vendor_type_id: entry.vendor_type_id ?? "",
     vendor_id: entry.vendor_id ?? "",
     pocket_id: entry.pocket_id ?? "",
@@ -262,15 +353,21 @@ function entryFormFromEntry(entry: BigBookEntry): GroupEntryFormState {
     amount: formatAmountInput(String(entry.amount)),
     currency_code: entry.currency_code,
     gas_fee_amount: "",
+    kurs_rate: "",
+    kurs_amount: "",
     remark: entry.remark ?? "",
     responsible_actor_id: entry.responsible_actor_id,
     is_credit: entry.is_credit,
+    is_future_credit: Boolean(entry.is_future_credit),
+    is_debt: entry.is_debt,
     settles_entry_id: entry.settles_entry_id ?? "",
     settlement_conversion_rate:
       entry.settlement_conversion_rate != null ? formatRateInput(String(entry.settlement_conversion_rate)) : "",
     settlement_note: entry.settlement_note ?? "",
     close_credit: false,
-    credit_settlement_note: ""
+    credit_settlement_note: "",
+    close_debt: false,
+    debt_settlement_note: ""
   };
 }
 
@@ -297,7 +394,6 @@ function toggleExpandedIndex(prev: Set<number>, index: number) {
 
 export function BigBookPanel({
   initialTypes,
-  initialSubTypes,
   initialVendorTypes,
   initialVendors,
   initialActionBy,
@@ -311,6 +407,8 @@ export function BigBookPanel({
   initialActorMetrics,
   initialActorPocketMetrics,
   initialVendorActorOutstanding,
+  initialVendorActorOutstandingFuture,
+  initialVendorActorOutstandingDebt,
   initialEntryId
 }: Props) {
   const router = useRouter();
@@ -356,7 +454,7 @@ export function BigBookPanel({
   } = useColumnWidths({
     storageKey: "big-book-ledger-column-widths",
     defaults: LEDGER_COLUMN_WIDTH_DEFAULTS,
-    schemaVersion: 1,
+    schemaVersion: 2,
     minWidth: 60
   });
   const [openActionMenu, setOpenActionMenu] = useState<{
@@ -374,12 +472,23 @@ export function BigBookPanel({
   const [createAttachmentFiles, setCreateAttachmentFiles] = useState<File[]>([]);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [editingEntryMeta, setEditingEntryMeta] = useState<{
+    updated_at: string;
+    updater_display_name: string;
+  } | null>(null);
+  const [editingGroupMeta, setEditingGroupMeta] = useState<{
+    updated_at: string;
+    updater_display_name: string;
+  } | null>(null);
+  const [optimisticConflictOpen, setOptimisticConflictOpen] = useState(false);
+  const [optimisticConflictMessage, setOptimisticConflictMessage] = useState(
+    OPTIMISTIC_CONFLICT_MESSAGE
+  );
   const [pendingEditConfirm, setPendingEditConfirm] = useState(false);
   const [editForm, setEditForm] = useState<EntryFormState>({
     entry_date: "",
     entry_direction: "spending",
     entry_type_id: "",
-    entry_sub_type_id: "",
     vendor_type_id: "",
     vendor_id: "",
     pocket_id: "",
@@ -388,14 +497,20 @@ export function BigBookPanel({
     amount: "",
     currency_code: "IDR",
     gas_fee_amount: "",
+    kurs_rate: "",
+    kurs_amount: "",
     remark: "",
     responsible_actor_id: "",
     is_credit: false,
+    is_future_credit: false,
+    is_debt: false,
     settles_entry_id: "",
     settlement_conversion_rate: "",
     settlement_note: "",
     close_credit: false,
-    credit_settlement_note: ""
+    credit_settlement_note: "",
+    close_debt: false,
+    debt_settlement_note: ""
   });
   const [editSettlesEntry, setEditSettlesEntry] = useState<BigBookSettlementTargetRef | null>(null);
   const [pendingDeleteEntry, setPendingDeleteEntry] = useState<BigBookEntry | null>(null);
@@ -446,16 +561,21 @@ export function BigBookPanel({
   const [settlementForm, setSettlementForm] = useState<EntryFormState | null>(null);
   const [settlementAttachmentFiles, setSettlementAttachmentFiles] = useState<File[]>([]);
   const [settlementSubmitting, setSettlementSubmitting] = useState(false);
+  const [settlementFormError, setSettlementFormError] = useState<string | null>(null);
   const [pendingSettlementConfirm, setPendingSettlementConfirm] = useState(false);
   const [fetchingConversionRate, setFetchingConversionRate] = useState(false);
   // Kept as an id so the open history modal re-reads the freshly loaded entry
   // after a settlement is added or deleted.
   const [settlementHistoryEntryId, setSettlementHistoryEntryId] = useState<string | null>(null);
-  const [pendingDeleteSettlementId, setPendingDeleteSettlementId] = useState<string | null>(null);
+  const [pendingDeleteSettlement, setPendingDeleteSettlement] = useState<{
+    id: string;
+    updated_at: string;
+  } | null>(null);
   const [settlementDeleting, setSettlementDeleting] = useState(false);
   const [creditClosureDialog, setCreditClosureDialog] = useState<{
     entry: BigBookEntry;
     settled: boolean;
+    kind: "credit" | "debt";
   } | null>(null);
   const [creditClosureNote, setCreditClosureNote] = useState("");
   const [creditClosureSubmitting, setCreditClosureSubmitting] = useState(false);
@@ -614,7 +734,9 @@ export function BigBookPanel({
       if (
         Array.isArray(data?.actorMetrics) ||
         Array.isArray(data?.actorPocketMetrics) ||
-        Array.isArray(data?.vendorActorOutstanding)
+        Array.isArray(data?.vendorActorOutstanding) ||
+        Array.isArray(data?.vendorActorOutstandingFuture) ||
+        Array.isArray(data?.vendorActorOutstandingDebt)
       ) {
         setMetricsOverride((prev) => ({
           actorMetrics: Array.isArray(data?.actorMetrics)
@@ -625,7 +747,13 @@ export function BigBookPanel({
             : (prev?.actorPocketMetrics ?? []),
           vendorActorOutstanding: Array.isArray(data?.vendorActorOutstanding)
             ? data.vendorActorOutstanding
-            : (prev?.vendorActorOutstanding ?? [])
+            : (prev?.vendorActorOutstanding ?? []),
+          vendorActorOutstandingFuture: Array.isArray(data?.vendorActorOutstandingFuture)
+            ? data.vendorActorOutstandingFuture
+            : (prev?.vendorActorOutstandingFuture ?? []),
+          vendorActorOutstandingDebt: Array.isArray(data?.vendorActorOutstandingDebt)
+            ? data.vendorActorOutstandingDebt
+            : (prev?.vendorActorOutstandingDebt ?? [])
         }));
       }
       // Drop ticked ids that are no longer on screen, so grouping can never act
@@ -820,13 +948,21 @@ export function BigBookPanel({
   // `null` means "still streaming from metricsPromise via Suspense"; after the
   // first mutation refresh we hold an override so cards update in place.
   const [metricsOverride, setMetricsOverride] = useState<BigBookMetricsBundle | null>(() => {
-    if (!initialActorMetrics && !initialActorPocketMetrics && !initialVendorActorOutstanding) {
+    if (
+      !initialActorMetrics &&
+      !initialActorPocketMetrics &&
+      !initialVendorActorOutstanding &&
+      !initialVendorActorOutstandingFuture &&
+      !initialVendorActorOutstandingDebt
+    ) {
       return null;
     }
     return {
       actorMetrics: initialActorMetrics ?? [],
       actorPocketMetrics: initialActorPocketMetrics ?? [],
-      vendorActorOutstanding: initialVendorActorOutstanding ?? []
+      vendorActorOutstanding: initialVendorActorOutstanding ?? [],
+      vendorActorOutstandingFuture: initialVendorActorOutstandingFuture ?? [],
+      vendorActorOutstandingDebt: initialVendorActorOutstandingDebt ?? []
     };
   });
 
@@ -846,7 +982,9 @@ export function BigBookPanel({
         const base = prev ?? {
           actorMetrics: [],
           actorPocketMetrics: [],
-          vendorActorOutstanding: []
+          vendorActorOutstanding: [],
+          vendorActorOutstandingFuture: [],
+          vendorActorOutstandingDebt: []
         };
         const next = base.actorMetrics.map((row) => ({ ...row, totals: { ...row.totals } }));
         const existing = next.find((row) => row.actor_id === actorId);
@@ -917,6 +1055,14 @@ export function BigBookPanel({
   const selectedCount = selectedEntryIds.size;
   const allSelectableSelected =
     selectableEntryIds.length > 0 && selectableEntryIds.every((id) => selectedEntryIds.has(id));
+  const someSelectableSelected = selectableEntryIds.some((id) => selectedEntryIds.has(id));
+  const selectAllRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someSelectableSelected && !allSelectableSelected;
+    }
+  }, [someSelectableSelected, allSelectableSelected]);
 
   const onViewRemark = useCallback((entryId: string, text: string) => {
     setViewingRemark({ entryId, text });
@@ -1066,16 +1212,29 @@ export function BigBookPanel({
       return;
     }
     const completeForms = groupEntryForms.filter(isEntryFormComplete);
-    const payloadEntries = expandGroupPayloadsWithGasFees(
-      completeForms.map((form) => ({ entry: toEntryPayload(form), gasFeeAmount: form.gas_fee_amount }))
-    );
+    const kursTypeId = findKursTypeId(initialTypes);
+    let payloadEntries;
+    try {
+      payloadEntries = expandGroupPayloadsWithKursAndGasFees(
+        completeForms.map((form) => ({
+          entry: toEntryPayload(form),
+          gasFeeAmount: form.gas_fee_amount,
+          kursRate: form.kurs_rate,
+          kursAmount: form.kurs_amount
+        })),
+        kursTypeId
+      );
+    } catch (expandError) {
+      setError(expandError instanceof Error ? expandError.message : KURS_TYPE_MISSING_ERROR);
+      return;
+    }
     if (payloadEntries.length < 2) {
       setError("A grouped transaction needs at least 2 entries with an explanation and amount.");
       return;
     }
     if (payloadEntries.length > BIG_BOOK_GROUP_ENTRY_MAX) {
       setError(
-        `A grouped transaction can have at most ${BIG_BOOK_GROUP_ENTRY_MAX} entries, including gas fees.`
+        `A grouped transaction can have at most ${BIG_BOOK_GROUP_ENTRY_MAX} entries, including gas fees and KURS.`
       );
       return;
     }
@@ -1104,8 +1263,10 @@ export function BigBookPanel({
       setPendingEntryConfirm(false);
       setCreateModalOpen(false);
       // Optimistically fold every child amount into the Grand Total card; SSR
-      // via `triggerRefresh` reconciles right after.
+      // via `triggerRefresh` reconciles right after. Open debt is obligation-only.
       for (const payload of payloadEntries) {
+        if ("is_debt" in payload && payload.is_debt) continue;
+        if ("is_future_credit" in payload && payload.is_future_credit) continue;
         const actor = initialActors.find((row) => row.id === payload.responsible_actor_id);
         applyMetricDelta(
           payload.responsible_actor_id,
@@ -1136,6 +1297,13 @@ export function BigBookPanel({
     }
     const gasFeeAmount =
       entryForm.currency_code === "USDT" ? parseOptionalGasFeeAmount(entryForm.gas_fee_amount) : null;
+    const kursCompanionAmount = resolveKursCompanionAmount({
+      currencyCode: entryForm.currency_code,
+      entryDirection: entryForm.entry_direction,
+      mainAmount: amountValue,
+      kursRate: entryForm.kurs_rate,
+      kursAmount: entryForm.kurs_amount
+    });
 
     setEntrySubmitting(true);
     setError(null);
@@ -1146,13 +1314,14 @@ export function BigBookPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...entryForm,
-          entry_sub_type_id: entryForm.entry_sub_type_id || null,
           vendor_type_id: entryForm.vendor_type_id || null,
           vendor_id: entryForm.vendor_id || null,
           pocket_id: entryForm.pocket_id || null,
           action_by_id: entryForm.action_by_id || null,
           amount: amountValue,
           gas_fee_amount: gasFeeAmount,
+          kurs_rate: entryForm.kurs_rate.trim() ? Number(parseAmountInput(entryForm.kurs_rate)) : null,
+          kurs_amount: kursCompanionAmount,
           ...toCreditPayload(entryForm, null)
         })
       });
@@ -1214,13 +1383,16 @@ export function BigBookPanel({
       const createdActor = initialActors.find((actor) => actor.id === entryForm.responsible_actor_id);
       const createdDelta =
         entryForm.entry_direction === "spending" ? -amountValue : amountValue;
-      applyMetricDelta(
-        entryForm.responsible_actor_id,
-        createdActor?.display_name ?? "Unknown Actor",
-        entryForm.currency_code,
-        createdDelta,
-        entryForm.pocket_id || null
-      );
+      // Open debt is obligation-only and must not move Grand Total / actor nets.
+      if (!entryForm.is_debt && !entryForm.is_future_credit) {
+        applyMetricDelta(
+          entryForm.responsible_actor_id,
+          createdActor?.display_name ?? "Unknown Actor",
+          entryForm.currency_code,
+          createdDelta,
+          entryForm.pocket_id || null
+        );
+      }
       if (gasFeeAmount != null) {
         applyMetricDelta(
           entryForm.responsible_actor_id,
@@ -1230,13 +1402,24 @@ export function BigBookPanel({
           null
         );
       }
+      if (kursCompanionAmount != null) {
+        applyMetricDelta(
+          entryForm.responsible_actor_id,
+          createdActor?.display_name ?? "Unknown Actor",
+          "USDT",
+          -kursCompanionAmount,
+          null
+        );
+      }
       if (keepModalOpen) {
         setEntryForm((prev) => ({
           ...prev,
           explanation: "",
           amount: "",
           remark: "",
-          gas_fee_amount: ""
+          gas_fee_amount: "",
+          kurs_rate: "",
+          kurs_amount: ""
         }));
       } else {
         // Full reset reapplies Type → Vendor Type mapping for the default type.
@@ -1253,18 +1436,40 @@ export function BigBookPanel({
   async function deleteEntry() {
     if (!pendingDeleteEntry) return;
     const deletingEntryId = pendingDeleteEntry.id;
+    const linkedInfo = linkedDeleteInfoForEntry(pendingDeleteEntry, findEntryById);
     setEntryDeleting(true);
     setError(null);
     setMessage(null);
     try {
-      const response = await secureFetch(`/api/big-book/entries?id=${pendingDeleteEntry.id}`, { method: "DELETE" });
+      const cascadeQuery = linkedInfo ? "&cascadeLinked=1" : "";
+      const expectedQuery = `&expected_updated_at=${encodeURIComponent(pendingDeleteEntry.updated_at)}`;
+      const response = await secureFetch(
+        `/api/big-book/entries?id=${pendingDeleteEntry.id}${cascadeQuery}${expectedQuery}`,
+        { method: "DELETE" }
+      );
       if (handleUnauthorizedResponse(response)) return;
       const data = await response.json();
       if (!response.ok) {
+        if (response.status === 409 || data.code === "optimistic_conflict") {
+          handleOptimisticConflict(
+            typeof data.error === "string" ? data.error : OPTIMISTIC_CONFLICT_MESSAGE
+          );
+          return;
+        }
         setError(data.error ?? "Failed to delete ledger entry.");
         return;
       }
-      setMessage("Ledger entry deleted.");
+      setMessage(linkedInfo ? "Credit/debt and linked settlements deleted." : "Ledger entry deleted.");
+      const deletedIds = new Set<string>(
+        Array.isArray(data.deleted_ids) ? data.deleted_ids : [deletingEntryId]
+      );
+      if (linkedInfo) {
+        // Linked deletes can remove the obligation plus several settlements —
+        // refresh from the server rather than patching optimistic deltas.
+        setPendingDeleteEntry(null);
+        triggerRefresh();
+        return;
+      }
       const wasStandalone = ledgerRows.some(
         (row) => row.kind === "entry" && row.entry.id === deletingEntryId
       );
@@ -1272,10 +1477,12 @@ export function BigBookPanel({
         prev
           .map((row) =>
             row.kind === "group"
-              ? { ...row, entries: row.entries.filter((item) => item.id !== deletingEntryId) }
+              ? { ...row, entries: row.entries.filter((item) => !deletedIds.has(item.id)) }
               : row
           )
-          .filter((row) => (row.kind === "entry" ? row.entry.id !== deletingEntryId : row.entries.length > 0))
+          .filter((row) =>
+            row.kind === "entry" ? !deletedIds.has(row.entry.id) : row.entries.length > 0
+          )
       );
       if (wasStandalone) {
         setTotalCount((prev) => Math.max(0, prev - 1));
@@ -1384,42 +1591,58 @@ export function BigBookPanel({
       for (const actionById of actionByFilter) params.append("actionById", actionById);
 
       const url = `/api/big-book/export${params.toString() ? `?${params.toString()}` : ""}`;
-      const response = await fetch(url);
-      if (handleUnauthorizedResponse(response)) return;
-      if (!response.ok) {
-        let errorMessage = "Failed to export ledger entries.";
-        try {
-          const data = await response.json();
-          errorMessage = extractApiError(data?.error, errorMessage);
-        } catch {
-          // ignore JSON parse errors; keep default message
-        }
-        setError(errorMessage);
+      const response = await fetch(url, {
+        headers: { Accept: "text/csv, application/json" },
+        redirect: "manual"
+      });
+      if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400)) {
+        setError("Export failed: unexpected redirect instead of CSV.");
         return;
       }
-      const blob = await response.blob();
+      if (handleUnauthorizedResponse(response)) return;
+      if (!response.ok) {
+        setError(await readExportErrorMessage(response));
+        return;
+      }
       const today = new Date().toISOString().slice(0, 10);
       const filename = `big-book-export-${today}.csv`;
-      const downloadUrl = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = downloadUrl;
-      anchor.download = filename;
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-      URL.revokeObjectURL(downloadUrl);
+      await downloadCsvBlob(response, filename);
       setMessage("Exported ledger entries to CSV.");
-    } catch {
-      setError("Failed to export ledger entries due to a network error.");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Failed to export ledger entries due to a network error.");
     } finally {
       setExportSubmitting(false);
     }
   }
 
+  function handleOptimisticConflict(message?: string) {
+    setOptimisticConflictMessage(message?.trim() || OPTIMISTIC_CONFLICT_MESSAGE);
+    setOptimisticConflictOpen(true);
+  }
+
+  function dismissOptimisticConflictAndRefresh() {
+    setOptimisticConflictOpen(false);
+    setPendingEditConfirm(false);
+    setEditModalOpen(false);
+    setEditingEntryId(null);
+    setEditingEntryMeta(null);
+    setEditingGroupId(null);
+    setEditingGroupMeta(null);
+    setPendingDeleteEntry(null);
+    setCreditClosureDialog(null);
+    setPendingDeleteSettlement(null);
+    triggerRefresh();
+  }
+
   function startEditEntry(row: BigBookEntry) {
     setOpenActionMenu(null);
     setEditingGroupId(null);
+    setEditingGroupMeta(null);
     setEditingEntryId(row.id);
+    setEditingEntryMeta({
+      updated_at: row.updated_at,
+      updater_display_name: row.updater_display_name
+    });
     setEditForm(entryFormFromEntry(row));
     setEditSettlesEntry(row.settles_entry);
     setEditModalOpen(true);
@@ -1428,7 +1651,12 @@ export function BigBookPanel({
   function startEditGroup(group: BigBookEntryGroup, entries: BigBookEntry[]) {
     setOpenActionMenu(null);
     setEditingEntryId(null);
+    setEditingEntryMeta(null);
     setEditingGroupId(group.id);
+    setEditingGroupMeta({
+      updated_at: group.updated_at,
+      updater_display_name: group.updater_display_name
+    });
     setEditGroupLabel(group.label);
     setEditGroupRemark(group.remark ?? "");
     const forms = entries.map(entryFormFromEntry);
@@ -1547,7 +1775,7 @@ export function BigBookPanel({
   }
 
   async function saveEditedEntry() {
-    if (!editingEntryId) return;
+    if (!editingEntryId || !editingEntryMeta) return;
     const amountValue = Number(parseAmountInput(editForm.amount));
     if (!Number.isFinite(amountValue) || amountValue <= 0) {
       setError("Amount must be greater than 0.");
@@ -1564,7 +1792,7 @@ export function BigBookPanel({
         body: JSON.stringify({
           ...editForm,
           id: editingEntryId,
-          entry_sub_type_id: editForm.entry_sub_type_id || null,
+          expected_updated_at: editingEntryMeta.updated_at,
           vendor_type_id: editForm.vendor_type_id || null,
           vendor_id: editForm.vendor_id || null,
           pocket_id: editForm.pocket_id || null,
@@ -1576,6 +1804,12 @@ export function BigBookPanel({
       if (handleUnauthorizedResponse(response)) return;
       const data = await response.json();
       if (!response.ok) {
+        if (response.status === 409 || data.code === "optimistic_conflict") {
+          handleOptimisticConflict(
+            typeof data.error === "string" ? data.error : OPTIMISTIC_CONFLICT_MESSAGE
+          );
+          return;
+        }
         setError(extractApiError(data.error, "Failed to update ledger entry."));
         return;
       }
@@ -1583,6 +1817,7 @@ export function BigBookPanel({
       setPendingEditConfirm(false);
       setEditModalOpen(false);
       setEditingEntryId(null);
+      setEditingEntryMeta(null);
       setEditSettlesEntry(null);
       triggerRefresh();
     } catch {
@@ -1704,34 +1939,114 @@ export function BigBookPanel({
     setOpenActionMenu(null);
     setSettlementTarget(row);
     setSettlementAttachmentFiles([]);
+    setSettlementFormError(null);
+    const payingDebt = Boolean(row.is_debt);
     setSettlementForm({
       entry_date: today,
-      entry_direction: "profit",
+      entry_direction: payingDebt ? "spending" : "profit",
       entry_type_id: row.entry_type_id,
-      entry_sub_type_id: row.entry_sub_type_id ?? "",
       vendor_type_id: row.vendor_type_id ?? "",
       vendor_id: row.vendor_id ?? "",
       pocket_id: "",
       action_by_id: row.action_by_id ?? "",
-      explanation: `Settlement for: ${row.explanation}`,
+      explanation: payingDebt
+        ? `Debt payment for: ${row.explanation}`
+        : `Settlement for: ${row.explanation}`,
       amount: formatAmountInput(String(row.amount)),
       currency_code: row.currency_code,
       gas_fee_amount: "",
+      kurs_rate: "",
+      kurs_amount: "",
       remark: "",
       responsible_actor_id: row.responsible_actor_id,
       is_credit: false,
+      is_future_credit: false,
+      is_debt: false,
       settles_entry_id: row.id,
       settlement_conversion_rate: "1",
       settlement_note: "",
       close_credit: false,
-      credit_settlement_note: ""
+      credit_settlement_note: "",
+      close_debt: payingDebt,
+      debt_settlement_note: ""
     });
   }
 
-  function openCreditClosureDialog(row: BigBookEntry, settled: boolean) {
+  async function setCreditActualized(row: BigBookEntry, actualized: boolean) {
     setOpenActionMenu(null);
-    setCreditClosureDialog({ entry: row, settled });
-    setCreditClosureNote(settled ? row.credit_settlement_note ?? "" : "");
+    if (!row.is_credit) return;
+    setEntrySubmitting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await secureFetch("/api/big-book/entries", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: row.id,
+          expected_updated_at: row.updated_at,
+          entry_date: row.entry_date,
+          entry_direction: row.entry_direction,
+          entry_type_id: row.entry_type_id,
+          vendor_type_id: row.vendor_type_id,
+          vendor_id: row.vendor_id,
+          pocket_id: row.pocket_id,
+          action_by_id: row.action_by_id,
+          explanation: row.explanation,
+          amount: row.amount,
+          currency_code: row.currency_code,
+          remark: row.remark ?? "",
+          responsible_actor_id: row.responsible_actor_id,
+          is_credit: true,
+          is_future_credit: !actualized,
+          is_debt: false,
+          settles_entry_id: null,
+          settlement_conversion_rate: null,
+          settlement_note: "",
+          close_credit: false,
+          credit_settlement_note: null,
+          close_debt: false,
+          debt_settlement_note: null
+        })
+      });
+      if (handleUnauthorizedResponse(response)) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(extractApiError(data.error, "Failed to update credit actualization."));
+        return;
+      }
+      // Actualize adds cash impact; undo removes it.
+      const signed = row.entry_direction === "spending" ? -row.amount : row.amount;
+      applyMetricDelta(
+        row.responsible_actor_id,
+        row.actor_display_name,
+        row.currency_code,
+        actualized ? signed : -signed,
+        row.pocket_id
+      );
+      setMessage(actualized ? "Future Credit actualized to Credit." : "Credit marked as Future Credit.");
+      triggerRefresh();
+    } catch {
+      setError("Failed to update credit actualization due to a network error.");
+    } finally {
+      setEntrySubmitting(false);
+    }
+  }
+
+  function openCreditClosureDialog(
+    row: BigBookEntry,
+    settled: boolean,
+    kind: "credit" | "debt" = "credit"
+  ) {
+    setOpenActionMenu(null);
+    setCreditClosureDialog({ entry: row, settled, kind });
+    setCreditClosureNote(
+      settled
+        ? kind === "debt"
+          ? row.debt_settlement_note ?? ""
+          : row.credit_settlement_note ?? ""
+        : ""
+    );
   }
 
   async function submitCreditClosure() {
@@ -1739,12 +2054,14 @@ export function BigBookPanel({
     setCreditClosureSubmitting(true);
     setError(null);
     setMessage(null);
+    const kindLabel = creditClosureDialog.kind === "debt" ? "debt" : "credit";
     try {
       const response = await secureFetch("/api/big-book/entries/settle", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: creditClosureDialog.entry.id,
+          expected_updated_at: creditClosureDialog.entry.updated_at,
           settled: creditClosureDialog.settled,
           note: creditClosureNote.trim() || null
         })
@@ -1752,20 +2069,26 @@ export function BigBookPanel({
       if (handleUnauthorizedResponse(response)) return;
       const data = await response.json();
       if (!response.ok) {
+        if (response.status === 409 || data.code === "optimistic_conflict") {
+          handleOptimisticConflict(
+            typeof data.error === "string" ? data.error : OPTIMISTIC_CONFLICT_MESSAGE
+          );
+          return;
+        }
         setError(
           extractApiError(
             data.error,
             creditClosureDialog.settled
-              ? "Failed to mark the credit as settled."
-              : "Failed to reopen the credit."
+              ? `Failed to mark the ${kindLabel} as settled.`
+              : `Failed to reopen the ${kindLabel}.`
           )
         );
         return;
       }
       setMessage(
         creditClosureDialog.settled
-          ? "Credit marked as settled."
-          : "Credit reopened."
+          ? `${kindLabel === "debt" ? "Debt" : "Credit"} marked as settled.`
+          : `${kindLabel === "debt" ? "Debt" : "Credit"} reopened.`
       );
       setCreditClosureDialog(null);
       setCreditClosureNote("");
@@ -1781,6 +2104,7 @@ export function BigBookPanel({
     setSettlementTarget(null);
     setSettlementForm(null);
     setSettlementAttachmentFiles([]);
+    setSettlementFormError(null);
   }
 
   async function fetchConversionRate(
@@ -1822,16 +2146,27 @@ export function BigBookPanel({
     if (!settlementTarget || !settlementForm) return;
     const amountValue = Number(parseAmountInput(settlementForm.amount));
     if (!Number.isFinite(amountValue) || amountValue <= 0) {
-      setError("Settlement amount must be greater than 0.");
+      setPendingSettlementConfirm(false);
+      setSettlementFormError("Settlement amount must be greater than 0.");
       return;
     }
+    // Cross-currency FX rate / credit-currency amount are optional on submit.
+    // Same-currency derives rate = 1 in toCreditPayload + the entries API.
     const creditPayload = toCreditPayload(settlementForm, settlementTargetRef);
-    const conversionRate = creditPayload.settlement_conversion_rate;
-    if (conversionRate == null) {
-      setError("Conversion rate must be greater than 0.");
-      return;
-    }
+    const gasFeeAmount =
+      settlementForm.currency_code === "USDT"
+        ? parseOptionalGasFeeAmount(settlementForm.gas_fee_amount)
+        : null;
+    const kursCompanionAmount = resolveKursCompanionAmount({
+      currencyCode: settlementForm.currency_code,
+      entryDirection: settlementForm.entry_direction,
+      mainAmount: amountValue,
+      kursRate: settlementForm.kurs_rate,
+      kursAmount: settlementForm.kurs_amount
+    });
+
     setSettlementSubmitting(true);
+    setSettlementFormError(null);
     setError(null);
     setMessage(null);
     try {
@@ -1840,19 +2175,24 @@ export function BigBookPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...settlementForm,
-          entry_sub_type_id: settlementForm.entry_sub_type_id || null,
           vendor_type_id: settlementForm.vendor_type_id || null,
           vendor_id: settlementForm.vendor_id || null,
           pocket_id: settlementForm.pocket_id || null,
           action_by_id: settlementForm.action_by_id || null,
           amount: amountValue,
+          gas_fee_amount: gasFeeAmount,
+          kurs_rate: settlementForm.kurs_rate.trim()
+            ? Number(parseAmountInput(settlementForm.kurs_rate))
+            : null,
+          kurs_amount: kursCompanionAmount,
           ...creditPayload
         })
       });
       if (handleUnauthorizedResponse(response)) return;
       const data = await response.json();
       if (!response.ok) {
-        setError(extractApiError(data.error, "Failed to record the settlement."));
+        setPendingSettlementConfirm(false);
+        setSettlementFormError(extractApiError(data.error, "Failed to record the settlement."));
         return;
       }
 
@@ -1868,7 +2208,7 @@ export function BigBookPanel({
         if (handleUnauthorizedResponse(uploadResponse)) return;
         const uploadData = await uploadResponse.json();
         if (!uploadResponse.ok) {
-          setError(
+          setSettlementFormError(
             extractApiError(uploadData.error, `Settlement recorded, but failed to upload ${file.name}.`)
           );
           setPendingSettlementConfirm(false);
@@ -1878,34 +2218,48 @@ export function BigBookPanel({
         }
       }
 
-      setMessage("Settlement recorded.");
+      setMessage(
+        kursCompanionAmount != null
+          ? "Settlement recorded with a grouped KURS entry."
+          : "Settlement recorded."
+      );
       setPendingSettlementConfirm(false);
       closeRecordSettlement();
       triggerRefresh();
     } catch {
-      setError("Failed to record the settlement due to a network error.");
+      setPendingSettlementConfirm(false);
+      setSettlementFormError("Failed to record the settlement due to a network error.");
     } finally {
       setSettlementSubmitting(false);
     }
   }
 
   async function deleteSettlement() {
-    if (!pendingDeleteSettlementId) return;
+    if (!pendingDeleteSettlement) return;
     setSettlementDeleting(true);
     setError(null);
     setMessage(null);
     try {
-      const response = await secureFetch(`/api/big-book/entries?id=${pendingDeleteSettlementId}`, {
-        method: "DELETE"
-      });
+      // Settlement deletes always cascade the parent credit/debt + all siblings.
+      const response = await secureFetch(
+        `/api/big-book/entries?id=${pendingDeleteSettlement.id}&cascadeLinked=1&expected_updated_at=${encodeURIComponent(pendingDeleteSettlement.updated_at)}`,
+        { method: "DELETE" }
+      );
       if (handleUnauthorizedResponse(response)) return;
       const data = await response.json();
       if (!response.ok) {
+        if (response.status === 409 || data.code === "optimistic_conflict") {
+          handleOptimisticConflict(
+            typeof data.error === "string" ? data.error : OPTIMISTIC_CONFLICT_MESSAGE
+          );
+          return;
+        }
         setError(extractApiError(data.error, "Failed to delete the settlement."));
         return;
       }
-      setMessage("Settlement deleted.");
-      setPendingDeleteSettlementId(null);
+      setMessage("Credit/debt and linked settlements deleted.");
+      setPendingDeleteSettlement(null);
+      setSettlementHistoryEntryId(null);
       triggerRefresh();
     } catch {
       setError("Failed to delete the settlement due to a network error.");
@@ -1961,31 +2315,73 @@ export function BigBookPanel({
   const createValid = createMissingHint == null;
   const createHasGasFee =
     createMode === "single" && willCreateGasFeeEntry(entryForm.currency_code, entryForm.gas_fee_amount);
+  const createHasKurs =
+    createMode === "single" &&
+    willCreateKursEntry({
+      currencyCode: entryForm.currency_code,
+      entryDirection: entryForm.entry_direction,
+      mainAmount: Number(parseAmountInput(entryForm.amount)),
+      kursRate: entryForm.kurs_rate,
+      kursAmount: entryForm.kurs_amount
+    });
   const groupedCreateEntryCount =
     createMode === "group"
-      ? expandGroupPayloadsWithGasFees(
-          groupEntryForms
-            .filter(isEntryFormComplete)
-            .map((form) => ({ entry: toEntryPayload(form), gasFeeAmount: form.gas_fee_amount }))
-        ).length
+      ? (() => {
+          try {
+            return expandGroupPayloadsWithKursAndGasFees(
+              groupEntryForms
+                .filter(isEntryFormComplete)
+                .map((form) => ({
+                  entry: toEntryPayload(form),
+                  gasFeeAmount: form.gas_fee_amount,
+                  kursRate: form.kurs_rate,
+                  kursAmount: form.kurs_amount
+                })),
+              findKursTypeId(initialTypes)
+            ).length;
+          } catch {
+            return groupEntryForms.filter(isEntryFormComplete).length;
+          }
+        })()
       : 0;
   const editMissingHint = editingGroupId
     ? describeGroupedMissingFields(editGroupForms, { groupLabel: editGroupLabel })
     : describeMissingFields(missingEntryFields(editForm));
   const editValid = editMissingHint == null;
   const settlementMissingHint = settlementForm
-    ? describeMissingFields(missingEntryFields(settlementForm))
+    ? describeSettlementMissingFields({
+        explanation: settlementForm.explanation,
+        amount: settlementForm.amount,
+        currencyCode: settlementForm.currency_code,
+        creditCurrencyCode: settlementTargetRef?.currency_code,
+        settlementConversionRate: settlementForm.settlement_conversion_rate
+      })
     : null;
+  const settlementHasKurs =
+    Boolean(settlementForm) &&
+    willCreateKursEntry({
+      currencyCode: settlementForm!.currency_code,
+      entryDirection: settlementForm!.entry_direction,
+      mainAmount: Number(parseAmountInput(settlementForm!.amount)),
+      kursRate: settlementForm!.kurs_rate,
+      kursAmount: settlementForm!.kurs_amount
+    });
+  const settlementHasGasFee =
+    Boolean(settlementForm) &&
+    willCreateGasFeeEntry(settlementForm!.currency_code, settlementForm!.gas_fee_amount);
 
-  function renderEntryRow(entry: BigBookEntry, isGroupMember: boolean) {
+  function renderEntryRow(entry: BigBookEntry, isGroupMember: boolean, groupToneClass = "") {
+    // Group members get `.group-child` (+ optional tone) styling from globals.css;
+    // stripeClass is only applied for ungrouped rows.
     const stripe = isGroupMember
-      ? "bg-[rgb(var(--surface-muted))]/40"
+      ? ""
       : rowStripeClass(standaloneEntryStripeIndex.get(entry.id) ?? 0);
     return (
       <BigBookEntryRow
         key={entry.id}
         entry={entry}
         isGroupMember={isGroupMember}
+        groupToneClass={groupToneClass}
         stripeClass={stripe}
         highlighted={focusedEntryId === entry.id}
         selected={selectedEntryIds.has(entry.id)}
@@ -2291,13 +2687,19 @@ export function BigBookPanel({
                 <col key={key} style={{ width: columnWidths[key] }} />
               ))}
             </colgroup>
-            <thead className="border-b border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] text-left">
+            <thead>
               <tr>
                 <th className="relative px-3 py-2">
                   <input
+                    ref={selectAllRef}
                     type="checkbox"
                     className="h-4 w-4"
                     aria-label="Select all ungrouped transactions on this page"
+                    aria-checked={
+                      someSelectableSelected && !allSelectableSelected
+                        ? "mixed"
+                        : allSelectableSelected
+                    }
                     checked={allSelectableSelected}
                     disabled={selectableEntryIds.length === 0}
                     onChange={toggleSelectAllOnPage}
@@ -2361,7 +2763,9 @@ export function BigBookPanel({
                   [
                     ["remark", "Remark"],
                     ["attachments", "Attachments"],
-                    ["actions", "Actions"]
+                    ["actions", "Actions"],
+                    ["updated_by", "Last Updated by"],
+                    ["updated_at", "Last Updated at"]
                   ] as Array<[string, string]>
                 ).map(([key, label]) => (
                   <th key={key} className="relative px-3 py-2">
@@ -2397,20 +2801,26 @@ export function BigBookPanel({
                       <td className="px-3 py-2"><div className="h-4 w-20 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-4 w-16 rounded bg-[rgb(var(--surface-muted))]" /></td>
                       <td className="px-3 py-2"><div className="h-8 w-20 rounded bg-[rgb(var(--surface-muted))]" /></td>
+                      <td className="px-3 py-2"><div className="h-4 w-24 rounded bg-[rgb(var(--surface-muted))]" /></td>
+                      <td className="px-3 py-2"><div className="h-4 w-28 rounded bg-[rgb(var(--surface-muted))]" /></td>
                     </tr>
                   ))
-                : ledgerRows.map((row) =>
-                    row.kind === "entry" ? (
-                      renderEntryRow(row.entry, false)
-                    ) : (
+                : ledgerRows.map((row) => {
+                    if (row.kind === "entry") {
+                      return renderEntryRow(row.entry, false);
+                    }
+                    const groupToneClass = ledgerGroupToneClass(
+                      classifyLedgerGroupTone(row.entries)
+                    );
+                    return (
                       <BigBookGroupHeaderRow
                         key={`group-${row.group.id}`}
                         group={row.group}
                         entries={row.entries}
                         expanded={expandedGroupIds.has(row.group.id)}
                         onToggle={() => toggleGroupExpanded(row.group.id)}
-                        labelColSpan={GROUP_ROW_LABEL_COLSPAN}
                         trailingColSpan={GROUP_ROW_TRAILING_COLSPAN}
+                        columnCount={LEDGER_COLUMN_COUNT}
                         openActionMenu={openActionMenu}
                         actionMenuRef={actionMenuRef}
                         onOpenActionMenu={(id, top, left) => setOpenActionMenu({ id, top, left })}
@@ -2419,10 +2829,12 @@ export function BigBookPanel({
                         onUngroup={() => setPendingUngroup(row.group)}
                         onDelete={() => setPendingDeleteGroup({ group: row.group, entries: row.entries })}
                       >
-                        {row.entries.map((entry) => renderEntryRow(entry, true))}
+                        {row.entries.map((entry) =>
+                          renderEntryRow(entry, true, groupToneClass)
+                        )}
                       </BigBookGroupHeaderRow>
-                    )
-                  )}
+                    );
+                  })}
               {!ledgerRows.length && !entriesLoading ? (
                 <TableEmptyState
                   colSpan={LEDGER_COLUMN_COUNT}
@@ -2504,34 +2916,73 @@ export function BigBookPanel({
                 >
                   Manage attachments
                 </button>
-                {targetRow.is_credit ? (
+                {targetRow.is_credit && targetRow.is_future_credit ? (
+                  <button
+                    className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
+                    role="menuitem"
+                    onClick={() => void setCreditActualized(targetRow, true)}
+                  >
+                    Actualize credit
+                  </button>
+                ) : null}
+                {targetRow.is_credit &&
+                !targetRow.is_future_credit &&
+                targetRow.credit_status !== "settled" ? (
+                  <button
+                    className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
+                    role="menuitem"
+                    onClick={() => void setCreditActualized(targetRow, false)}
+                  >
+                    Mark as Future Credit
+                  </button>
+                ) : null}
+                {targetRow.is_debt || targetRow.is_credit ? (
                   <button
                     className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
                     role="menuitem"
                     onClick={() => openRecordSettlement(targetRow)}
                   >
-                    Record settlement
+                    {targetRow.is_debt ? "Record payment" : "Record settlement"}
                   </button>
                 ) : null}
                 {targetRow.is_credit && targetRow.credit_status !== "settled" ? (
                   <button
                     className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
                     role="menuitem"
-                    onClick={() => openCreditClosureDialog(targetRow, true)}
+                    onClick={() => openCreditClosureDialog(targetRow, true, "credit")}
                   >
                     Mark as settled
+                  </button>
+                ) : null}
+                {targetRow.is_debt && targetRow.debt_status !== "settled" ? (
+                  <button
+                    className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
+                    role="menuitem"
+                    onClick={() => openCreditClosureDialog(targetRow, true, "debt")}
+                  >
+                    Mark debt settled
                   </button>
                 ) : null}
                 {targetRow.is_credit && targetRow.credit_status === "settled" ? (
                   <button
                     className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
                     role="menuitem"
-                    onClick={() => openCreditClosureDialog(targetRow, false)}
+                    onClick={() => openCreditClosureDialog(targetRow, false, "credit")}
                   >
                     Reopen credit
                   </button>
                 ) : null}
-                {targetRow.is_credit && targetRow.settlements.length > 0 ? (
+                {targetRow.is_debt && targetRow.debt_status === "settled" ? (
+                  <button
+                    className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
+                    role="menuitem"
+                    onClick={() => openCreditClosureDialog(targetRow, false, "debt")}
+                  >
+                    Reopen debt
+                  </button>
+                ) : null}
+                {(targetRow.is_credit || targetRow.is_debt) &&
+                targetRow.settlements.length > 0 ? (
                   <button
                     className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
                     role="menuitem"
@@ -2540,7 +2991,7 @@ export function BigBookPanel({
                       setSettlementHistoryEntryId(targetRow.id);
                     }}
                   >
-                    View settlements
+                    {targetRow.is_debt ? "View payments" : "View settlements"}
                   </button>
                 ) : null}
                 <button
@@ -2730,7 +3181,6 @@ export function BigBookPanel({
               value={entryForm}
               onChange={setEntryForm}
               types={initialTypes}
-              subTypes={initialSubTypes}
               vendorTypes={initialVendorTypes}
               vendors={initialVendors}
               actionByOptions={initialActionBy}
@@ -2828,7 +3278,6 @@ export function BigBookPanel({
                             )
                           }
                           types={initialTypes}
-                          subTypes={initialSubTypes}
                           vendorTypes={initialVendorTypes}
                           vendors={initialVendors}
                           actionByOptions={initialActionBy}
@@ -2873,10 +3322,19 @@ export function BigBookPanel({
             ? `This will create a group with ${groupedCreateEntryCount} transaction${
                 groupedCreateEntryCount === 1 ? "" : "s"
               } in the Big Book.`
-            : createHasGasFee
-              ? createAttachmentFiles.length
-                ? `This will create a USDT entry and a grouped TRX gas-fee entry, then upload ${createAttachmentFiles.length} attachment(s) to the USDT record.`
-                : "This will create a USDT entry and a grouped TRX gas-fee entry in the Big Book."
+            : createHasGasFee || createHasKurs
+              ? (() => {
+                  const parts = ["a USDT entry"];
+                  if (createHasKurs) parts.push("a grouped USDT KURS spending entry");
+                  if (createHasGasFee) parts.push("a grouped TRX gas-fee entry");
+                  const companions =
+                    parts.length === 2
+                      ? `${parts[0]} and ${parts[1]}`
+                      : `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+                  return createAttachmentFiles.length
+                    ? `This will create ${companions}, then upload ${createAttachmentFiles.length} attachment(s) to the main USDT record.`
+                    : `This will create ${companions} in the Big Book.`;
+                })()
               : createAttachmentFiles.length
                 ? `This will create a new record and upload ${createAttachmentFiles.length} attachment(s).`
                 : "This will create a new operational/profit record in the Big Book."
@@ -2905,7 +3363,10 @@ export function BigBookPanel({
           </button>
         }
       >
-        <p className="whitespace-pre-wrap break-words text-sm text-muted">{viewingRemark?.text ?? ""}</p>
+        <p className="whitespace-pre-wrap break-words text-sm text-muted">
+          <LinkifyText text={viewingRemark?.text ?? ""} />
+        </p>
+
       </Modal>
 
       <Modal
@@ -2989,6 +3450,18 @@ export function BigBookPanel({
           </>
         }
       >
+        {(editingEntryMeta || editingGroupMeta) && (
+          <p className="mb-3 text-xs text-muted">
+            Last updated by{" "}
+            <span className="font-medium text-[rgb(var(--text))]">
+              {(editingEntryMeta ?? editingGroupMeta)?.updater_display_name || "-"}
+            </span>{" "}
+            at{" "}
+            <span className="font-medium text-[rgb(var(--text))]">
+              {formatDateTimeDisplay((editingEntryMeta ?? editingGroupMeta)?.updated_at ?? "")}
+            </span>
+          </p>
+        )}
         {editingGroupId ? (
           <div className="space-y-4">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -3074,7 +3547,6 @@ export function BigBookPanel({
                           )
                         }
                         types={initialTypes}
-                        subTypes={initialSubTypes}
                         vendorTypes={initialVendorTypes}
                         vendors={initialVendors}
                         actionByOptions={initialActionBy}
@@ -3110,7 +3582,6 @@ export function BigBookPanel({
             value={editForm}
             onChange={setEditForm}
             types={initialTypes}
-            subTypes={initialSubTypes}
             vendorTypes={initialVendorTypes}
             vendors={initialVendors}
             actionByOptions={initialActionBy}
@@ -3148,6 +3619,16 @@ export function BigBookPanel({
       />
 
       <ConfirmDialog
+        open={optimisticConflictOpen}
+        onOpenChange={setOptimisticConflictOpen}
+        title="Record changed by someone else"
+        description={optimisticConflictMessage}
+        confirmLabel="Refresh ledger"
+        closeOnBackdrop={false}
+        onConfirm={dismissOptimisticConflictAndRefresh}
+      />
+
+      <ConfirmDialog
         open={Boolean(pendingUngroup)}
         onOpenChange={(open) => {
           if (!open && !groupSubmitting) setPendingUngroup(null);
@@ -3181,8 +3662,21 @@ export function BigBookPanel({
         onOpenChange={(open) => {
           if (!open && !entryDeleting) setPendingDeleteEntry(null);
         }}
-        title="Delete ledger entry?"
-        description="This will permanently remove the selected entry and all its attachments."
+        title={
+          pendingDeleteEntry && linkedDeleteInfoForEntry(pendingDeleteEntry, findEntryById)
+            ? "Delete credit/debt and linked settlements?"
+            : "Delete ledger entry?"
+        }
+        description={
+          pendingDeleteEntry
+            ? (() => {
+                const linked = linkedDeleteInfoForEntry(pendingDeleteEntry, findEntryById);
+                return linked
+                  ? describeLinkedDelete(linked)
+                  : "This will permanently remove the selected entry and all its attachments.";
+              })()
+            : ""
+        }
         confirmLabel="Delete"
         confirming={entryDeleting}
         variant="danger"
@@ -3304,7 +3798,7 @@ export function BigBookPanel({
         onOpenChange={(open) => {
           if (!open && !settlementSubmitting) closeRecordSettlement();
         }}
-        title="Record Settlement"
+        title={settlementTarget?.is_debt ? "Record Debt Payment" : "Record Settlement"}
         size="xl"
         dismissible={!settlementSubmitting}
         closeOnBackdrop={!settlementSubmitting}
@@ -3332,49 +3826,71 @@ export function BigBookPanel({
         }
       >
         {settlementForm && settlementTargetRef ? (
-          <BigBookEntryFields
-            value={settlementForm}
-            onChange={(next) => setSettlementForm(next)}
-            types={initialTypes}
-            subTypes={initialSubTypes}
-            vendorTypes={initialVendorTypes}
-            vendors={initialVendors}
-            actionByOptions={initialActionBy}
-            pockets={initialPockets}
-            actors={initialActors}
-            typeVendorTypeMaps={initialTypeVendorTypeMaps}
-            currencies={currencies}
-            showAttachments
-            attachmentFiles={settlementAttachmentFiles}
-            onAttachmentFilesChange={setSettlementAttachmentFiles}
-            onRemoveAttachmentAt={(index) =>
-              setSettlementAttachmentFiles((prev) => prev.filter((_, itemIndex) => itemIndex !== index))
-            }
-            explanationPlaceholder="What does this settlement payment cover?"
-            settlesEntry={settlementTargetRef}
-            hideCreditToggle
-            fetchingConversionRate={fetchingConversionRate}
-            onFetchConversionRate={() =>
-              void fetchConversionRate(settlementForm.currency_code, settlementTargetRef.currency_code, (rate) =>
-                setSettlementForm((prev) => (prev ? { ...prev, settlement_conversion_rate: rate } : prev))
-              )
-            }
-          />
+          <div className="space-y-3">
+            {settlementFormError ? (
+              <p className="text-sm text-[rgb(var(--danger))]" role="alert">
+                {settlementFormError}
+              </p>
+            ) : null}
+            <BigBookEntryFields
+              value={settlementForm}
+              onChange={(next) => {
+                setSettlementFormError(null);
+                setSettlementForm(next);
+              }}
+              types={initialTypes}
+              vendorTypes={initialVendorTypes}
+              vendors={initialVendors}
+              actionByOptions={initialActionBy}
+              pockets={initialPockets}
+              actors={initialActors}
+              typeVendorTypeMaps={initialTypeVendorTypeMaps}
+              currencies={currencies}
+              showAttachments
+              showGasFee
+              attachmentFiles={settlementAttachmentFiles}
+              onAttachmentFilesChange={setSettlementAttachmentFiles}
+              onRemoveAttachmentAt={(index) =>
+                setSettlementAttachmentFiles((prev) => prev.filter((_, itemIndex) => itemIndex !== index))
+              }
+              explanationPlaceholder="What does this settlement payment cover?"
+              settlesEntry={settlementTargetRef}
+              hideCreditToggle
+              fetchingConversionRate={fetchingConversionRate}
+              onFetchConversionRate={() =>
+                void fetchConversionRate(settlementForm.currency_code, settlementTargetRef.currency_code, (rate) =>
+                  setSettlementForm((prev) => (prev ? { ...prev, settlement_conversion_rate: rate } : prev))
+                )
+              }
+            />
+          </div>
         ) : null}
       </Modal>
 
       <ConfirmDialog
         open={pendingSettlementConfirm}
         onOpenChange={setPendingSettlementConfirm}
-        title="Record settlement?"
+        title={settlementTarget?.is_debt ? "Record debt payment?" : "Record settlement?"}
         description={
           settlementTarget
-            ? settlementForm?.close_credit
-              ? `This will create a settlement entry against "${settlementTarget.explanation}" and mark that credit as settled.`
-              : `This will create a settlement entry against "${settlementTarget.explanation}". The credit stays open until marked settled.`
+            ? (() => {
+                const companions: string[] = [];
+                if (settlementHasKurs) companions.push("a grouped USDT KURS spending entry");
+                if (settlementHasGasFee) companions.push("a grouped TRX gas-fee spending entry");
+                const companionNote =
+                  companions.length > 0 ? ` This will also create ${companions.join(" and ")}.` : "";
+                if (settlementTarget.is_debt) {
+                  return settlementForm?.close_debt
+                    ? `This will create an Out payment against "${settlementTarget.explanation}" and mark that debt as settled.${companionNote}`
+                    : `This will create an Out payment against "${settlementTarget.explanation}". The debt stays open until marked settled.${companionNote}`;
+                }
+                return settlementForm?.close_credit
+                  ? `This will create a settlement entry against "${settlementTarget.explanation}" and mark that credit as settled.${companionNote}`
+                  : `This will create a settlement entry against "${settlementTarget.explanation}". The credit stays open until marked settled.${companionNote}`;
+              })()
             : "This will create a settlement entry."
         }
-        confirmLabel="Record Settlement"
+        confirmLabel={settlementTarget?.is_debt ? "Record Payment" : "Record Settlement"}
         confirming={settlementSubmitting}
         closeOnBackdrop={false}
         onConfirm={recordSettlement}
@@ -3389,7 +3905,13 @@ export function BigBookPanel({
           }
         }}
         title={
-          creditClosureDialog?.settled ? "Mark credit as settled?" : "Reopen credit?"
+          creditClosureDialog?.kind === "debt"
+            ? creditClosureDialog.settled
+              ? "Mark debt as settled?"
+              : "Reopen debt?"
+            : creditClosureDialog?.settled
+              ? "Mark credit as settled?"
+              : "Reopen credit?"
         }
         dismissible={!creditClosureSubmitting}
         closeOnBackdrop={!creditClosureSubmitting}
@@ -3425,7 +3947,7 @@ export function BigBookPanel({
           <div className="space-y-3 text-sm">
             <p className="text-muted">
               {creditClosureDialog.settled
-                ? `Close "${creditClosureDialog.entry.explanation}" as settled. Payment amounts do not need to match the credit.`
+                ? `Close "${creditClosureDialog.entry.explanation}" as settled. Payment amounts do not need to match the ${creditClosureDialog.kind}.`
                 : `Reopen "${creditClosureDialog.entry.explanation}" so it appears in Outstanding again.`}
             </p>
             {creditClosureDialog.settled ? (
@@ -3435,7 +3957,11 @@ export function BigBookPanel({
                   className="field mt-1"
                   value={creditClosureNote}
                   onChange={(event) => setCreditClosureNote(event.target.value)}
-                  placeholder="Why is this credit being closed? (optional)"
+                  placeholder={
+                    creditClosureDialog.kind === "debt"
+                      ? "Why is this debt being closed? (optional)"
+                      : "Why is this credit being closed? (optional)"
+                  }
                 />
               </label>
             ) : null}
@@ -3517,19 +4043,24 @@ export function BigBookPanel({
                           {settlement.currency_code}
                         </p>
                         <p className="mt-1 text-xs text-muted">{settlement.explanation}</p>
-                        <p className="mt-1 text-xs text-muted">
-                          Rate:{" "}
-                          {formatAmount(settlement.settlement_conversion_rate, {
-                            minimumFractionDigits: 0,
-                            maximumFractionDigits: 8
-                          })}{" "}
-                          · Equivalent:{" "}
-                          {formatAmount(settlement.settlement_amount_in_credit_currency, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 4
-                          })}{" "}
-                          {settlementHistoryEntry.currency_code}
-                        </p>
+                        {settlement.settlement_conversion_rate != null &&
+                        settlement.settlement_amount_in_credit_currency != null ? (
+                          <p className="mt-1 text-xs text-muted">
+                            Rate:{" "}
+                            {formatAmount(settlement.settlement_conversion_rate, {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 8
+                            })}{" "}
+                            · Equivalent:{" "}
+                            {formatAmount(settlement.settlement_amount_in_credit_currency, {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 4
+                            })}{" "}
+                            {settlementHistoryEntry.currency_code}
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-xs text-muted">No conversion rate recorded</p>
+                        )}
                         {settlement.settlement_note ? (
                           <p className="mt-1 text-xs text-muted">Note: {settlement.settlement_note}</p>
                         ) : null}
@@ -3552,7 +4083,12 @@ export function BigBookPanel({
                           type="button"
                           className="text-xs text-[rgb(var(--danger))] underline"
                           disabled={settlementDeleting}
-                          onClick={() => setPendingDeleteSettlementId(settlement.id)}
+                          onClick={() =>
+                            setPendingDeleteSettlement({
+                              id: settlement.id,
+                              updated_at: settlement.updated_at
+                            })
+                          }
                         >
                           Delete
                         </button>
@@ -3574,12 +4110,21 @@ export function BigBookPanel({
       </Modal>
 
       <ConfirmDialog
-        open={Boolean(pendingDeleteSettlementId)}
+        open={Boolean(pendingDeleteSettlement)}
         onOpenChange={(open) => {
-          if (!open && !settlementDeleting) setPendingDeleteSettlementId(null);
+          if (!open && !settlementDeleting) setPendingDeleteSettlement(null);
         }}
-        title="Delete settlement?"
-        description="This will permanently remove the settlement entry. The parent credit's open/settled status is unchanged."
+        title="Delete credit/debt and linked settlements?"
+        description={
+          settlementHistoryEntry
+            ? describeLinkedDelete({
+                linked: true,
+                kind: settlementHistoryEntry.is_debt ? "debt" : "credit",
+                obligationLabel: settlementHistoryEntry.explanation,
+                settlementCount: Math.max(1, settlementHistoryEntry.settlements.length)
+              })
+            : "This will permanently remove the obligation and all linked settlements/payments, including attachments."
+        }
         confirmLabel="Delete"
         confirming={settlementDeleting}
         variant="danger"

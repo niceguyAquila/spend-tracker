@@ -6,7 +6,12 @@ import { handleUnauthorizedResponse, secureFetch } from "@/lib/client/auth-fetch
 import { formatAmount } from "@/lib/display-format";
 import { formatAmountInput, parseAmountInput } from "@/components/big-book-entry-fields";
 import { formatInvoiceMoney } from "@/lib/big-book/invoice-money";
-import type { BigBookCashflowCurrency, BigBookInvoiceWallet } from "@/lib/types";
+import type {
+  BigBookCashflowCurrency,
+  BigBookInvoiceWallet,
+  BigBookLedgerTypeInvoiceProfile
+} from "@/lib/types";
+import { sortByDisplayLabel } from "@/lib/ui/sort-by-display-label";
 
 export type InvoiceBuilderCreditDraft = {
   id: string;
@@ -15,6 +20,8 @@ export type InvoiceBuilderCreditDraft = {
   explanation: string;
   entry_date: string;
   remark?: string | null;
+  entry_type_id?: string | null;
+  type_name?: string;
 };
 
 export type InvoiceBuilderSeed = {
@@ -43,7 +50,10 @@ type Props = {
   onOpenChange: (open: boolean) => void;
 };
 
-const CURRENCIES: BigBookCashflowCurrency[] = ["IDR", "MYR", "USDT", "TRX"];
+const CURRENCIES: BigBookCashflowCurrency[] = sortByDisplayLabel(
+  ["IDR", "MYR", "USDT", "TRX"] as BigBookCashflowCurrency[],
+  (currency) => currency
+);
 
 function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
@@ -115,10 +125,53 @@ function parsePrice(value: string) {
   return Number(normalized);
 }
 
+function defaultGroupTypeId(credits: InvoiceBuilderCreditDraft[]): string {
+  const ids = credits.map((credit) => credit.entry_type_id).filter(Boolean) as string[];
+  const unique = new Set(ids);
+  if (unique.size === 1) return [...unique][0];
+  return ids[0] ?? "";
+}
+
+function applyGroupProfile(
+  profile: BigBookLedgerTypeInvoiceProfile | undefined,
+  setters: {
+    setBillToName: (value: string) => void;
+    setBillToPassport: (value: string) => void;
+    setBillToAddress: (value: string) => void;
+    setBillToPhone: (value: string) => void;
+    setBillToCompany: (value: string) => void;
+    setBackgroundColor: (value: string | null) => void;
+  },
+  options: { vendorCompany: string; replaceCompany: boolean }
+) {
+  if (!profile) {
+    setters.setBillToName("");
+    setters.setBillToPassport("");
+    setters.setBillToAddress("");
+    setters.setBillToPhone("");
+    setters.setBackgroundColor(null);
+    return;
+  }
+  setters.setBillToName(profile.pic_name);
+  setters.setBillToPassport(profile.pic_passport);
+  setters.setBillToAddress(profile.pic_address);
+  setters.setBillToPhone(profile.pic_phone);
+  setters.setBackgroundColor(profile.background_color);
+  if (options.replaceCompany && profile.bill_to_company.trim()) {
+    setters.setBillToCompany(profile.bill_to_company.trim());
+  } else if (options.replaceCompany && !profile.bill_to_company.trim()) {
+    setters.setBillToCompany(options.vendorCompany);
+  }
+}
+
 export function BigBookInvoiceBuilderModal({ open, seed, wallets: walletsProp, onOpenChange }: Props) {
   const [loadedWallets, setLoadedWallets] = useState<BigBookInvoiceWallet[]>(walletsProp ?? []);
   const activeWallets = useMemo(
-    () => (walletsProp ?? loadedWallets).filter((row) => row.is_active),
+    () =>
+      sortByDisplayLabel(
+        (walletsProp ?? loadedWallets).filter((row) => row.is_active),
+        (row) => row.name
+      ),
     [walletsProp, loadedWallets]
   );
   const [title, setTitle] = useState("INVOICE");
@@ -139,40 +192,63 @@ export function BigBookInvoiceBuilderModal({ open, seed, wallets: walletsProp, o
   const [lines, setLines] = useState<InvoiceLineDraft[]>([]);
   const [availableCredits, setAvailableCredits] = useState<InvoiceBuilderCreditDraft[]>([]);
   const [creditPickIds, setCreditPickIds] = useState<Set<string>>(() => new Set());
+  const [groupProfiles, setGroupProfiles] = useState<BigBookLedgerTypeInvoiceProfile[]>([]);
+  const [groupTypeOptions, setGroupTypeOptions] = useState<
+    Array<{ id: string; name: string; code: string; is_active: boolean }>
+  >([]);
+  const [selectedGroupTypeId, setSelectedGroupTypeId] = useState("");
+  const [pdfBackgroundColor, setPdfBackgroundColor] = useState<string | null>(null);
   const [allocatingNo, setAllocatingNo] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
+  const profileByTypeId = useMemo(() => {
+    const map = new Map<string, BigBookLedgerTypeInvoiceProfile>();
+    for (const row of groupProfiles) map.set(row.type_id, row);
+    return map;
+  }, [groupProfiles]);
+
+  const vendorCompanyDefault = useMemo(() => {
+    if (!seed?.vendor_name || seed.vendor_name === "—") return "";
+    return seed.vendor_name;
+  }, [seed]);
+
   useEffect(() => {
     if (!open || !seed) return;
 
+    const invoiceSeed = seed;
     const today = todayIsoDate();
-    const monthLabel = monthLabelFromIso(seed.credits[0]?.entry_date || today);
+    const monthLabel = monthLabelFromIso(invoiceSeed.credits[0]?.entry_date || today);
+    const defaultGroupId = defaultGroupTypeId(invoiceSeed.credits);
     setTitle(monthLabel ? `${monthLabel} INVOICE` : "INVOICE");
     setInvoiceDate(today);
     setDueDate(addDaysIso(today, 7));
     setTerms("Due on receipt");
-    setCurrency(seed.currency);
-    setBillToCompany(seed.vendor_name && seed.vendor_name !== "—" ? seed.vendor_name : "");
-    setBillToName("");
-    setBillToPassport("");
-    setBillToAddress("");
-    setBillToPhone("");
+    setCurrency(invoiceSeed.currency);
+    setBillToCompany(vendorCompanyDefault);
+    setSelectedGroupTypeId(defaultGroupId);
     setSubject(
-      seed.credits.length
-        ? `Open credits for ${seed.actor_display_name} · ${seed.currency}`
+      invoiceSeed.credits.length
+        ? `Open credits for ${invoiceSeed.actor_display_name} · ${invoiceSeed.currency}`
         : ""
     );
     setNotes("");
     setFxNote("");
     setSelectedWalletIds(new Set());
-    setLines(seed.credits.map(creditToLine));
-    setAvailableCredits(seed.credits);
+    setLines(invoiceSeed.credits.map(creditToLine));
+    setAvailableCredits(invoiceSeed.credits);
     setCreditPickIds(new Set());
     setError(null);
     setInfo(null);
     setInvoiceNo("");
+    setBillToName("");
+    setBillToPassport("");
+    setBillToAddress("");
+    setBillToPhone("");
+    setPdfBackgroundColor(null);
+    setGroupProfiles([]);
+    setGroupTypeOptions([]);
 
     let cancelled = false;
     async function allocateNumber() {
@@ -217,12 +293,98 @@ export function BigBookInvoiceBuilderModal({ open, seed, wallets: walletsProp, o
       }
     }
 
+    async function loadGroupPresets() {
+      try {
+        const [profilesResponse, typesResponse] = await Promise.all([
+          secureFetch("/api/big-book/type-invoice-profiles"),
+          secureFetch("/api/big-book/types")
+        ]);
+        if (handleUnauthorizedResponse(profilesResponse) || handleUnauthorizedResponse(typesResponse)) return;
+        const profilesData = await profilesResponse.json();
+        const typesData = await typesResponse.json();
+        if (!profilesResponse.ok || !typesResponse.ok || cancelled) return;
+
+        const rows: BigBookLedgerTypeInvoiceProfile[] = Array.isArray(profilesData?.rows)
+          ? profilesData.rows
+          : [];
+        setGroupProfiles(rows);
+
+        const ledgerTypes: Array<{ id: string; name: string; code: string; is_active: boolean }> =
+          Array.isArray(typesData?.rows) ? typesData.rows : [];
+        const typeIdsFromCredits = new Set(
+          invoiceSeed.credits.map((credit) => credit.entry_type_id).filter(Boolean) as string[]
+        );
+        const optionsMap = new Map<string, { id: string; name: string; code: string; is_active: boolean }>();
+        for (const type of ledgerTypes) {
+          if (type.is_active || typeIdsFromCredits.has(type.id)) {
+            optionsMap.set(type.id, type);
+          }
+        }
+        for (const typeId of typeIdsFromCredits) {
+          if (!optionsMap.has(typeId)) {
+            const credit = invoiceSeed.credits.find((item) => item.entry_type_id === typeId);
+            optionsMap.set(typeId, {
+              id: typeId,
+              name: credit?.type_name ?? typeId,
+              code: "",
+              is_active: true
+            });
+          }
+        }
+        setGroupTypeOptions(sortByDisplayLabel([...optionsMap.values()], (row) => row.name));
+
+        const profile = defaultGroupId
+          ? rows.find((row) => row.type_id === defaultGroupId)
+          : undefined;
+        applyGroupProfile(
+          profile,
+          {
+            setBillToName,
+            setBillToPassport,
+            setBillToAddress,
+            setBillToPhone,
+            setBillToCompany,
+            setBackgroundColor: setPdfBackgroundColor
+          },
+          { vendorCompany: vendorCompanyDefault, replaceCompany: true }
+        );
+      } catch {
+        // Presets are optional; invoice can still be edited manually.
+      }
+    }
+
     void allocateNumber();
     void loadWallets();
+    void loadGroupPresets();
     return () => {
       cancelled = true;
     };
-  }, [open, seed, walletsProp]);
+  }, [open, seed, walletsProp, vendorCompanyDefault]);
+
+  function onGroupChange(typeId: string) {
+    setSelectedGroupTypeId(typeId);
+    const profile = typeId ? profileByTypeId.get(typeId) : undefined;
+    applyGroupProfile(
+      profile,
+      {
+        setBillToName,
+        setBillToPassport,
+        setBillToAddress,
+        setBillToPhone,
+        setBillToCompany,
+        setBackgroundColor: setPdfBackgroundColor
+      },
+      { vendorCompany: vendorCompanyDefault, replaceCompany: true }
+    );
+    if (!profile) {
+      setBillToName("");
+      setBillToPassport("");
+      setBillToAddress("");
+      setBillToPhone("");
+      setPdfBackgroundColor(null);
+      setBillToCompany(vendorCompanyDefault);
+    }
+  }
 
   const total = useMemo(() => {
     return lines.reduce((sum, line) => {
@@ -341,7 +503,9 @@ export function BigBookInvoiceBuilderModal({ open, seed, wallets: walletsProp, o
           lines: parsedLines,
           notes: notes.trim(),
           fx_note: fxNote.trim(),
-          wallet_ids: Array.from(selectedWalletIds)
+          wallet_ids: Array.from(selectedWalletIds),
+          ledger_type_id: selectedGroupTypeId || null,
+          background_color: pdfBackgroundColor
         })
       });
       if (handleUnauthorizedResponse(response)) return;
@@ -435,6 +599,26 @@ export function BigBookInvoiceBuilderModal({ open, seed, wallets: walletsProp, o
             <input className="field mt-1 w-full" value={title} onChange={(e) => setTitle(e.target.value)} />
           </label>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+            <label className="block text-sm md:col-span-2 lg:col-span-3">
+              Group (ledger type)
+              <select
+                className="field mt-1 w-full max-w-md"
+                value={selectedGroupTypeId}
+                onChange={(e) => onGroupChange(e.target.value)}
+              >
+                <option value="">Select group…</option>
+                {groupTypeOptions.map((type) => (
+                  <option key={type.id} value={type.id}>
+                    {type.name}
+                    {type.code ? ` (${type.code})` : ""}
+                    {!type.is_active ? " · inactive" : ""}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs text-muted">
+                Changing group replaces PIC fields from the saved preset. PDF uses the group background tint when set.
+              </span>
+            </label>
             <label className="block text-sm">
               Invoice no
               <input className="field mt-1 w-full font-mono" value={invoiceNo} readOnly />
