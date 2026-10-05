@@ -60,10 +60,6 @@ function LoginForm() {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-content-default items-center justify-center px-4 lg:px-8">
       <section className="card w-full max-w-content-narrow">
-        <h1 className="mb-1 text-2xl font-semibold">Internal Access</h1>
-        <p className="mb-4 text-sm text-muted">
-          Sign in with your invited company account to access the spend tracker.
-        </p>
 
         <form onSubmit={handleSubmit} className="space-y-3">
           <label className="block text-sm">
