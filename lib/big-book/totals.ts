@@ -27,7 +27,7 @@ export type SettlementProfitOverviewEntry = GroupSummableEntry & {
 };
 
 export type SettlementProfitOverviewLine = {
-  kind: "profit" | "settle";
+  kind: "profit" | "settle" | "total";
   currency: BigBookCurrency;
   amount: number;
 };
@@ -106,10 +106,22 @@ function sumRecordedAmountsByCurrency(entries: SettlementProfitOverviewEntry[]) 
   });
 }
 
+function totalLinesFor(
+  profitLines: Array<{ currency: BigBookCurrency; amount: number }>,
+  settleLines: Array<{ currency: BigBookCurrency; amount: number }>
+) {
+  return BIG_BOOK_CURRENCY_ORDER.flatMap((currency) => {
+    const profit = profitLines.find((line) => line.currency === currency)?.amount ?? 0;
+    const settle = settleLines.find((line) => line.currency === currency)?.amount ?? 0;
+    if (profit <= 0 && settle <= 0) return [];
+    return [{ currency, amount: roundBigBookAmount(profit + settle) }];
+  });
+}
+
 /**
  * Split group-header lines for a settlement that also created a PROFIT companion.
  * Returns null for every other group so the header keeps its single net.
- * Currencies stay separate: a USDT settlement is not added to a MYR profit row.
+ * TOTAL is PROFIT + SETTLE within one currency. Currencies are never added together.
  */
 export function summarizeSettlementProfitOverview(
   entries: SettlementProfitOverviewEntry[]
@@ -122,6 +134,7 @@ export function summarizeSettlementProfitOverview(
 
   return [
     ...profitLines.map((line) => ({ kind: "profit" as const, ...line })),
-    ...settleLines.map((line) => ({ kind: "settle" as const, ...line }))
+    ...settleLines.map((line) => ({ kind: "settle" as const, ...line })),
+    ...totalLinesFor(profitLines, settleLines).map((line) => ({ kind: "total" as const, ...line }))
   ];
 }

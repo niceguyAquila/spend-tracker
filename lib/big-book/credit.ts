@@ -54,6 +54,20 @@ export function computeUsdtSettleAmountWithProfit(
   return computeSettlementAmountFromCredit(baseCreditAmount + profit, conversionRate);
 }
 
+/**
+ * PROFIT surcharge from cash received, both amounts in the credit currency:
+ *   profit = amountReceived − creditTotal
+ * Zero or negative results mean there is no PROFIT companion.
+ */
+export function computeProfitFromAmountReceived(
+  amountReceived: number,
+  creditTotal: number
+): number {
+  if (!Number.isFinite(amountReceived) || !Number.isFinite(creditTotal)) return 0;
+  const profit = roundSettlementAmount(amountReceived - creditTotal);
+  return profit > 0 ? profit : 0;
+}
+
 export type VendorActorOutstandingCreditInput = {
   id: string;
   responsible_actor_id: string;

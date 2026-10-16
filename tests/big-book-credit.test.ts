@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   aggregateVendorActorOutstanding,
   computeBigBookCreditStatus,
+  computeProfitFromAmountReceived,
   computeSettlementAmountFromCredit,
   computeSettlementAmountInCreditCurrency
 } from "@/lib/big-book/credit";
@@ -25,6 +26,14 @@ describe("big book credit helpers", () => {
     expect(computeSettlementAmountFromCredit(630, 4.2)).toBe(150);
     expect(computeSettlementAmountFromCredit(100, 1)).toBe(100);
     expect(computeSettlementAmountFromCredit(100, 0)).toBe(0);
+  });
+
+  it("computes PROFIT as amount received minus the credit total", () => {
+    expect(computeProfitFromAmountReceived(1150, 1000)).toBe(150);
+    expect(computeProfitFromAmountReceived(1000.12349, 1000)).toBe(0.1235);
+    expect(computeProfitFromAmountReceived(1000, 1000)).toBe(0);
+    expect(computeProfitFromAmountReceived(900, 1000)).toBe(0);
+    expect(computeProfitFromAmountReceived(Number.NaN, 1000)).toBe(0);
   });
 });
 

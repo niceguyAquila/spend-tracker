@@ -136,7 +136,7 @@ function BigBookGroupHeaderRowInner({
                     line.amount
                   )}`}
                 >
-                  <span className="shrink-0 text-xs">{line.kind}</span>
+                  <span className="shrink-0 text-xs">{line.kind.toUpperCase()}</span>
                   <span className="min-w-0 break-all">
                     <span className="text-xs">{line.currency}</span>{" "}
                     {formatAmount(line.amount, NET_AMOUNT_FORMAT)}

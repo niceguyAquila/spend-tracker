@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import {
+  computeProfitFromAmountReceived,
   computeSettlementAmountFromCredit,
   computeSettlementAmountInCreditCurrency,
   computeUsdtSettleAmountWithProfit
@@ -101,6 +102,7 @@ export function BigBookBulkSettleEditModal({
   const [amount, setAmount] = useState("");
   const [conversionRate, setConversionRate] = useState("");
   const [includeProfit, setIncludeProfit] = useState(false);
+  const [receivedAmount, setReceivedAmount] = useState("");
   const [profitAmount, setProfitAmount] = useState("");
   const [kursRate, setKursRate] = useState("");
   const [kursAmount, setKursAmount] = useState("");
@@ -117,6 +119,7 @@ export function BigBookBulkSettleEditModal({
     setAmount(formatAmountInput(String(total)));
     setConversionRate(primaryCurrency === "USDT" ? "1" : "");
     setIncludeProfit(false);
+    setReceivedAmount("");
     setProfitAmount("");
     setKursRate("");
     setKursAmount("");
@@ -194,7 +197,9 @@ export function BigBookBulkSettleEditModal({
             ? `Enter a ${isDebt ? "payment" : "settlement"} amount greater than 0.`
             : !entryDate
               ? `Choose a ${isDebt ? "payment" : "settlement"} date.`
-              : null;
+              : !isDebt && includeProfit && !hasPositiveProfit
+                ? "Enter an amount received greater than the credit total so PROFIT can be calculated."
+                : null;
   const canSubmit = !submitting && blockedReason == null;
 
   const equivalentCredit =
@@ -253,9 +258,17 @@ export function BigBookBulkSettleEditModal({
     }
   }
 
+  function applyReceivedAmount(nextReceivedRaw: string) {
+    setReceivedAmount(nextReceivedRaw);
+    const received = Number(parseAmountInput(nextReceivedRaw));
+    const profit = computeProfitFromAmountReceived(received, creditTotal);
+    applyProfitAmount(profit > 0 ? formatAmountInput(String(profit)) : "");
+  }
+
   function applyIncludeProfit(next: boolean) {
     setIncludeProfit(next);
     if (!next) {
+      setReceivedAmount("");
       setProfitAmount("");
       if (currencyCode === "USDT" && !sameCurrency) {
         syncSettlementAmountFromRateAndProfit(conversionRate, "", currencyCode, false);
@@ -466,41 +479,70 @@ export function BigBookBulkSettleEditModal({
               <span>
                 <span className="font-medium">Include PROFIT</span>
                 <span className="mt-0.5 block text-xs text-muted">
-                  Optional. Creates a separate PROFIT-type inflow in the credit currency
+                  Optional. Enter the money received in the credit currency. PROFIT is amount
+                  received minus the credit total, recorded as a separate PROFIT-type inflow
                   {currencyCode === "USDT" && !sameCurrency
-                    ? ". When enabled with an amount > 0, USDT uses (base + profit) ÷ rate."
+                    ? ". When profit is greater than 0, USDT uses (base + profit) ÷ rate."
                     : "."}
                 </span>
               </span>
             </label>
 
             {includeProfit ? (
-              <label className="block text-sm">
-                PROFIT amount
-                <div className="mt-1 flex overflow-hidden rounded-md border border-[rgb(var(--border))] focus-within:shadow-[0_0_0_3px_rgba(var(--focus),0.25)]">
-                  <input
-                    className="min-w-0 flex-1 border-0 bg-[rgb(var(--surface))] px-3 py-2 text-right text-base font-medium text-[rgb(var(--text))] focus:outline-none"
-                    inputMode="decimal"
-                    placeholder="0"
-                    value={profitAmount}
-                    onChange={(event) => applyProfitAmount(formatAmountInput(event.target.value))}
-                    aria-label="PROFIT amount"
-                    disabled={mixedCreditCurrency}
-                  />
-                  <span
-                    className="shrink-0 border-0 border-l border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] px-2 py-2 text-sm font-medium text-[rgb(var(--text))]"
-                    aria-hidden
-                  >
-                    {mixedCreditCurrency ? "—" : creditCurrency}
+              <>
+                <label className="block text-sm">
+                  Amount received
+                  <div className="mt-1 flex overflow-hidden rounded-md border border-[rgb(var(--border))] focus-within:shadow-[0_0_0_3px_rgba(var(--focus),0.25)]">
+                    <input
+                      className="min-w-0 flex-1 border-0 bg-[rgb(var(--surface))] px-3 py-2 text-right text-base font-medium text-[rgb(var(--text))] focus:outline-none"
+                      inputMode="decimal"
+                      placeholder="0"
+                      value={receivedAmount}
+                      onChange={(event) =>
+                        applyReceivedAmount(formatAmountInput(event.target.value))
+                      }
+                      aria-label="Amount received"
+                      disabled={mixedCreditCurrency}
+                    />
+                    <span
+                      className="shrink-0 border-0 border-l border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] px-2 py-2 text-sm font-medium text-[rgb(var(--text))]"
+                      aria-hidden
+                    >
+                      {mixedCreditCurrency ? "—" : creditCurrency}
+                    </span>
+                  </div>
+                  <span className="mt-1 block text-xs text-muted">
+                    Cash received in the credit currency. PROFIT = amount received − credit total
+                    {currencyCode === "USDT" && !sameCurrency
+                      ? ". Included in USDT amount as (base + profit) ÷ rate."
+                      : "."}
                   </span>
-                </div>
-                <span className="mt-1 block text-xs text-muted">
-                  Enter amount in credit currency when including PROFIT
-                  {currencyCode === "USDT" && !sameCurrency
-                    ? ". Included in USDT amount as (base + profit) ÷ rate."
-                    : "."}
-                </span>
-              </label>
+                </label>
+                <label className="block text-sm">
+                  PROFIT amount
+                  <div className="mt-1 flex overflow-hidden rounded-md border border-[rgb(var(--border))]">
+                    <input
+                      className="min-w-0 flex-1 border-0 bg-[rgb(var(--surface-muted))] px-3 py-2 text-right text-base font-medium text-[rgb(var(--text))] focus:outline-none"
+                      inputMode="decimal"
+                      placeholder="0"
+                      value={profitAmount}
+                      readOnly
+                      aria-label="PROFIT amount"
+                      aria-readonly="true"
+                      tabIndex={-1}
+                    />
+                    <span
+                      className="shrink-0 border-0 border-l border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] px-2 py-2 text-sm font-medium text-[rgb(var(--text))]"
+                      aria-hidden
+                    >
+                      {mixedCreditCurrency ? "—" : creditCurrency}
+                    </span>
+                  </div>
+                  <span className="mt-1 block text-xs text-muted">
+                    Calculated from amount received minus the credit total.
+                  </span>
+                </label>
+              </>
             ) : null}
           </>
         ) : null}

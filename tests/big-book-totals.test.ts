@@ -206,7 +206,8 @@ describe("summarizeSettlementProfitOverview", () => {
 
     expect(lines).toEqual([
       { kind: "profit", currency: "MYR", amount: 50 },
-      { kind: "settle", currency: "MYR", amount: 1_000 }
+      { kind: "settle", currency: "MYR", amount: 1_000 },
+      { kind: "total", currency: "MYR", amount: 1_050 }
     ]);
   });
 
@@ -220,7 +221,9 @@ describe("summarizeSettlementProfitOverview", () => {
 
     expect(lines).toEqual([
       { kind: "profit", currency: "MYR", amount: 42 },
-      { kind: "settle", currency: "USDT", amount: 110 }
+      { kind: "settle", currency: "USDT", amount: 110 },
+      { kind: "total", currency: "MYR", amount: 42 },
+      { kind: "total", currency: "USDT", amount: 110 }
     ]);
   });
 
@@ -235,7 +238,8 @@ describe("summarizeSettlementProfitOverview", () => {
 
     expect(lines).toEqual([
       { kind: "profit", currency: "IDR", amount: 15 },
-      { kind: "settle", currency: "IDR", amount: 150 }
+      { kind: "settle", currency: "IDR", amount: 150 },
+      { kind: "total", currency: "IDR", amount: 165 }
     ]);
   });
 });
