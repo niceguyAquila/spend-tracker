@@ -16,9 +16,20 @@ type SummableEntry = {
 };
 
 export type GroupSummableEntry = SummableEntry & {
+  is_credit?: boolean;
   is_future_credit?: boolean;
   is_debt?: boolean;
   settles_entry_id?: string | null;
+};
+
+export type SettlementProfitOverviewEntry = GroupSummableEntry & {
+  type_name?: string | null;
+};
+
+export type SettlementProfitOverviewLine = {
+  kind: "profit" | "settle";
+  currency: BigBookCurrency;
+  amount: number;
 };
 
 // Amounts carry up to 4 decimals. Rounding the accumulated value at 8 decimals
@@ -68,4 +79,49 @@ export function summarizeGroupCurrencies(entries: GroupSummableEntry[]): BigBook
     return summarizeCurrencies(entries.filter((entry) => Boolean(entry.settles_entry_id)));
   }
   return summarizeCurrencies(entries);
+}
+
+function isObligationEntry(entry: GroupSummableEntry) {
+  return Boolean(entry.is_credit || entry.is_future_credit || entry.is_debt);
+}
+
+function isProfitCompanion(entry: SettlementProfitOverviewEntry) {
+  if (entry.settles_entry_id || isObligationEntry(entry)) return false;
+  return (entry.type_name ?? "").trim().toLowerCase() === "profit";
+}
+
+function sumRecordedAmountsByCurrency(entries: SettlementProfitOverviewEntry[]) {
+  const map = new Map<BigBookCurrency, number>();
+
+  for (const entry of entries) {
+    const amount = Math.abs(Number(entry.amount));
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    map.set(entry.currency_code, (map.get(entry.currency_code) ?? 0) + amount);
+  }
+
+  return BIG_BOOK_CURRENCY_ORDER.flatMap((currency) => {
+    const amount = map.get(currency);
+    if (amount == null || amount <= 0) return [];
+    return [{ currency, amount: roundBigBookAmount(amount) }];
+  });
+}
+
+/**
+ * Split group-header lines for a settlement that also created a PROFIT companion.
+ * Returns null for every other group so the header keeps its single net.
+ * Currencies stay separate: a USDT settlement is not added to a MYR profit row.
+ */
+export function summarizeSettlementProfitOverview(
+  entries: SettlementProfitOverviewEntry[]
+): SettlementProfitOverviewLine[] | null {
+  const profitLines = sumRecordedAmountsByCurrency(entries.filter(isProfitCompanion));
+  const settleLines = sumRecordedAmountsByCurrency(
+    entries.filter((entry) => Boolean(entry.settles_entry_id))
+  );
+  if (!profitLines.length || !settleLines.length) return null;
+
+  return [
+    ...profitLines.map((line) => ({ kind: "profit" as const, ...line })),
+    ...settleLines.map((line) => ({ kind: "settle" as const, ...line }))
+  ];
 }

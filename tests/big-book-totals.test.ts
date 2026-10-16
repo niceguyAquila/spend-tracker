@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { summarizeCurrencies, summarizeGroupCurrencies } from "@/lib/big-book/totals";
+import {
+  summarizeCurrencies,
+  summarizeGroupCurrencies,
+  summarizeSettlementProfitOverview
+} from "@/lib/big-book/totals";
 
 type Entry = Parameters<typeof summarizeCurrencies>[0][number];
 type GroupEntry = Parameters<typeof summarizeGroupCurrencies>[0][number];
+type OverviewEntry = Parameters<typeof summarizeSettlementProfitOverview>[0][number];
 
 function entry(
   amount: number,
@@ -17,11 +22,27 @@ function groupEntry(
   currency_code: GroupEntry["currency_code"],
   entry_direction: GroupEntry["entry_direction"],
   flags: {
+    is_credit?: boolean;
     is_future_credit?: boolean;
     is_debt?: boolean;
     settles_entry_id?: string | null;
   } = {}
 ): GroupEntry {
+  return { amount, currency_code, entry_direction, ...flags };
+}
+
+function overviewEntry(
+  amount: number,
+  currency_code: OverviewEntry["currency_code"],
+  entry_direction: OverviewEntry["entry_direction"],
+  flags: {
+    type_name?: string | null;
+    is_credit?: boolean;
+    is_future_credit?: boolean;
+    is_debt?: boolean;
+    settles_entry_id?: string | null;
+  } = {}
+): OverviewEntry {
   return { amount, currency_code, entry_direction, ...flags };
 }
 
@@ -157,5 +178,64 @@ describe("summarizeGroupCurrencies", () => {
       groupEntry(95, "USDT", "spending", { settles_entry_id: "debt-1" })
     ]);
     expect(totals).toEqual([{ currency: "USDT", spending: 95, profit: 0, net: -95 }]);
+  });
+});
+
+describe("summarizeSettlementProfitOverview", () => {
+  it("returns null unless the group has both a settlement and a PROFIT companion", () => {
+    expect(
+      summarizeSettlementProfitOverview([
+        overviewEntry(1_000, "MYR", "spending", { is_credit: true, type_name: "Sales" }),
+        overviewEntry(1_000, "MYR", "profit", { settles_entry_id: "credit-1", type_name: "Sales" })
+      ])
+    ).toBeNull();
+    expect(
+      summarizeSettlementProfitOverview([
+        overviewEntry(50, "MYR", "profit", { type_name: "PROFIT" })
+      ])
+    ).toBeNull();
+    expect(summarizeSettlementProfitOverview([])).toBeNull();
+  });
+
+  it("lists profit and settle separately and leaves the original credit out", () => {
+    const lines = summarizeSettlementProfitOverview([
+      overviewEntry(1_000, "MYR", "spending", { is_credit: true, type_name: "Sales" }),
+      overviewEntry(1_000, "MYR", "profit", { settles_entry_id: "credit-1", type_name: "Sales" }),
+      overviewEntry(50, "MYR", "profit", { type_name: "PROFIT" })
+    ]);
+
+    expect(lines).toEqual([
+      { kind: "profit", currency: "MYR", amount: 50 },
+      { kind: "settle", currency: "MYR", amount: 1_000 }
+    ]);
+  });
+
+  it("keeps a USDT settlement and a credit-currency profit on separate lines", () => {
+    const lines = summarizeSettlementProfitOverview([
+      overviewEntry(420, "MYR", "profit", { is_future_credit: true, type_name: "Sales" }),
+      overviewEntry(110, "USDT", "profit", { settles_entry_id: "future-1", type_name: "Sales" }),
+      overviewEntry(42, "MYR", "profit", { type_name: "profit" }),
+      overviewEntry(1.1, "USDT", "spending", { type_name: "KURS" })
+    ]);
+
+    expect(lines).toEqual([
+      { kind: "profit", currency: "MYR", amount: 42 },
+      { kind: "settle", currency: "USDT", amount: 110 }
+    ]);
+  });
+
+  it("sums every settlement in the group into one settle line", () => {
+    const lines = summarizeSettlementProfitOverview([
+      overviewEntry(100, "IDR", "spending", { is_credit: true, type_name: "Sales" }),
+      overviewEntry(50, "IDR", "spending", { is_credit: true, type_name: "Sales" }),
+      overviewEntry(100, "IDR", "profit", { settles_entry_id: "credit-a", type_name: "Sales" }),
+      overviewEntry(50, "IDR", "profit", { settles_entry_id: "credit-b", type_name: "Sales" }),
+      overviewEntry(15, "IDR", "profit", { type_name: "PROFIT" })
+    ]);
+
+    expect(lines).toEqual([
+      { kind: "profit", currency: "IDR", amount: 15 },
+      { kind: "settle", currency: "IDR", amount: 150 }
+    ]);
   });
 });

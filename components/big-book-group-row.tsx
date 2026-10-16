@@ -8,7 +8,10 @@ import {
   formatDateTimeDisplay,
   getAmountColorClass
 } from "@/lib/display-format";
-import { summarizeGroupCurrencies } from "@/lib/big-book/totals";
+import {
+  summarizeGroupCurrencies,
+  summarizeSettlementProfitOverview
+} from "@/lib/big-book/totals";
 import {
   classifyLedgerGroupTone,
   ledgerGroupToneClass
@@ -56,7 +59,7 @@ function BigBookGroupHeaderRowInner({
   onDelete,
   children
 }: Props) {
-  const { dateLabel, totals, toneClass, statusBadge } = useMemo(() => {
+  const { dateLabel, totals, settlementOverview, toneClass, statusBadge } = useMemo(() => {
     const dates = entries.map((entry) => entry.entry_date).sort();
     const dateFrom = dates[0];
     const dateTo = dates[dates.length - 1];
@@ -66,6 +69,7 @@ function BigBookGroupHeaderRowInner({
           ? formatDateDisplay(dateFrom)
           : `${formatDateDisplay(dateFrom)} – ${formatDateDisplay(dateTo)}`,
       totals: summarizeGroupCurrencies(entries),
+      settlementOverview: summarizeSettlementProfitOverview(entries),
       toneClass: ledgerGroupToneClass(classifyLedgerGroupTone(entries)),
       statusBadge: deriveGroupStatusBadge(entries)
     };
@@ -123,7 +127,24 @@ function BigBookGroupHeaderRowInner({
           </div>
         </td>
         <td className="px-3 py-2 text-right tabular-nums">
-          {totals.length ? (
+          {settlementOverview ? (
+            <div className="flex flex-col items-stretch gap-1">
+              {settlementOverview.map((line) => (
+                <div
+                  key={`${line.kind}-${line.currency}`}
+                  className={`flex min-w-0 items-baseline justify-between gap-2 ${getAmountColorClass(
+                    line.amount
+                  )}`}
+                >
+                  <span className="shrink-0 text-xs">{line.kind}</span>
+                  <span className="min-w-0 break-all">
+                    <span className="text-xs">{line.currency}</span>{" "}
+                    {formatAmount(line.amount, NET_AMOUNT_FORMAT)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : totals.length ? (
             <div className="flex flex-col items-stretch gap-1">
               {totals.map((total) => (
                 <div
