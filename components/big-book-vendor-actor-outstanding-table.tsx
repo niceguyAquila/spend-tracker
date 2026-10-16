@@ -30,7 +30,15 @@ import {
 
 const CURRENCY_ORDER = ["IDR", "MYR", "USDT", "TRX"] as const;
 
-type SortKey = "vendor_name" | "type_name" | "actor_display_name" | "currency" | "outstanding";
+type SortKey =
+  | "type_name"
+  | "actor_display_name"
+  | "currency"
+  | "outstanding";
+
+function primaryGroupLabel(row: BigBookVendorActorOutstandingRow) {
+  return row.type_name;
+}
 export type OutstandingCreditKind = "credit" | "future";
 
 export type OutstandingDetailFilters = {
@@ -113,7 +121,8 @@ export function BigBookVendorActorOutstandingTable({
   creditKind = "credit"
 }: Props) {
   const isFutureKind = creditKind === "future";
-  const columnCount = isFutureKind ? 8 : 9;
+  const columnCount = 8;
+  const primarySortKey: SortKey = "type_name";
   const [sortKey, setSortKey] = useState<SortKey>("currency");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set());
@@ -186,11 +195,7 @@ export function BigBookVendorActorOutstandingTable({
       params.set("actorId", row.actor_id);
       params.set("currency", row.currency);
       params.set("creditKind", creditKind);
-      if (isFutureKind) {
-        params.set("typeId", row.entry_type_id ?? "none");
-      } else {
-        params.set("vendorId", row.vendor_id ?? "none");
-      }
+      params.set("typeId", row.entry_type_id ?? "none");
       if (detailFilters?.dateFrom) params.set("dateFrom", detailFilters.dateFrom);
       if (detailFilters?.dateTo) params.set("dateTo", detailFilters.dateTo);
 
@@ -373,9 +378,7 @@ export function BigBookVendorActorOutstandingTable({
         })),
         totalAmount,
         currency: row.currency,
-        label: isFutureKind
-          ? `${row.type_name} · Actor ${row.actor_display_name}`
-          : `${row.vendor_name} · Actor ${row.actor_display_name}`
+        label: `${row.type_name} · Actor ${row.actor_display_name}`
       });
     } catch (error) {
       setSettleError(error instanceof Error ? error.message : "Failed to load credits to settle.");
@@ -494,13 +497,11 @@ export function BigBookVendorActorOutstandingTable({
         return;
       }
       setInvoiceSeed({
-        vendor_name: isFutureKind ? row.type_name : row.vendor_name,
+        vendor_name: row.type_name,
         actor_display_name: row.actor_display_name,
         currency: row.currency,
         credits: toInvoiceCredits(detailRows),
-        label: isFutureKind
-          ? `${row.type_name} · ${row.actor_display_name} · ${row.currency}`
-          : `${row.vendor_name} · ${row.actor_display_name} · ${row.currency}`
+        label: `${row.type_name} · ${row.actor_display_name} · ${row.currency}`
       });
     } catch (error) {
       setInvoiceError(error instanceof Error ? error.message : "Failed to load credits for invoice.");
@@ -561,10 +562,15 @@ export function BigBookVendorActorOutstandingTable({
 
       const primary = sourceRows[0] ?? rows.find((row) => row.currency === credits[0].currency_code);
       const currencies = new Set(credits.map((row) => row.currency_code));
-      const vendors = new Set(sourceRows.map((row) => row.vendor_name));
+      const vendors = new Set(sourceRows.map((row) => primaryGroupLabel(row)));
 
       setInvoiceSeed({
-        vendor_name: vendors.size === 1 ? [...vendors][0] : primary?.vendor_name || "",
+        vendor_name:
+          vendors.size === 1
+            ? [...vendors][0]
+            : primary
+              ? primaryGroupLabel(primary)
+              : "",
         actor_display_name: primary?.actor_display_name || "—",
         currency:
           currencies.size === 1
@@ -809,42 +815,27 @@ export function BigBookVendorActorOutstandingTable({
       </div>
 
       <div className="overflow-x-auto">
-        <table className={`data-table ${isFutureKind ? "min-w-[860px]" : "min-w-[980px]"}`}>
+        <table className="data-table min-w-[860px]">
           <thead>
             <tr>
               <th className="w-10 px-3 py-2" aria-label="Select" />
               <th className="w-10 px-3 py-2" aria-label="Expand" />
-              {isFutureKind ? (
-                <th className="px-3 py-2">
-                  <button
-                    type="button"
-                    className="font-semibold"
-                    onClick={() => toggleSort("type_name")}
-                  >
-                    {sortLabel("Type", "type_name")}
-                  </button>
-                </th>
-              ) : (
-                <>
-                  <th className="px-3 py-2">Vendor Type</th>
-                  <th className="px-3 py-2">
-                    <button
-                      type="button"
-                      className="font-semibold"
-                      onClick={() => toggleSort("vendor_name")}
-                    >
-                      {sortLabel("Vendor (owes)", "vendor_name")}
-                    </button>
-                  </th>
-                </>
-              )}
+              <th className="px-3 py-2">
+                <button
+                  type="button"
+                  className="font-semibold"
+                  onClick={() => toggleSort(primarySortKey)}
+                >
+                  {sortLabel(isFutureKind ? "Type" : "Vendor (Owes)", primarySortKey)}
+                </button>
+              </th>
               <th className="px-3 py-2">
                 <button
                   type="button"
                   className="font-semibold"
                   onClick={() => toggleSort("actor_display_name")}
                 >
-                  {sortLabel("Actor (owed)", "actor_display_name")}
+                  {sortLabel("Actor (Owed)", "actor_display_name")}
                 </button>
               </th>
               <th className="px-3 py-2">
@@ -916,7 +907,7 @@ export function BigBookVendorActorOutstandingTable({
                 <tr key={subtotal.currency}>
                   <td className="px-3 py-2" aria-hidden="true" />
                   <td className="px-3 py-2" aria-hidden="true" />
-                  <td className="px-3 py-2 font-medium" colSpan={isFutureKind ? 2 : 3}>
+                  <td className="px-3 py-2 font-medium" colSpan={2}>
                     Subtotal
                   </td>
                   <td className="px-3 py-2 font-medium">{subtotal.currency}</td>
@@ -1122,8 +1113,8 @@ function OutstandingSummaryRows({
   const checkboxRef = useRef<HTMLInputElement>(null);
   const isFutureKind = creditKind === "future";
   const actionsBusy = settleLoading || invoiceLoading || actualizeLoading;
-  const rowLabel = isFutureKind ? row.type_name : row.vendor_name;
-  const columnCount = isFutureKind ? 8 : 9;
+  const rowLabel = primaryGroupLabel(row);
+  const columnCount = 8;
 
   useEffect(() => {
     if (checkboxRef.current) {
@@ -1166,14 +1157,7 @@ function OutstandingSummaryRows({
             {expanded ? "▾" : "▸"}
           </button>
         </td>
-        {isFutureKind ? (
-          <td className="px-3 py-2">{row.type_name}</td>
-        ) : (
-          <>
-            <td className="px-3 py-2">{row.vendor_type_name}</td>
-            <td className="px-3 py-2">{row.vendor_name}</td>
-          </>
-        )}
+        <td className="px-3 py-2">{primaryGroupLabel(row)}</td>
         <td className="px-3 py-2">{row.actor_display_name}</td>
         <td className="px-3 py-2">{row.currency}</td>
         <td className={`px-3 py-2 font-medium ${getAmountColorClass(row.outstanding)}`}>
@@ -1320,6 +1304,11 @@ function OutstandingNestedTableLoaded({
     }
   }, [someChildrenSelected, allChildrenSelected]);
 
+  const groupedRows = useMemo(() => {
+    // Flat list for both Credit and Future Credit (overview already buckets by Type).
+    return rows.map((entry) => ({ kind: "entry" as const, entry }));
+  }, [rows]);
+
   return (
     <div className="space-y-2">
       {truncated ? (
@@ -1348,6 +1337,7 @@ function OutstandingNestedTableLoaded({
             </th>
             <th className="px-3 py-1.5 font-medium">Date</th>
             <th className="px-3 py-1.5 font-medium">In/Out</th>
+            {!isFutureKind ? <th className="px-3 py-1.5 font-medium">Vendor</th> : null}
             <th className="px-3 py-1.5 font-medium">Type</th>
             <th className="px-3 py-1.5 font-medium">Explanation</th>
             <th className="px-3 py-1.5 font-medium">Amount</th>
@@ -1359,7 +1349,8 @@ function OutstandingNestedTableLoaded({
           </tr>
         </thead>
         <tbody>
-          {rows.map((entry) => {
+          {groupedRows.map((item) => {
+            const entry = item.entry;
             const amount = signedAmount(entry);
             return (
               <tr key={entry.id} className="border-b border-[rgb(var(--border))] align-top">
@@ -1384,6 +1375,9 @@ function OutstandingNestedTableLoaded({
                     {entry.entry_direction === "profit" ? "In" : "Out"}
                   </span>
                 </td>
+                {!isFutureKind ? (
+                  <td className="px-3 py-1.5">{entry.vendor_name ?? "(No vendor)"}</td>
+                ) : null}
                 <td className="px-3 py-1.5">{entry.type_name}</td>
                 <td className="px-3 py-1.5">
                   <div className="space-y-1">
