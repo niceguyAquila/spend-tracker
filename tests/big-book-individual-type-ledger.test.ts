@@ -24,9 +24,7 @@ const baseEntry: BigBookEntry = {
   is_credit: false,
   is_future_credit: false,
   is_debt: false,
-  settles_entry_id: null,
   settlement_conversion_rate: null,
-  settlement_amount_in_credit_currency: null,
   settlement_note: null,
   credit_settled_at: null,
   credit_settled_by: null,
@@ -51,11 +49,13 @@ const baseEntry: BigBookEntry = {
   credit_settled_by_display_name: "-",
   debt_settled_by_display_name: "-",
   attachments: [],
-  total_settled: 0,
   credit_status: null,
   debt_status: null,
   settlements: [],
-  settles_entry: null
+  settles: [],
+  balance: null,
+  linked_set: ["entry-1"],
+  linked_set_counts: { obligations: 0, payments: 0 }
 };
 
 describe("individual type ledger utils", () => {

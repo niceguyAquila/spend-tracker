@@ -25,7 +25,7 @@ export function filterIndividualTypeEntries(entries: BigBookEntry[], filters: In
 
 export function buildIndividualTypeMonthlySummary(entries: BigBookEntry[], year: number): BigBookMonthlyCurrencyRow[] {
   const rows: BigBookMonthlyCurrencyRow[] = MONTH_LABELS.map((monthLabel, index) => ({
-    month_index: index + 1,
+    month_index: index,
     month_label: monthLabel,
     totals: { IDR: 0, MYR: 0, USDT: 0 }
   }));

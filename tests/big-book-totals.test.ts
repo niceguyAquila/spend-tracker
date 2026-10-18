@@ -25,7 +25,7 @@ function groupEntry(
     is_credit?: boolean;
     is_future_credit?: boolean;
     is_debt?: boolean;
-    settles_entry_id?: string | null;
+    settles?: readonly { id: string }[];
   } = {}
 ): GroupEntry {
   return { amount, currency_code, entry_direction, ...flags };
@@ -40,7 +40,7 @@ function overviewEntry(
     is_credit?: boolean;
     is_future_credit?: boolean;
     is_debt?: boolean;
-    settles_entry_id?: string | null;
+    settles?: readonly { id: string }[];
   } = {}
 ): OverviewEntry {
   return { amount, currency_code, entry_direction, ...flags };
@@ -129,7 +129,7 @@ describe("summarizeGroupCurrencies", () => {
   it("counts only settlement rows for Future Credit + settlement groups", () => {
     const totals = summarizeGroupCurrencies([
       groupEntry(50_000, "MYR", "profit", { is_future_credit: true }),
-      groupEntry(50_000, "MYR", "profit", { settles_entry_id: "future-1" })
+      groupEntry(50_000, "MYR", "profit", { settles: [{ id: "future-1" }] })
     ]);
     expect(totals).toEqual([{ currency: "MYR", spending: 0, profit: 50_000, net: 50_000 }]);
   });
@@ -137,7 +137,7 @@ describe("summarizeGroupCurrencies", () => {
   it("uses settlement currency only when Future Credit currency differs", () => {
     const totals = summarizeGroupCurrencies([
       groupEntry(50_000, "MYR", "profit", { is_future_credit: true }),
-      groupEntry(95, "USDT", "profit", { settles_entry_id: "future-1" })
+      groupEntry(95, "USDT", "profit", { settles: [{ id: "future-1" }] })
     ]);
     expect(totals).toEqual([{ currency: "USDT", spending: 0, profit: 95, net: 95 }]);
   });
@@ -155,7 +155,7 @@ describe("summarizeGroupCurrencies", () => {
       groupEntry(100_000, "IDR", "spending", { is_debt: true }),
       groupEntry(120_000, "IDR", "spending", { is_debt: true }),
       groupEntry(169_024.5, "IDR", "spending", { is_debt: true }),
-      groupEntry(389_024.5, "IDR", "spending", { settles_entry_id: "debt-1" })
+      groupEntry(389_024.5, "IDR", "spending", { settles: [{ id: "debt-1" }] })
     ]);
     expect(totals).toEqual([
       { currency: "IDR", spending: 389_024.5, profit: 0, net: -389_024.5 }
@@ -175,7 +175,7 @@ describe("summarizeGroupCurrencies", () => {
   it("uses settlement currency only when debt currency differs", () => {
     const totals = summarizeGroupCurrencies([
       groupEntry(50_000, "MYR", "spending", { is_debt: true }),
-      groupEntry(95, "USDT", "spending", { settles_entry_id: "debt-1" })
+      groupEntry(95, "USDT", "spending", { settles: [{ id: "debt-1" }] })
     ]);
     expect(totals).toEqual([{ currency: "USDT", spending: 95, profit: 0, net: -95 }]);
   });
@@ -186,7 +186,7 @@ describe("summarizeSettlementProfitOverview", () => {
     expect(
       summarizeSettlementProfitOverview([
         overviewEntry(1_000, "MYR", "spending", { is_credit: true, type_name: "Sales" }),
-        overviewEntry(1_000, "MYR", "profit", { settles_entry_id: "credit-1", type_name: "Sales" })
+        overviewEntry(1_000, "MYR", "profit", { settles: [{ id: "credit-1" }], type_name: "Sales" })
       ])
     ).toBeNull();
     expect(
@@ -200,7 +200,7 @@ describe("summarizeSettlementProfitOverview", () => {
   it("lists profit and settle separately and leaves the original credit out", () => {
     const lines = summarizeSettlementProfitOverview([
       overviewEntry(1_000, "MYR", "spending", { is_credit: true, type_name: "Sales" }),
-      overviewEntry(1_000, "MYR", "profit", { settles_entry_id: "credit-1", type_name: "Sales" }),
+      overviewEntry(1_000, "MYR", "profit", { settles: [{ id: "credit-1" }], type_name: "Sales" }),
       overviewEntry(50, "MYR", "profit", { type_name: "PROFIT" })
     ]);
 
@@ -214,7 +214,7 @@ describe("summarizeSettlementProfitOverview", () => {
   it("keeps a USDT settlement and a credit-currency profit on separate lines", () => {
     const lines = summarizeSettlementProfitOverview([
       overviewEntry(420, "MYR", "profit", { is_future_credit: true, type_name: "Sales" }),
-      overviewEntry(110, "USDT", "profit", { settles_entry_id: "future-1", type_name: "Sales" }),
+      overviewEntry(110, "USDT", "profit", { settles: [{ id: "future-1" }], type_name: "Sales" }),
       overviewEntry(42, "MYR", "profit", { type_name: "profit" }),
       overviewEntry(1.1, "USDT", "spending", { type_name: "KURS" })
     ]);
@@ -231,8 +231,8 @@ describe("summarizeSettlementProfitOverview", () => {
     const lines = summarizeSettlementProfitOverview([
       overviewEntry(100, "IDR", "spending", { is_credit: true, type_name: "Sales" }),
       overviewEntry(50, "IDR", "spending", { is_credit: true, type_name: "Sales" }),
-      overviewEntry(100, "IDR", "profit", { settles_entry_id: "credit-a", type_name: "Sales" }),
-      overviewEntry(50, "IDR", "profit", { settles_entry_id: "credit-b", type_name: "Sales" }),
+      overviewEntry(100, "IDR", "profit", { settles: [{ id: "credit-a" }], type_name: "Sales" }),
+      overviewEntry(50, "IDR", "profit", { settles: [{ id: "credit-b" }], type_name: "Sales" }),
       overviewEntry(15, "IDR", "profit", { type_name: "PROFIT" })
     ]);
 

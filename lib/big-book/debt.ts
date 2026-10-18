@@ -8,66 +8,50 @@ export function computeBigBookDebtStatus(debtSettledAt: string | null): BigBookD
   return debtSettledAt ? "settled" : "open";
 }
 
-export type VendorActorOutstandingDebtInput = {
-  id: string;
+/** Row of get_big_book_vendor_actor_outstanding_debt: grouped transaction (or standalone debt) + actor + currency. */
+export type VendorActorOutstandingDebtRpcRow = {
   group_id: string | null;
+  entry_id: string | null;
   group_label: string | null;
-  responsible_actor_id: string;
-  vendor_type_id: string | null;
-  currency_code: BigBookVendorActorOutstandingDebtRow["currency"];
-  amount: number;
   explanation: string | null;
+  vendor_type_id: string | null;
   vendor_type_name: string | null;
+  actor_id: string;
   actor_code: "A" | "B";
   actor_display_name: string;
+  currency: BigBookVendorActorOutstandingDebtRow["currency"];
+  outstanding: number | string;
+  open_debt_count: number | string;
+  unknown_balance_count: number | string;
 };
 
-/**
- * Aggregate open debt balances by grouped transaction + actor + currency.
- * Standalone (ungrouped) debts each become their own row.
- * Callers must pass only open debts (debt_settled_at is null).
- */
-export function aggregateVendorActorOutstandingDebt(
-  debts: VendorActorOutstandingDebtInput[]
+export function toVendorActorOutstandingDebtRows(
+  rows: VendorActorOutstandingDebtRpcRow[]
 ): BigBookVendorActorOutstandingDebtRow[] {
-  const byKey = new Map<string, BigBookVendorActorOutstandingDebtRow>();
-
-  for (const debt of debts) {
-    const amount = Math.abs(Number(debt.amount));
-    if (!(amount > 0)) continue;
-
-    const groupKey = debt.group_id ?? `entry:${debt.id}`;
-    const key = `${groupKey}:${debt.responsible_actor_id}:${debt.currency_code}`;
-    const existing = byKey.get(key);
-    if (existing) {
-      existing.outstanding += amount;
-      existing.open_debt_count += 1;
-      continue;
-    }
-
-    const groupLabel = debt.group_id
-      ? debt.group_label?.trim() || "(Untitled group)"
-      : debt.explanation?.trim() || "(Ungrouped debt)";
-
-    byKey.set(key, {
-      row_key: key,
-      group_id: debt.group_id,
-      group_label: groupLabel,
-      entry_id: debt.group_id ? null : debt.id,
-      vendor_type_id: debt.vendor_type_id,
-      vendor_type_name: debt.vendor_type_name ?? "-",
-      actor_id: debt.responsible_actor_id,
-      actor_code: debt.actor_code,
-      actor_display_name: debt.actor_display_name,
-      currency: debt.currency_code,
-      outstanding: amount,
-      open_debt_count: 1
-    });
-  }
+  const mapped = rows.map((row): BigBookVendorActorOutstandingDebtRow => {
+    const groupKey = row.group_id ?? `entry:${row.entry_id}`;
+    return {
+      row_key: `${groupKey}:${row.actor_id}:${row.currency}`,
+      group_id: row.group_id,
+      group_label: row.group_id
+        ? row.group_label?.trim() || "(Untitled group)"
+        : row.explanation?.trim() || "(Ungrouped debt)",
+      entry_id: row.group_id ? null : row.entry_id,
+      vendor_type_id: row.vendor_type_id,
+      vendor_type_name: row.vendor_type_name ?? "-",
+      actor_id: row.actor_id,
+      actor_code: row.actor_code,
+      actor_display_name: row.actor_display_name,
+      currency: row.currency,
+      outstanding: Number(row.outstanding),
+      open_debt_count: Number(row.open_debt_count),
+      unknown_balance_count: Number(row.unknown_balance_count ?? 0)
+    };
+  });
 
   const currencyOrder: BigBookCashflowCurrency[] = ["IDR", "MYR", "USDT", "TRX"];
 
-  return [...byKey.values()].sort((a, b) => {
+  return mapped.sort((a, b) => {
     const currencyDiff = currencyOrder.indexOf(a.currency) - currencyOrder.indexOf(b.currency);
     if (currencyDiff !== 0) return currencyDiff;
     if (a.outstanding !== b.outstanding) return b.outstanding - a.outstanding;

@@ -30,11 +30,11 @@ const clientPayload = {
   remark: "",
   responsible_actor_id: ACTOR_ID,
   is_credit: false,
-  settles_entry_id: null,
+  settles: null,
   settlement_conversion_rate: null,
   settlement_note: "",
-  close_credit: false,
-  credit_settlement_note: null
+  close: false,
+  close_note: null
 };
 
 describe("big book entry schema", () => {
@@ -86,11 +86,12 @@ describe("big book entry schema", () => {
   it("accepts a settlement that leaves the credit open", () => {
     const parsed = bigBookEntryInputSchema.safeParse({
       ...clientPayload,
-      settles_entry_id: CREDIT_ID,
+      settles: CREDIT_ID,
+      client_request_id: "55555555-5555-4555-8555-555555555555",
       settlement_conversion_rate: 1,
       settlement_note: "partial payment",
-      close_credit: false,
-      credit_settlement_note: null
+      close: false,
+      close_note: null
     });
     expect(parsed.success).toBe(true);
   });
@@ -99,9 +100,10 @@ describe("big book entry schema", () => {
     const parsed = bigBookEntryInputSchema.safeParse({
       ...clientPayload,
       currency_code: "USDT",
-      settles_entry_id: CREDIT_ID,
+      settles: CREDIT_ID,
+      client_request_id: "55555555-5555-4555-8555-555555555555",
       settlement_conversion_rate: null,
-      close_credit: false
+      close: false
     });
     expect(parsed.success).toBe(true);
   });
@@ -110,9 +112,10 @@ describe("big book entry schema", () => {
     const parsed = bigBookEntryInputSchema.safeParse({
       ...clientPayload,
       currency_code: "IDR",
-      settles_entry_id: CREDIT_ID,
+      settles: CREDIT_ID,
+      client_request_id: "55555555-5555-4555-8555-555555555555",
       settlement_conversion_rate: null,
-      close_credit: false
+      close: false
     });
     expect(parsed.success).toBe(true);
   });
@@ -120,10 +123,11 @@ describe("big book entry schema", () => {
   it("accepts a settlement that closes the credit", () => {
     const parsed = bigBookEntryInputSchema.safeParse({
       ...clientPayload,
-      settles_entry_id: CREDIT_ID,
+      settles: CREDIT_ID,
+      client_request_id: "55555555-5555-4555-8555-555555555555",
       settlement_conversion_rate: 1,
-      close_credit: true,
-      credit_settlement_note: "short payment approved"
+      close: true,
+      close_note: "short payment approved"
     });
     expect(parsed.success).toBe(true);
   });
@@ -147,14 +151,14 @@ describe("big book entry schema", () => {
     expect(parsed.success).toBe(true);
     if (parsed.success) {
       expect(parsed.data.settlement_note).toBeNull();
-      expect(parsed.data.credit_settlement_note).toBeNull();
+      expect(parsed.data.close_note).toBeNull();
     }
   });
 
   it("still rejects an over-long note", () => {
     const parsed = bigBookEntryInputSchema.safeParse({
       ...clientPayload,
-      credit_settlement_note: "x".repeat(1001)
+      close_note: "x".repeat(1001)
     });
     expect(parsed.success).toBe(false);
   });

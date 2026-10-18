@@ -19,7 +19,8 @@ export type GroupSummableEntry = SummableEntry & {
   is_credit?: boolean;
   is_future_credit?: boolean;
   is_debt?: boolean;
-  settles_entry_id?: string | null;
+  /** Non-empty when this row is a payment covering one or more obligations. */
+  settles?: readonly unknown[] | null;
 };
 
 export type SettlementProfitOverviewEntry = GroupSummableEntry & {
@@ -74,9 +75,9 @@ export function summarizeCurrencies(entries: SummableEntry[]): BigBookCurrencyTo
 export function summarizeGroupCurrencies(entries: GroupSummableEntry[]): BigBookCurrencyTotal[] {
   const hasFutureCredit = entries.some((entry) => Boolean(entry.is_future_credit));
   const hasDebt = entries.some((entry) => Boolean(entry.is_debt));
-  const hasSettlement = entries.some((entry) => Boolean(entry.settles_entry_id));
+  const hasSettlement = entries.some((entry) => (entry.settles?.length ?? 0) > 0);
   if ((hasFutureCredit || hasDebt) && hasSettlement) {
-    return summarizeCurrencies(entries.filter((entry) => Boolean(entry.settles_entry_id)));
+    return summarizeCurrencies(entries.filter((entry) => (entry.settles?.length ?? 0) > 0));
   }
   return summarizeCurrencies(entries);
 }
@@ -86,7 +87,7 @@ function isObligationEntry(entry: GroupSummableEntry) {
 }
 
 function isProfitCompanion(entry: SettlementProfitOverviewEntry) {
-  if (entry.settles_entry_id || isObligationEntry(entry)) return false;
+  if ((entry.settles?.length ?? 0) > 0 || isObligationEntry(entry)) return false;
   return (entry.type_name ?? "").trim().toLowerCase() === "profit";
 }
 
@@ -128,7 +129,7 @@ export function summarizeSettlementProfitOverview(
 ): SettlementProfitOverviewLine[] | null {
   const profitLines = sumRecordedAmountsByCurrency(entries.filter(isProfitCompanion));
   const settleLines = sumRecordedAmountsByCurrency(
-    entries.filter((entry) => Boolean(entry.settles_entry_id))
+    entries.filter((entry) => (entry.settles?.length ?? 0) > 0)
   );
   if (!profitLines.length || !settleLines.length) return null;
 

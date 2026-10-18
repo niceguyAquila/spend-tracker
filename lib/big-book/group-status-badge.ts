@@ -10,7 +10,8 @@ export type GroupStatusMember = {
   is_future_credit?: boolean;
   credit_status?: "open" | "settled" | null;
   debt_status?: "open" | "settled" | null;
-  settles_entry_id?: string | null;
+  /** Non-empty when this row is a payment covering one or more obligations. */
+  settles?: readonly unknown[] | null;
 };
 
 function isOpenDebt(entry: GroupStatusMember) {
@@ -48,7 +49,7 @@ export function deriveGroupStatusBadge(
   if (members.some(isOpenCredit)) return "open_credit";
 
   const hasObligation = members.some(isObligation);
-  const hasSettlement = members.some((entry) => Boolean(entry.settles_entry_id));
+  const hasSettlement = members.some((entry) => (entry.settles?.length ?? 0) > 0);
   if (hasObligation || hasSettlement) return "settled";
 
   return null;

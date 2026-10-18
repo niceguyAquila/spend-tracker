@@ -33,6 +33,8 @@ export type BulkSettleEditDraft = {
   mode: BulkSettleMode;
   credits: BulkSettleCreditDraft[];
   label: string;
+  /** Stable for this dialog, including a retry after a failed submit. */
+  clientRequestId: string;
 };
 
 export type BulkSettleSubmitPayload = {

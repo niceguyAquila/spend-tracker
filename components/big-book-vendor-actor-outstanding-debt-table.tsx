@@ -388,7 +388,8 @@ export function BigBookVendorActorOutstandingDebtTable({
     setEditDraft({
       mode: payMode,
       credits: pendingPay.debts,
-      label: pendingPay.label
+      label: pendingPay.label,
+      clientRequestId: crypto.randomUUID()
     });
     setPendingPay(null);
   }
@@ -407,6 +408,7 @@ export function BigBookVendorActorOutstandingDebtTable({
     setPayError(null);
     try {
       const body: Record<string, unknown> = {
+        client_request_id: editDraft.clientRequestId,
         debt_entry_ids: editDraft.credits.map((row) => row.id),
         mode: editDraft.mode === "per_credit" ? "per_debt" : "single",
         entry_date: payload.entry_date,

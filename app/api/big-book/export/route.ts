@@ -147,7 +147,7 @@ export async function GET(request: Request) {
         entry.is_future_credit ? "true" : "false",
         entry.credit_status ?? "",
         entry.credit_settled_at ?? "",
-        entry.settles_entry?.explanation ?? ""
+        entry.settles.map((target) => target.explanation).filter(Boolean).join("; ")
       ].map(escapeCsvCellSpreadsheetSafe);
       lines.push(cells.join(","));
     }

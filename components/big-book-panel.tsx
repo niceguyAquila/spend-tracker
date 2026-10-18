@@ -151,31 +151,19 @@ function describeLinkedDelete(info: LinkedDeleteInfo) {
   return `This will permanently remove the ${noun} "${info.obligationLabel}" and ${countLabel}, including attachments.`;
 }
 
-function linkedDeleteInfoForEntry(
-  entry: BigBookEntry,
-  findParent: (id: string) => BigBookEntry | null
-): LinkedDeleteInfo | null {
-  if (entry.is_credit || entry.is_debt) {
-    const count = entry.settlements?.length ?? 0;
-    if (count === 0) return null;
-    return {
-      linked: true,
-      kind: entry.is_debt ? "debt" : "credit",
-      obligationLabel: entry.explanation,
-      settlementCount: count
-    };
-  }
-  if (entry.settles_entry_id && entry.settles_entry) {
-    const parent = findParent(entry.settles_entry_id);
-    const count = Math.max(1, parent?.settlements?.length ?? 1);
-    return {
-      linked: true,
-      kind: entry.settles_entry.is_debt ? "debt" : "credit",
-      obligationLabel: entry.settles_entry.explanation,
-      settlementCount: count
-    };
-  }
-  return null;
+function linkedDeleteInfoForEntry(entry: BigBookEntry): LinkedDeleteInfo | null {
+  if (entry.linked_set.length <= 1) return null;
+  const debt = entry.is_debt || entry.settles.some((target) => target.is_debt);
+  const obligationLabel =
+    entry.is_credit || entry.is_debt
+      ? entry.explanation
+      : entry.settles.map((target) => target.explanation).filter(Boolean).join(", ") || entry.explanation;
+  return {
+    linked: true,
+    kind: debt ? "debt" : "credit",
+    obligationLabel,
+    settlementCount: Math.max(entry.linked_set_counts.payments, entry.settles.length, 1)
+  };
 }
 
 function arraysEqual(left: string[], right: string[]) {
@@ -261,8 +249,8 @@ const CREDIT_STATUS_LABELS: Record<BigBookCreditStatus, string> = {
 // Settlement close/link fields only apply to single-entry create/edit payloads
 // (grouped entries persist is_credit / is_debt via toEntryPayload).
 function toCreditPayload(form: EntryFormState, settlesEntry: BigBookSettlementTargetRef | null) {
-  const settlesEntryId = form.settles_entry_id || null;
-  if (!settlesEntryId) {
+  const settlesId = form.settles || null;
+  if (!settlesId) {
     const isCredit = form.is_credit && !form.is_debt;
     const isFutureCredit = isCredit && form.is_future_credit;
     const isDebt = form.is_debt && !form.is_credit;
@@ -270,32 +258,28 @@ function toCreditPayload(form: EntryFormState, settlesEntry: BigBookSettlementTa
       is_credit: isCredit,
       is_future_credit: isFutureCredit,
       is_debt: isDebt,
-      settles_entry_id: null,
+      settles: null,
       settlement_conversion_rate: null,
       settlement_note: "",
-      close_credit: false,
-      credit_settlement_note: null,
-      close_debt: false,
-      debt_settlement_note: null
+      close: false,
+      close_note: null
     };
   }
   const typedRate = Number(form.settlement_conversion_rate);
   const sameCurrency = settlesEntry ? form.currency_code === settlesEntry.currency_code : false;
   const rate = sameCurrency ? 1 : Number.isFinite(typedRate) && typedRate > 0 ? typedRate : null;
   const settlingDebt = Boolean(settlesEntry?.is_debt);
+  const close = settlingDebt ? form.close_debt : form.close_credit;
+  const closeNote = settlingDebt ? form.debt_settlement_note : form.credit_settlement_note;
   return {
     is_credit: false,
     is_future_credit: false,
     is_debt: false,
-    settles_entry_id: settlesEntryId,
+    settles: settlesId,
     settlement_conversion_rate: rate,
     settlement_note: form.settlement_note,
-    close_credit: settlingDebt ? false : form.close_credit,
-    credit_settlement_note:
-      !settlingDebt && form.close_credit ? form.credit_settlement_note.trim() || null : null,
-    close_debt: settlingDebt ? form.close_debt : false,
-    debt_settlement_note:
-      settlingDebt && form.close_debt ? form.debt_settlement_note.trim() || null : null
+    close,
+    close_note: close ? closeNote.trim() || null : null
   };
 }
 
@@ -312,7 +296,10 @@ function settlementTargetFromEntry(entry: BigBookEntry): BigBookSettlementTarget
     credit_status: entry.is_credit ? entry.credit_status ?? "open" : null,
     credit_settled_at: entry.credit_settled_at,
     debt_status: entry.is_debt ? entry.debt_status ?? "open" : null,
-    debt_settled_at: entry.debt_settled_at
+    debt_settled_at: entry.debt_settled_at,
+    closed_at: entry.is_debt ? entry.debt_settled_at : entry.credit_settled_at,
+    applied_amount: null,
+    open_balance: entry.balance?.openBalance ?? null
   };
 }
 
@@ -360,7 +347,7 @@ function entryFormFromEntry(entry: BigBookEntry): GroupEntryFormState {
     is_credit: entry.is_credit,
     is_future_credit: Boolean(entry.is_future_credit),
     is_debt: entry.is_debt,
-    settles_entry_id: entry.settles_entry_id ?? "",
+    settles: entry.settles[0]?.id ?? "",
     settlement_conversion_rate:
       entry.settlement_conversion_rate != null ? formatRateInput(String(entry.settlement_conversion_rate)) : "",
     settlement_note: entry.settlement_note ?? "",
@@ -504,7 +491,7 @@ export function BigBookPanel({
     is_credit: false,
     is_future_credit: false,
     is_debt: false,
-    settles_entry_id: "",
+    settles: "",
     settlement_conversion_rate: "",
     settlement_note: "",
     close_credit: false,
@@ -570,6 +557,7 @@ export function BigBookPanel({
   const [pendingDeleteSettlement, setPendingDeleteSettlement] = useState<{
     id: string;
     updated_at: string;
+    linkedSet: string[];
   } | null>(null);
   const [settlementDeleting, setSettlementDeleting] = useState(false);
   const [creditClosureDialog, setCreditClosureDialog] = useState<{
@@ -687,6 +675,7 @@ export function BigBookPanel({
 
   // Race-safe request token: ignore stale fetch responses.
   const loadRequestIdRef = useRef(0);
+  const settlementRequestIdRef = useRef<string | null>(null);
   // Skip the initial fetch on mount when SSR already provided the first page.
   // If SSR reports a positive count but no rows, force a client fetch to heal
   // the "empty table on first load" mismatch.
@@ -1436,12 +1425,16 @@ export function BigBookPanel({
   async function deleteEntry() {
     if (!pendingDeleteEntry) return;
     const deletingEntryId = pendingDeleteEntry.id;
-    const linkedInfo = linkedDeleteInfoForEntry(pendingDeleteEntry, findEntryById);
+    const linkedInfo = linkedDeleteInfoForEntry(pendingDeleteEntry);
     setEntryDeleting(true);
     setError(null);
     setMessage(null);
     try {
-      const cascadeQuery = linkedInfo ? "&cascadeLinked=1" : "";
+      const linkedSet = pendingDeleteEntry.linked_set;
+      const cascadeQuery =
+        linkedSet.length > 1
+          ? `&cascadeLinked=1&linkedSet=${encodeURIComponent(linkedSet.join(","))}`
+          : "";
       const expectedQuery = `&expected_updated_at=${encodeURIComponent(pendingDeleteEntry.updated_at)}`;
       const response = await secureFetch(
         `/api/big-book/entries?id=${pendingDeleteEntry.id}${cascadeQuery}${expectedQuery}`,
@@ -1644,7 +1637,7 @@ export function BigBookPanel({
       updater_display_name: row.updater_display_name
     });
     setEditForm(entryFormFromEntry(row));
-    setEditSettlesEntry(row.settles_entry);
+    setEditSettlesEntry(row.settles[0] ?? null);
     setEditModalOpen(true);
   }
 
@@ -1937,6 +1930,7 @@ export function BigBookPanel({
 
   function openRecordSettlement(row: BigBookEntry) {
     setOpenActionMenu(null);
+    settlementRequestIdRef.current = crypto.randomUUID();
     setSettlementTarget(row);
     setSettlementAttachmentFiles([]);
     setSettlementFormError(null);
@@ -1962,7 +1956,7 @@ export function BigBookPanel({
       is_credit: false,
       is_future_credit: false,
       is_debt: false,
-      settles_entry_id: row.id,
+      settles: row.id,
       settlement_conversion_rate: "1",
       settlement_note: "",
       close_credit: false,
@@ -1999,14 +1993,7 @@ export function BigBookPanel({
           responsible_actor_id: row.responsible_actor_id,
           is_credit: true,
           is_future_credit: !actualized,
-          is_debt: false,
-          settles_entry_id: null,
-          settlement_conversion_rate: null,
-          settlement_note: "",
-          close_credit: false,
-          credit_settlement_note: null,
-          close_debt: false,
-          debt_settlement_note: null
+          is_debt: false
         })
       });
       if (handleUnauthorizedResponse(response)) return;
@@ -2101,6 +2088,7 @@ export function BigBookPanel({
   }
 
   function closeRecordSettlement() {
+    settlementRequestIdRef.current = null;
     setSettlementTarget(null);
     setSettlementForm(null);
     setSettlementAttachmentFiles([]);
@@ -2165,6 +2153,8 @@ export function BigBookPanel({
       kursAmount: settlementForm.kurs_amount
     });
 
+    const clientRequestId = settlementRequestIdRef.current ?? crypto.randomUUID();
+    settlementRequestIdRef.current = clientRequestId;
     setSettlementSubmitting(true);
     setSettlementFormError(null);
     setError(null);
@@ -2185,7 +2175,8 @@ export function BigBookPanel({
             ? Number(parseAmountInput(settlementForm.kurs_rate))
             : null,
           kurs_amount: kursCompanionAmount,
-          ...creditPayload
+          ...creditPayload,
+          client_request_id: clientRequestId
         })
       });
       if (handleUnauthorizedResponse(response)) return;
@@ -2241,8 +2232,12 @@ export function BigBookPanel({
     setMessage(null);
     try {
       // Settlement deletes always cascade the parent credit/debt + all siblings.
+      const linkedQuery =
+        pendingDeleteSettlement.linkedSet.length > 1
+          ? `&linkedSet=${encodeURIComponent(pendingDeleteSettlement.linkedSet.join(","))}`
+          : "";
       const response = await secureFetch(
-        `/api/big-book/entries?id=${pendingDeleteSettlement.id}&cascadeLinked=1&expected_updated_at=${encodeURIComponent(pendingDeleteSettlement.updated_at)}`,
+        `/api/big-book/entries?id=${pendingDeleteSettlement.id}&cascadeLinked=1&expected_updated_at=${encodeURIComponent(pendingDeleteSettlement.updated_at)}${linkedQuery}`,
         { method: "DELETE" }
       );
       if (handleUnauthorizedResponse(response)) return;
@@ -3663,14 +3658,14 @@ export function BigBookPanel({
           if (!open && !entryDeleting) setPendingDeleteEntry(null);
         }}
         title={
-          pendingDeleteEntry && linkedDeleteInfoForEntry(pendingDeleteEntry, findEntryById)
+          pendingDeleteEntry && linkedDeleteInfoForEntry(pendingDeleteEntry)
             ? "Delete credit/debt and linked settlements?"
             : "Delete ledger entry?"
         }
         description={
           pendingDeleteEntry
             ? (() => {
-                const linked = linkedDeleteInfoForEntry(pendingDeleteEntry, findEntryById);
+                const linked = linkedDeleteInfoForEntry(pendingDeleteEntry);
                 return linked
                   ? describeLinkedDelete(linked)
                   : "This will permanently remove the selected entry and all its attachments.";
@@ -3998,25 +3993,33 @@ export function BigBookPanel({
                 Status: {CREDIT_STATUS_LABELS[settlementHistoryEntry.credit_status ?? "open"]}
               </p>
               <p className="mt-2 text-xs text-muted">
-                Credit:{" "}
-                {formatAmount(settlementHistoryEntry.amount, {
+                Face:{" "}
+                {formatAmount(settlementHistoryEntry.balance?.face ?? settlementHistoryEntry.amount, {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 4
                 })}{" "}
-                {settlementHistoryEntry.currency_code} · Total recorded payments:{" "}
-                {formatAmount(settlementHistoryEntry.total_settled, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 4
-                })}{" "}
-                {settlementHistoryEntry.currency_code} · Variance (informational):{" "}
-                {formatAmount(
-                  settlementHistoryEntry.total_settled - settlementHistoryEntry.amount,
-                  {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 4
-                  }
-                )}{" "}
+                {settlementHistoryEntry.currency_code} · Recorded payments:{" "}
+                {!settlementHistoryEntry.balance || settlementHistoryEntry.balance.unconvertedCount > 0
+                  ? "unknown"
+                  : formatAmount(settlementHistoryEntry.balance.appliedKnown, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 4
+                    })}{" "}
+                {settlementHistoryEntry.currency_code} · Open balance:{" "}
+                {settlementHistoryEntry.balance?.openBalance == null
+                  ? "unknown"
+                  : formatAmount(settlementHistoryEntry.balance.openBalance, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 4
+                    })}{" "}
                 {settlementHistoryEntry.currency_code}
+                {settlementHistoryEntry.balance?.variance != null &&
+                settlementHistoryEntry.balance.variance > 0
+                  ? ` · Overpaid ${formatAmount(settlementHistoryEntry.balance.variance, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 4
+                    })} ${settlementHistoryEntry.currency_code}`
+                  : ""}
               </p>
               {settlementHistoryEntry.credit_settlement_note ? (
                 <p className="mt-1 text-xs text-muted">
@@ -4043,23 +4046,32 @@ export function BigBookPanel({
                           {settlement.currency_code}
                         </p>
                         <p className="mt-1 text-xs text-muted">{settlement.explanation}</p>
-                        {settlement.settlement_conversion_rate != null &&
-                        settlement.settlement_amount_in_credit_currency != null ? (
+                        {settlement.applied_amount != null ? (
                           <p className="mt-1 text-xs text-muted">
-                            Rate:{" "}
-                            {formatAmount(settlement.settlement_conversion_rate, {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 8
-                            })}{" "}
-                            · Equivalent:{" "}
-                            {formatAmount(settlement.settlement_amount_in_credit_currency, {
+                            {settlement.settlement_conversion_rate != null ? (
+                              <>
+                                Rate:{" "}
+                                {formatAmount(settlement.settlement_conversion_rate, {
+                                  minimumFractionDigits: 0,
+                                  maximumFractionDigits: 8
+                                })}{" "}
+                                ·{" "}
+                              </>
+                            ) : null}
+                            Applied:{" "}
+                            {formatAmount(settlement.applied_amount, {
                               minimumFractionDigits: 2,
                               maximumFractionDigits: 4
                             })}{" "}
                             {settlementHistoryEntry.currency_code}
+                            {settlement.payment_obligation_count > 1
+                              ? ` · shared across ${settlement.payment_obligation_count} obligations`
+                              : ""}
                           </p>
                         ) : (
-                          <p className="mt-1 text-xs text-muted">No conversion rate recorded</p>
+                          <p className="mt-1 text-xs text-muted">
+                            Applied amount in {settlementHistoryEntry.currency_code} was not recorded
+                          </p>
                         )}
                         {settlement.settlement_note ? (
                           <p className="mt-1 text-xs text-muted">Note: {settlement.settlement_note}</p>
@@ -4086,7 +4098,8 @@ export function BigBookPanel({
                           onClick={() =>
                             setPendingDeleteSettlement({
                               id: settlement.id,
-                              updated_at: settlement.updated_at
+                              updated_at: settlement.updated_at,
+                              linkedSet: settlementHistoryEntry.linked_set
                             })
                           }
                         >

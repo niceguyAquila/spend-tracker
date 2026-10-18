@@ -140,19 +140,25 @@ export type BigBookEntryAuditLog = {
 export type BigBookCreditStatus = "open" | "settled";
 export type BigBookDebtStatus = "open" | "settled";
 
+/** On an obligation: one per payment allocated to it. */
 export type BigBookSettlementRef = {
   id: string;
   entry_date: string;
+  /** Payment amount in the payment currency. */
   amount: number;
   currency_code: "IDR" | "MYR" | "USDT" | "TRX";
-  /** Null when USDT settle omitted optional FX rate. */
+  /** Null on historical cross-currency payments recorded without a rate. */
   settlement_conversion_rate: number | null;
-  settlement_amount_in_credit_currency: number | null;
+  /** Part of this payment applied to THIS obligation, in its currency. Null = unknown (backfill). */
+  applied_amount: number | null;
+  /** > 1 means one payment shared across several obligations. */
+  payment_obligation_count: number;
   settlement_note: string | null;
   explanation: string;
   updated_at: string;
 };
 
+/** On a payment: one per obligation it pays. */
 export type BigBookSettlementTargetRef = {
   id: string;
   entry_date: string;
@@ -168,6 +174,21 @@ export type BigBookSettlementTargetRef = {
   credit_settled_at: string | null;
   debt_status: BigBookDebtStatus | null;
   debt_settled_at: string | null;
+  closed_at: string | null;
+  applied_amount: number | null;
+  open_balance: number | null;
+};
+
+/** From business_ledger_obligation_balances, the one definition of outstanding. */
+export type BigBookObligationBalance = {
+  face: number;
+  appliedKnown: number;
+  /** Historical payments whose obligation-currency value was never recorded. */
+  unconvertedCount: number;
+  /** Null when unconvertedCount > 0 — shown as unknown, never 0. Negative = overpaid. */
+  openBalance: number | null;
+  /** Overpaid amount (max(0, -openBalance)) when known. */
+  variance: number | null;
 };
 
 export type BigBookEntry = {
@@ -189,9 +210,7 @@ export type BigBookEntry = {
   /** True when credit is not yet actualized (excluded from cash totals). Implies is_credit. */
   is_future_credit: boolean;
   is_debt: boolean;
-  settles_entry_id: string | null;
   settlement_conversion_rate: number | null;
-  settlement_amount_in_credit_currency: number | null;
   settlement_note: string | null;
   credit_settled_at: string | null;
   credit_settled_by: string | null;
@@ -216,11 +235,16 @@ export type BigBookEntry = {
   credit_settled_by_display_name: string;
   debt_settled_by_display_name: string;
   attachments: BigBookAttachment[];
-  total_settled: number;
   credit_status: BigBookCreditStatus | null;
   debt_status: BigBookDebtStatus | null;
   settlements: BigBookSettlementRef[];
-  settles_entry: BigBookSettlementTargetRef | null;
+  /** Obligations this payment covers; non-empty exactly when the entry is a payment. */
+  settles: BigBookSettlementTargetRef[];
+  /** Non-null exactly when the entry is a credit or debt. */
+  balance: BigBookObligationBalance | null;
+  /** Connected obligations + payments, sorted; length 1 = unlinked. */
+  linked_set: string[];
+  linked_set_counts: { obligations: number; payments: number };
 };
 
 export type BigBookLedgerRow =
@@ -316,6 +340,8 @@ export type BigBookVendorActorOutstandingRow = {
    * For actualized Credit outstanding rows this is always 0 (Future is aggregated separately).
    */
   open_future_credit_count: number;
+  /** Open rows whose balance is unknown; left out of `outstanding`. */
+  unknown_balance_count: number;
 };
 
 export type BigBookVendorActorOutstandingDebtRow = {
@@ -333,6 +359,8 @@ export type BigBookVendorActorOutstandingDebtRow = {
   currency: BigBookCashflowCurrency;
   outstanding: number;
   open_debt_count: number;
+  /** Open rows whose balance is unknown; left out of `outstanding`. */
+  unknown_balance_count: number;
 };
 
 export type BigBookVendorActorOutstandingEntry = {

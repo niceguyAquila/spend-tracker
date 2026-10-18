@@ -170,14 +170,21 @@ function BigBookEntryRowInner({
               </p>
             ) : null}
           </div>
-        ) : entry.settles_entry_id ? (
-          <span className="inline-flex rounded bg-[rgb(var(--info)/0.15)] px-2 py-0.5 text-xs font-medium text-[rgb(var(--info))]">
-            Settles:{" "}
-            {truncateText(
-              entry.settles_entry?.explanation ||
-                (entry.settles_entry ? formatDateDisplay(entry.settles_entry.entry_date) : "credit")
-            )}
-          </span>
+        ) : entry.settles.length ? (
+          <div className="space-y-1">
+            {entry.settles.map((target) => (
+              <span
+                key={target.id}
+                className="inline-flex rounded bg-[rgb(var(--info)/0.15)] px-2 py-0.5 text-xs font-medium text-[rgb(var(--info))]"
+              >
+                Settles:{" "}
+                {truncateText(target.explanation || formatDateDisplay(target.entry_date))}
+                {target.applied_amount != null
+                  ? ` · ${formatAmount(target.applied_amount, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} ${target.currency_code}`
+                  : ""}
+              </span>
+            ))}
+          </div>
         ) : (
           <span className="text-xs text-muted">-</span>
         )}

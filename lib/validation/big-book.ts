@@ -122,14 +122,7 @@ const bigBookEntryBaseSchema = z.object({
   responsible_actor_id: z.string().uuid("Responsible actor is required"),
   is_credit: z.boolean().optional().default(false),
   is_future_credit: z.boolean().optional().default(false),
-  is_debt: z.boolean().optional().default(false),
-  settles_entry_id: optionalUuidOrEmpty("Settlement target must be a valid id"),
-  settlement_conversion_rate: z.coerce.number().positive().nullable().optional(),
-  settlement_note: optionalNoteSchema,
-  close_credit: z.boolean().optional().default(false),
-  credit_settlement_note: optionalNoteSchema,
-  close_debt: z.boolean().optional().default(false),
-  debt_settlement_note: optionalNoteSchema
+  is_debt: z.boolean().optional().default(false)
 });
 
 const optionalGasFeeAmountSchema = z.preprocess((value) => {
@@ -153,11 +146,6 @@ function refineBigBookEntryCreditFields<
     is_future_credit?: boolean;
     is_debt?: boolean;
     entry_direction?: string;
-    settles_entry_id?: string | null;
-    settlement_conversion_rate?: number | null;
-    close_credit?: boolean;
-    close_debt?: boolean;
-    currency_code?: string;
   }
 >(value: T, ctx: z.RefinementCtx) {
   if (value.is_future_credit && !value.is_credit) {
@@ -181,27 +169,6 @@ function refineBigBookEntryCreditFields<
       path: ["is_debt"]
     });
   }
-  if (value.is_credit && value.settles_entry_id) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "A settlement entry cannot also be marked as credit.",
-      path: ["is_credit"]
-    });
-  }
-  if (value.is_future_credit && value.settles_entry_id) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "A settlement entry cannot also be marked as future credit.",
-      path: ["is_future_credit"]
-    });
-  }
-  if (value.is_debt && value.settles_entry_id) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "A settlement entry cannot also be marked as debt.",
-      path: ["is_debt"]
-    });
-  }
   if (value.is_debt && value.entry_direction && value.entry_direction !== "spending") {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -209,28 +176,52 @@ function refineBigBookEntryCreditFields<
       path: ["entry_direction"]
     });
   }
-  // Conversion rate / settlement_amount_in_credit_currency are optional on input.
-  // Same-currency settles derive rate = 1 + credit-currency amount in the API;
-  // cross-currency FX fields stay null unless a positive rate is provided.
-  if (value.close_credit && !value.settles_entry_id) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Closing a credit requires a settlement target.",
-      path: ["close_credit"]
-    });
+}
+
+function refineSettlementTarget<
+  T extends {
+    is_credit?: boolean;
+    is_future_credit?: boolean;
+    is_debt?: boolean;
+    settles?: string | null;
+    client_request_id?: string;
+    close?: boolean;
   }
-  if (value.close_debt && !value.settles_entry_id) {
+>(value: T, ctx: z.RefinementCtx) {
+  if (value.settles) {
+    if (value.is_credit) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A settlement entry cannot also be marked as credit.",
+        path: ["is_credit"]
+      });
+    }
+    if (value.is_future_credit) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A settlement entry cannot also be marked as future credit.",
+        path: ["is_future_credit"]
+      });
+    }
+    if (value.is_debt) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A settlement entry cannot also be marked as debt.",
+        path: ["is_debt"]
+      });
+    }
+    if (!value.client_request_id) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "client_request_id is required to record a settlement.",
+        path: ["client_request_id"]
+      });
+    }
+  } else if (value.close) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "Closing a debt requires a settlement target.",
-      path: ["close_debt"]
-    });
-  }
-  if (value.close_credit && value.close_debt) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Cannot close both credit and debt on the same settlement.",
-      path: ["close_debt"]
+      message: "Closing a credit or debt requires a settlement target.",
+      path: ["close"]
     });
   }
 }
@@ -261,12 +252,20 @@ function refineKursFields<
 
 export const bigBookEntryInputSchema = bigBookEntryBaseSchema
   .extend({
+    /** Obligation id this entry pays; set = record a settlement. */
+    settles: optionalUuidOrEmpty("Settlement target must be a valid id"),
+    client_request_id: z.string().uuid("client_request_id must be a uuid").optional(),
+    settlement_conversion_rate: z.coerce.number().positive().nullable().optional(),
+    settlement_note: optionalNoteSchema,
+    close: z.boolean().optional().default(false),
+    close_note: optionalNoteSchema,
     gas_fee_amount: optionalGasFeeAmountSchema,
     kurs_rate: optionalKursRateSchema,
     kurs_amount: optionalKursAmountSchema
   })
   .superRefine((value, ctx) => {
     refineBigBookEntryCreditFields(value, ctx);
+    refineSettlementTarget(value, ctx);
     if (value.gas_fee_amount != null && value.currency_code !== "USDT") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -328,8 +327,22 @@ const optionalProfitAmountSchema = z.preprocess((value) => {
   return value;
 }, z.coerce.number().positive("PROFIT amount must be greater than 0").optional());
 
+function refineSingleAmount(
+  value: { mode: string; amount?: number },
+  ctx: z.RefinementCtx
+) {
+  if (value.mode === "single" && value.amount == null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "One payment covering the selection needs an amount.",
+      path: ["amount"]
+    });
+  }
+}
+
 export const bigBookBulkSettleSchema = z
   .object({
+    client_request_id: z.string().uuid("client_request_id must be a uuid"),
     credit_entry_ids: z
       .array(z.string().uuid())
       .min(1, "Select at least one open credit to settle.")
@@ -340,22 +353,16 @@ export const bigBookBulkSettleSchema = z
     close_credits: z.boolean().optional().default(true),
     settlement_note: optionalNoteSchema,
     explanation: z.string().trim().min(2).max(500).optional(),
-    /** Override settlement payment currency (defaults to each credit's currency). */
+    /** Payment currency; defaults to the credits' currency. */
     currency_code: bigBookCurrencySchema.optional(),
     /**
-     * Settlement amount in `currency_code`.
-     * - single mode: one combined payment amount (defaults to sum of credit amounts when same currency / rate 1)
-     * - per_credit mode: ignored; each settlement uses that credit's converted amount
+     * single: the one payment amount in `currency_code`; the database splits it oldest credit first.
+     * per_credit: ignored; each payment pays that credit's open balance.
      */
     amount: z.coerce.number().positive("Amount must be greater than 0").optional(),
-    /**
-     * credit_currency units per 1 settlement_currency unit.
-     * Required when settlement currency differs from credit currency; forced to 1 when same.
-     */
+    /** Credit-currency units per 1 payment-currency unit. Required when the currencies differ. */
     settlement_conversion_rate: z.coerce.number().positive().optional(),
-    /**
-     * Optional PROFIT surcharge in the credit currency (creates a separate PROFIT-type ledger row).
-     */
+    /** Optional PROFIT surcharge in the credit currency (separate PROFIT-type row). */
     profit_amount: optionalProfitAmountSchema,
     /** Optional KURS rate for USDT settle path (companion USDT spending). */
     kurs_rate: optionalKursRateSchema,
@@ -363,6 +370,7 @@ export const bigBookBulkSettleSchema = z
     kurs_amount: optionalKursAmountSchema
   })
   .superRefine((value, ctx) => {
+    refineSingleAmount(value, ctx);
     const hasKurs = value.kurs_rate != null || value.kurs_amount != null;
     if (!hasKurs) return;
     if (value.currency_code !== "USDT") {
@@ -373,35 +381,64 @@ export const bigBookBulkSettleSchema = z
         path
       });
     }
-  });
+    if (value.mode === "per_credit" && value.kurs_amount == null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Per-credit settlement needs an explicit KURS amount.",
+        path: ["kurs_amount"]
+      });
+    }
+  })
+  .transform((value) => ({
+    client_request_id: value.client_request_id,
+    obligation_ids: value.credit_entry_ids,
+    mode: value.mode === "single" ? ("single" as const) : ("each" as const),
+    entry_date: value.entry_date,
+    currency_code: value.currency_code ?? null,
+    amount: value.mode === "single" ? value.amount : undefined,
+    settlement_conversion_rate: value.settlement_conversion_rate,
+    close: value.close_credits,
+    settlement_note: value.settlement_note,
+    explanation: value.explanation,
+    profit_amount: value.profit_amount,
+    kurs_rate: value.kurs_rate,
+    kurs_amount: value.kurs_amount
+  }));
 
 export const bigBookBulkDebtSettleModeSchema = z.enum(["single", "per_debt"]);
 
-export const bigBookBulkDebtSettleSchema = z.object({
-  debt_entry_ids: z
-    .array(z.string().uuid())
-    .min(1, "Select at least one open debt to pay.")
-    .max(100)
-    .refine((ids) => new Set(ids).size === ids.length, "Duplicate debt ids"),
-  mode: bigBookBulkDebtSettleModeSchema.default("single"),
-  entry_date: z.string().min(1, "Date is required"),
-  close_debts: z.boolean().optional().default(true),
-  settlement_note: optionalNoteSchema,
-  explanation: z.string().trim().min(2).max(500).optional(),
-  currency_code: bigBookCurrencySchema.optional(),
-  amount: z.coerce.number().positive("Amount must be greater than 0").optional(),
-  settlement_conversion_rate: z.coerce.number().positive().optional()
-});
+export const bigBookBulkDebtSettleSchema = z
+  .object({
+    client_request_id: z.string().uuid("client_request_id must be a uuid"),
+    debt_entry_ids: z
+      .array(z.string().uuid())
+      .min(1, "Select at least one open debt to pay.")
+      .max(100)
+      .refine((ids) => new Set(ids).size === ids.length, "Duplicate debt ids"),
+    mode: bigBookBulkDebtSettleModeSchema.default("single"),
+    entry_date: z.string().min(1, "Date is required"),
+    close_debts: z.boolean().optional().default(true),
+    settlement_note: optionalNoteSchema,
+    explanation: z.string().trim().min(2).max(500).optional(),
+    currency_code: bigBookCurrencySchema.optional(),
+    amount: z.coerce.number().positive("Amount must be greater than 0").optional(),
+    settlement_conversion_rate: z.coerce.number().positive().optional()
+  })
+  .superRefine(refineSingleAmount)
+  .transform((value) => ({
+    client_request_id: value.client_request_id,
+    obligation_ids: value.debt_entry_ids,
+    mode: value.mode === "single" ? ("single" as const) : ("each" as const),
+    entry_date: value.entry_date,
+    currency_code: value.currency_code ?? null,
+    amount: value.mode === "single" ? value.amount : undefined,
+    settlement_conversion_rate: value.settlement_conversion_rate,
+    close: value.close_debts,
+    settlement_note: value.settlement_note,
+    explanation: value.explanation
+  }));
 
-const bigBookGroupEntryFieldsSchema = bigBookEntryBaseSchema.omit({
-  settles_entry_id: true,
-  settlement_conversion_rate: true,
-  settlement_note: true,
-  close_credit: true,
-  credit_settlement_note: true,
-  close_debt: true,
-  debt_settlement_note: true
-});
+const bigBookGroupEntryFieldsSchema = bigBookEntryBaseSchema;
 const bigBookGroupEntryInputSchema = bigBookGroupEntryFieldsSchema.superRefine((value, ctx) => {
   refineBigBookEntryCreditFields(value, ctx);
 });

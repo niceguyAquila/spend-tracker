@@ -590,7 +590,8 @@ export function BigBookVendorActorOutstandingTable({
     setEditDraft({
       mode: settleMode,
       credits: pendingSettle.credits,
-      label: pendingSettle.label
+      label: pendingSettle.label,
+      clientRequestId: crypto.randomUUID()
     });
     setPendingSettle(null);
   }
@@ -612,6 +613,7 @@ export function BigBookVendorActorOutstandingTable({
     setSettleError(null);
     try {
       const body: Record<string, unknown> = {
+        client_request_id: editDraft.clientRequestId,
         credit_entry_ids: editDraft.credits.map((row) => row.id),
         mode: editDraft.mode,
         entry_date: payload.entry_date,

@@ -19,7 +19,7 @@ describe("deriveGroupStatusBadge", () => {
       deriveGroupStatusBadge([
         member({ is_debt: true, debt_status: "open" }),
         member({ is_credit: true, credit_status: "open" }),
-        member({ settles_entry_id: "x" })
+        member({ settles: [{ id: "x" }] })
       ])
     ).toBe("open_debt");
   });
@@ -48,7 +48,7 @@ describe("deriveGroupStatusBadge", () => {
       deriveGroupStatusBadge([
         member({ is_debt: true, debt_status: "settled" }),
         member({ is_debt: true, debt_status: "settled" }),
-        member({ settles_entry_id: "pay-1" })
+        member({ settles: [{ id: "pay-1" }] })
       ])
     ).toBe("settled");
   });
@@ -58,7 +58,7 @@ describe("deriveGroupStatusBadge", () => {
       deriveGroupStatusBadge([
         member({ is_credit: true, credit_status: "settled" }),
         member({ is_future_credit: true, is_credit: true, credit_status: "settled" }),
-        member({ settles_entry_id: "settle-1" })
+        member({ settles: [{ id: "settle-1" }] })
       ])
     ).toBe("settled");
   });
@@ -66,8 +66,8 @@ describe("deriveGroupStatusBadge", () => {
   it("shows Settled when only settlement rows remain", () => {
     expect(
       deriveGroupStatusBadge([
-        member({ settles_entry_id: "a" }),
-        member({ settles_entry_id: "b" })
+        member({ settles: [{ id: "a" }] }),
+        member({ settles: [{ id: "b" }] })
       ])
     ).toBe("settled");
   });

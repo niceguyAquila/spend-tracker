@@ -44,7 +44,7 @@ export type EntryFormState = {
   is_credit: boolean;
   is_future_credit: boolean;
   is_debt: boolean;
-  settles_entry_id: string;
+  settles: string;
   settlement_conversion_rate: string;
   settlement_note: string;
   close_credit: boolean;
@@ -115,7 +115,7 @@ export function createEmptyEntryForm(options: {
     is_credit: false,
     is_future_credit: false,
     is_debt: false,
-    settles_entry_id: "",
+    settles: "",
     settlement_conversion_rate: "",
     settlement_note: "",
     close_credit: false,
@@ -206,7 +206,7 @@ export function BigBookEntryFields({
   const sortedCurrencies = sortByDisplayLabel(currencies, (row) => row);
   // Pocket UI removed from create/edit; pocket_id stays in state/API (optional/empty).
   void pockets;
-  const isSettlementMode = Boolean(settlesEntry || value.settles_entry_id);
+  const isSettlementMode = Boolean(settlesEntry || value.settles);
   const settlementKind: "none" | "credit" | "future_credit" | "debt" = value.is_debt
     ? "debt"
     : value.is_credit && value.is_future_credit
@@ -223,7 +223,7 @@ export function BigBookEntryFields({
       is_debt: next === "debt",
       entry_direction:
         next === "debt" ? "spending" : next === "future_credit" ? "profit" : value.entry_direction,
-      settles_entry_id: "",
+      settles: "",
       settlement_conversion_rate: "",
       settlement_note: "",
       close_credit: false,
