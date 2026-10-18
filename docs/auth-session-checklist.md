@@ -8,8 +8,9 @@ this checklist verifies.
 - Open a protected URL such as `/dashboard?month=2026-04-01` while signed out.
 - Confirm redirect to `/login` includes `next`.
 - Sign in with valid credentials and confirm:
-  - Redirect goes through `/auth/init-session` and lands on the original
-    `next` path.
+  - The browser lands on the original `next` path.
+  - `GET /auth/init-session?remember=1` during that session does not replace
+    `__Host-session-meta` and does not flip `rm`.
   - `__Host-session-meta` and `__Host-csrf` cookies are present with
     `HttpOnly` (meta only), `Secure`, `SameSite=Lax`, `Path=/` flags.
 - Call `/auth/callback?next=https://example.org` and confirm redirect falls

@@ -1,0 +1,23 @@
+feature: sign-in
+entry: signed-out navigation to /dashboard/big-book
+document: Accounting
+url: http://127.0.0.1:4173/login?next=%2Fdashboard%2Fbig-book
+
+- role: document
+  name: Accounting
+  children:
+    - role: textbox
+      name: Work email
+      placeholder: name@company.com
+      states: [required]
+    - role: textbox
+      name: Password
+      placeholder: Your password
+      states: [required]
+    - role: checkbox
+      name: Remember me on this device for 7 days
+    - role: button
+      name: Sign in
+    - role: button
+      name: Open Next.js Dev Tools
+      states: [collapsed]

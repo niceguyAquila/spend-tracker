@@ -2,7 +2,6 @@
 
 import { FormEvent, Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { sanitizeNextPath } from "@/lib/auth/redirect";
 
 const LOGIN_ERROR_MESSAGES: Record<string, string> = {
@@ -33,23 +32,24 @@ function LoginForm() {
     setMessage(null);
 
     try {
-      const supabase = createClient();
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password
+      const nextPath = sanitizeNextPath(searchParams.get("next"));
+      const response = await fetch("/auth/sign-in", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email,
+          password,
+          remember: rememberMe,
+          next: nextPath
+        })
       });
-
-      if (authError) {
-        setError(authError.message);
-      } else {
-        const nextPath = sanitizeNextPath(searchParams.get("next"));
-        const initUrl = new URL("/auth/init-session", window.location.origin);
-        initUrl.searchParams.set("next", nextPath);
-        if (rememberMe) {
-          initUrl.searchParams.set("remember", "1");
-        }
-        window.location.href = initUrl.toString();
+      const payload = (await response.json().catch(() => null)) as { error?: string; redirect?: string } | null;
+      if (!response.ok || !payload?.redirect) {
+        setError(payload?.error ?? "Unable to start login.");
+        return;
       }
+      window.location.assign(payload.redirect);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to start login.");
     } finally {

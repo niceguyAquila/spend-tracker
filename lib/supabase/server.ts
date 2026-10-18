@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createServerClient, type SetAllCookies } from "@supabase/ssr";
 
 import { authCookieOverrides } from "@/lib/security/cookies";
+import { recordPendingAuthCookies } from "@/lib/supabase/pending-auth-cookies";
 
 /**
  * Request-scoped Supabase server client. React cache() ensures layouts,
@@ -27,13 +28,19 @@ export const createClient = cache(async function createClient() {
         return cookieStore.getAll();
       },
       setAll(items: Parameters<SetAllCookies>[0]) {
+        const overrides = authCookieOverrides();
+        const written = items.map(({ name, value, options }) => ({
+          name,
+          value,
+          options: {
+            ...options,
+            ...overrides
+          }
+        }));
+        recordPendingAuthCookies(written);
         try {
-          const overrides = authCookieOverrides();
-          items.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, {
-              ...options,
-              ...overrides
-            });
+          written.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options);
           });
         } catch {
           // Server Components may not allow mutating cookies directly.

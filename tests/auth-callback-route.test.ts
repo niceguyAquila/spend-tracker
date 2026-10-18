@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { decode } from "@/lib/security/session-meta";
+import { SESSION_META_COOKIE } from "@/lib/security/cookies";
+
 const exchangeCodeForSessionMock = vi.fn();
 const getUserMock = vi.fn();
 
@@ -73,5 +76,27 @@ describe("auth callback route", () => {
     expect(setCookies.some((cookie) => cookie.startsWith("session-meta=") && !cookie.startsWith("session-meta=;"))).toBe(
       false
     );
+    expect(getUserMock).not.toHaveBeenCalled();
+  });
+
+  it("mints for the exchanged user and ignores a different pre-existing user", async () => {
+    exchangeCodeForSessionMock.mockResolvedValueOnce({
+      data: { session: { access_token: "new" }, user: { id: "fresh-user" } },
+      error: null
+    });
+    getUserMock.mockResolvedValueOnce({ data: { user: { id: "old-user" } }, error: null });
+
+    const { GET } = await import("@/app/auth/callback/route");
+    const response = await GET(
+      new Request("https://example.com/auth/callback?code=fresh&remember=1&next=/dashboard")
+    );
+
+    const raw = response.headers
+      .getSetCookie()
+      .find((cookie) => cookie.startsWith(`${SESSION_META_COOKIE}=`));
+    const value = raw ? decodeURIComponent(raw.slice(`${SESSION_META_COOKIE}=`.length).split(";")[0]) : undefined;
+    expect((await decode(value))?.uid).toBe("fresh-user");
+    expect((await decode(value))?.rm).toBe(true);
+    expect(getUserMock).not.toHaveBeenCalled();
   });
 });

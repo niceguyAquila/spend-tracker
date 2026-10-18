@@ -1,0 +1,7 @@
+feature: sign-in
+entry: home link Open Dashboard, then signed-out guard of /dashboard/big-book
+document: Accounting
+home: http://127.0.0.1:4173/
+after-home-link: http://127.0.0.1:4173/login
+guard: http://127.0.0.1:4173/login?next=%2Fdashboard%2Fbig-book
+password-sign-in: not run; VERIFY_EMAIL and VERIFY_PASSWORD were not set

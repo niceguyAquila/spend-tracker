@@ -21,8 +21,16 @@ business code.
 
 ## How the timeout enforcement works
 
-1. On successful sign-in (password or OAuth callback) the server route
-   `/auth/init-session` (or the OAuth `/auth/callback`) issues two cookies:
+1. A password sign-in is `POST /auth/sign-in`. That handler calls
+   `signInWithPassword` and, only when the grant succeeds, writes the
+   Supabase auth cookies and the two app cookies on that same response.
+   `GET /auth/init-session` does not issue them. A still-valid app session
+   is sent to `next`. Every other case goes to `/login` and leaves `iat`
+   and `rm` unchanged. A leftover Supabase login is not a new sign-in.
+   OAuth `/auth/callback` issues the cookies only for the user returned by
+   a successful `exchangeCodeForSession`. A failed or empty code does not
+   mint, and `remember=1` on that URL does not extend an existing session.
+   The app cookies are:
    - `__Host-session-meta` (`session-meta` in dev) — HMAC-signed JSON of
      `{iat, la, rm, uid, sid}`.
    - `__Host-csrf` (`csrf` in dev) — random 32-byte token.

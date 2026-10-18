@@ -1,0 +1,13 @@
+feature: sign-in
+entry: http://127.0.0.1:4173/
+document: Accounting
+url: http://127.0.0.1:4173/
+
+- role: document
+  name: Accounting
+  children:
+    - role: link
+      name: Open Dashboard
+    - role: button
+      name: Open Next.js Dev Tools
+      states: [collapsed]
