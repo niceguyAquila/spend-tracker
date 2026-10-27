@@ -58,6 +58,7 @@ import { OPTIMISTIC_CONFLICT_MESSAGE } from "@/lib/db/optimistic-lock";
 import { useTablePagination } from "@/lib/table-pagination";
 import { TablePaginationBar } from "@/components/ui/table-pagination-bar";
 import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
+import { sortByDisplayLabel } from "@/lib/ui/sort-by-display-label";
 import { buildBigBookImportTemplateCsv } from "@/lib/big-book/csv";
 import type { BigBookLedgerSortDir, BigBookLedgerSortKey } from "@/lib/big-book/ledger-display-keys";
 import {
@@ -618,7 +619,8 @@ export function BigBookPanel({
   const today = new Date().toISOString().slice(0, 10);
 
   const defaultTypeId = activeTypes[0]?.id ?? initialTypes[0]?.id ?? "";
-  const defaultActorId = initialActors[0]?.id ?? "";
+  const defaultActorId =
+    sortByDisplayLabel(initialActors, (actor) => actor.display_name)[0]?.id ?? "";
   const newEntryForm = useCallback(
     () =>
       createEmptyEntryForm({

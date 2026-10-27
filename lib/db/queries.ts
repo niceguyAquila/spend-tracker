@@ -10,6 +10,7 @@ import {
   type VendorActorOutstandingDebtRpcRow
 } from "@/lib/big-book/debt";
 import {
+  amountCountedInLedgerTotals,
   roundBigBookAmount,
   summarizeCurrencies,
   type BigBookCurrency,
@@ -951,7 +952,13 @@ const EMPTY_LEDGER_TOTALS: BigBookLedgerTotals = {
 
 function ledgerTotalsFromEntries(entries: BigBookEntry[]): BigBookLedgerTotals {
   const pocketRows = entries.filter((entry) => !entry.pocket_id);
-  const totalRows = pocketRows.filter((entry) => !entry.is_debt && !entry.is_future_credit);
+  const totalRows = pocketRows
+    .filter((entry) => !entry.is_debt && !entry.is_future_credit)
+    .flatMap((entry) => {
+      const amount = amountCountedInLedgerTotals(entry);
+      if (!Number.isFinite(amount) || amount === 0) return [];
+      return [{ ...entry, amount }];
+    });
   return {
     pageTotals: summarizeCurrencies(totalRows),
     pageEntryCount: entries.length,

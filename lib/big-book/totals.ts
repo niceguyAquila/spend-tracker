@@ -21,6 +21,14 @@ export type GroupSummableEntry = SummableEntry & {
   is_debt?: boolean;
   /** Non-empty when this row is a payment covering one or more obligations. */
   settles?: readonly unknown[] | null;
+  /**
+   * Payments against this obligation. A cross-currency applied amount is already
+   * represented by the payment row, so totals keep only the uncovered remainder.
+   */
+  settlements?: readonly {
+    currency_code: BigBookCurrency;
+    applied_amount: number | null;
+  }[] | null;
 };
 
 export type SettlementProfitOverviewEntry = GroupSummableEntry & {
@@ -68,9 +76,48 @@ export function summarizeCurrencies(entries: SummableEntry[]): BigBookCurrencyTo
 }
 
 /**
+ * Credit currency already covered by a payment in a different currency.
+ * Same-currency payments are left alone. Unknown applied amounts (historical
+ * rows recorded without a rate) are not guessed.
+ */
+function crossCurrencyApplied(entry: GroupSummableEntry): number {
+  if (!entry.is_credit || entry.is_future_credit || entry.is_debt) return 0;
+  let covered = 0;
+  for (const settlement of entry.settlements ?? []) {
+    if (settlement.currency_code === entry.currency_code) continue;
+    const applied = Number(settlement.applied_amount);
+    if (!Number.isFinite(applied) || applied <= 0) continue;
+    covered += applied;
+  }
+  return covered;
+}
+
+/**
+ * Amount that belongs in a ledger total. A normal credit keeps the part not
+ * yet settled in another currency; the payment row carries that other currency.
+ */
+export function amountCountedInLedgerTotals(entry: GroupSummableEntry): number {
+  const amount = Number(entry.amount);
+  if (!Number.isFinite(amount)) return 0;
+  const covered = crossCurrencyApplied(entry);
+  if (covered <= 0) return amount;
+  return roundBigBookAmount(Math.max(0, amount - covered));
+}
+
+function countedEntries(entries: GroupSummableEntry[]): GroupSummableEntry[] {
+  return entries.flatMap((entry) => {
+    const amount = amountCountedInLedgerTotals(entry);
+    if (!Number.isFinite(amount) || amount === 0) return [];
+    return [{ ...entry, amount }];
+  });
+}
+
+/**
  * Group header totals. Debt / Future Credit + settlement pairs only count
  * settlement rows so the payment is not double-counted with the obligation.
  * Open debt / Future Credit groups with no payment still sum the obligations.
+ * A normal credit settled in another currency keeps its unpaid remainder and
+ * does not add the covered amount again beside the payment.
  */
 export function summarizeGroupCurrencies(entries: GroupSummableEntry[]): BigBookCurrencyTotal[] {
   const hasFutureCredit = entries.some((entry) => Boolean(entry.is_future_credit));
@@ -79,7 +126,7 @@ export function summarizeGroupCurrencies(entries: GroupSummableEntry[]): BigBook
   if ((hasFutureCredit || hasDebt) && hasSettlement) {
     return summarizeCurrencies(entries.filter((entry) => (entry.settles?.length ?? 0) > 0));
   }
-  return summarizeCurrencies(entries);
+  return summarizeCurrencies(countedEntries(entries));
 }
 
 function isObligationEntry(entry: GroupSummableEntry) {
@@ -127,6 +174,16 @@ function totalLinesFor(
 export function summarizeSettlementProfitOverview(
   entries: SettlementProfitOverviewEntry[]
 ): SettlementProfitOverviewLine[] | null {
+  // An unpaid cross-currency remainder still belongs in the header net.
+  // Falling back lets summarizeGroupCurrencies keep that remainder.
+  const hasOpenCrossCurrencyRemainder = entries.some((entry) => {
+    const covered = crossCurrencyApplied(entry);
+    if (covered <= 0) return false;
+    const amount = Number(entry.amount);
+    return Number.isFinite(amount) && roundBigBookAmount(amount - covered) > 0;
+  });
+  if (hasOpenCrossCurrencyRemainder) return null;
+
   const profitLines = sumRecordedAmountsByCurrency(entries.filter(isProfitCompanion));
   const settleLines = sumRecordedAmountsByCurrency(
     entries.filter((entry) => (entry.settles?.length ?? 0) > 0)

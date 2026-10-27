@@ -26,6 +26,10 @@ function groupEntry(
     is_future_credit?: boolean;
     is_debt?: boolean;
     settles?: readonly { id: string }[];
+    settlements?: readonly {
+      currency_code: GroupEntry["currency_code"];
+      applied_amount: number | null;
+    }[];
   } = {}
 ): GroupEntry {
   return { amount, currency_code, entry_direction, ...flags };
@@ -41,6 +45,10 @@ function overviewEntry(
     is_future_credit?: boolean;
     is_debt?: boolean;
     settles?: readonly { id: string }[];
+    settlements?: readonly {
+      currency_code: OverviewEntry["currency_code"];
+      applied_amount: number | null;
+    }[];
   } = {}
 ): OverviewEntry {
   return { amount, currency_code, entry_direction, ...flags };
@@ -172,6 +180,56 @@ describe("summarizeGroupCurrencies", () => {
     ]);
   });
 
+  it("keeps the unpaid credit remainder and counts a cross-currency settlement once", () => {
+    const totals = summarizeGroupCurrencies([
+      groupEntry(1_000, "MYR", "profit", {
+        is_credit: true,
+        settlements: [{ currency_code: "USDT", applied_amount: 600 }]
+      }),
+      groupEntry(120, "USDT", "profit", { settles: [{ id: "credit-1" }] })
+    ]);
+    expect(totals).toEqual([
+      { currency: "MYR", spending: 0, profit: 400, net: 400 },
+      { currency: "USDT", spending: 0, profit: 120, net: 120 }
+    ]);
+  });
+
+  it("omits the credit currency when a cross-currency settlement covers it", () => {
+    const totals = summarizeGroupCurrencies([
+      groupEntry(1_000, "MYR", "profit", {
+        is_credit: true,
+        settlements: [{ currency_code: "USDT", applied_amount: 1_000 }]
+      }),
+      groupEntry(200, "USDT", "profit", { settles: [{ id: "credit-1" }] })
+    ]);
+    expect(totals).toEqual([{ currency: "USDT", spending: 0, profit: 200, net: 200 }]);
+  });
+
+  it("still counts a same-currency credit and its settlement", () => {
+    const totals = summarizeGroupCurrencies([
+      groupEntry(1_000, "MYR", "profit", {
+        is_credit: true,
+        settlements: [{ currency_code: "MYR", applied_amount: 1_000 }]
+      }),
+      groupEntry(1_000, "MYR", "profit", { settles: [{ id: "credit-1" }] })
+    ]);
+    expect(totals).toEqual([{ currency: "MYR", spending: 0, profit: 2_000, net: 2_000 }]);
+  });
+
+  it("does not guess a cross-currency amount that was never recorded", () => {
+    const totals = summarizeGroupCurrencies([
+      groupEntry(1_000, "MYR", "profit", {
+        is_credit: true,
+        settlements: [{ currency_code: "USDT", applied_amount: null }]
+      }),
+      groupEntry(200, "USDT", "profit", { settles: [{ id: "credit-1" }] })
+    ]);
+    expect(totals).toEqual([
+      { currency: "MYR", spending: 0, profit: 1_000, net: 1_000 },
+      { currency: "USDT", spending: 0, profit: 200, net: 200 }
+    ]);
+  });
+
   it("uses settlement currency only when debt currency differs", () => {
     const totals = summarizeGroupCurrencies([
       groupEntry(50_000, "MYR", "spending", { is_debt: true }),
@@ -224,6 +282,39 @@ describe("summarizeSettlementProfitOverview", () => {
       { kind: "settle", currency: "USDT", amount: 110 },
       { kind: "total", currency: "MYR", amount: 42 },
       { kind: "total", currency: "USDT", amount: 110 }
+    ]);
+  });
+
+  it("uses the net header when a cross-currency credit still has an unpaid remainder", () => {
+    expect(
+      summarizeSettlementProfitOverview([
+        overviewEntry(1_000, "MYR", "profit", {
+          is_credit: true,
+          type_name: "Sales",
+          settlements: [{ currency_code: "USDT", applied_amount: 600 }]
+        }),
+        overviewEntry(120, "USDT", "profit", { settles: [{ id: "credit-1" }], type_name: "Sales" }),
+        overviewEntry(42, "MYR", "profit", { type_name: "PROFIT" })
+      ])
+    ).toBeNull();
+  });
+
+  it("keeps profit and settle lines when the cross-currency credit is fully covered", () => {
+    const lines = summarizeSettlementProfitOverview([
+      overviewEntry(1_000, "MYR", "profit", {
+        is_credit: true,
+        type_name: "Sales",
+        settlements: [{ currency_code: "USDT", applied_amount: 1_000 }]
+      }),
+      overviewEntry(200, "USDT", "profit", { settles: [{ id: "credit-1" }], type_name: "Sales" }),
+      overviewEntry(42, "MYR", "profit", { type_name: "PROFIT" })
+    ]);
+
+    expect(lines).toEqual([
+      { kind: "profit", currency: "MYR", amount: 42 },
+      { kind: "settle", currency: "USDT", amount: 200 },
+      { kind: "total", currency: "MYR", amount: 42 },
+      { kind: "total", currency: "USDT", amount: 200 }
     ]);
   });
 
