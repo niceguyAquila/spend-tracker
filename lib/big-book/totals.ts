@@ -22,8 +22,8 @@ export type GroupSummableEntry = SummableEntry & {
   /** Non-empty when this row is a payment covering one or more obligations. */
   settles?: readonly unknown[] | null;
   /**
-   * Payments against this obligation. A cross-currency applied amount is already
-   * represented by the payment row, so totals keep only the uncovered remainder.
+   * Payments against this obligation. Applied amounts are already represented
+   * by the payment rows, so totals keep only the uncovered remainder.
    */
   settlements?: readonly {
     currency_code: BigBookCurrency;
@@ -76,15 +76,13 @@ export function summarizeCurrencies(entries: SummableEntry[]): BigBookCurrencyTo
 }
 
 /**
- * Credit currency already covered by a payment in a different currency.
- * Same-currency payments are left alone. Unknown applied amounts (historical
- * rows recorded without a rate) are not guessed.
+ * Credit currency already covered by a settlement payment, in either currency.
+ * Unknown applied amounts (historical rows recorded without a rate) are not guessed.
  */
-function crossCurrencyApplied(entry: GroupSummableEntry): number {
+function settlementApplied(entry: GroupSummableEntry): number {
   if (!entry.is_credit || entry.is_future_credit || entry.is_debt) return 0;
   let covered = 0;
   for (const settlement of entry.settlements ?? []) {
-    if (settlement.currency_code === entry.currency_code) continue;
     const applied = Number(settlement.applied_amount);
     if (!Number.isFinite(applied) || applied <= 0) continue;
     covered += applied;
@@ -92,16 +90,25 @@ function crossCurrencyApplied(entry: GroupSummableEntry): number {
   return covered;
 }
 
+// Amounts are stored at 4 decimal places. A cross-currency close often lands
+// one minor unit short (689,800 covered as 689,799.9999). That residue is not
+// an unpaid balance.
+const CROSS_CURRENCY_RESIDUE = 0.0001;
+
 /**
  * Amount that belongs in a ledger total. A normal credit keeps the part not
- * yet settled in another currency; the payment row carries that other currency.
+ * yet covered by a settlement. The payment row carries the settled amount,
+ * whether or not it uses the credit's currency.
+ * A remainder of one minor unit or less is treated as fully covered.
  */
 export function amountCountedInLedgerTotals(entry: GroupSummableEntry): number {
   const amount = Number(entry.amount);
   if (!Number.isFinite(amount)) return 0;
-  const covered = crossCurrencyApplied(entry);
+  const covered = settlementApplied(entry);
   if (covered <= 0) return amount;
-  return roundBigBookAmount(Math.max(0, amount - covered));
+  const remainder = roundBigBookAmount(Math.max(0, amount - covered));
+  if (remainder <= CROSS_CURRENCY_RESIDUE) return 0;
+  return remainder;
 }
 
 function countedEntries(entries: GroupSummableEntry[]): GroupSummableEntry[] {
@@ -116,8 +123,8 @@ function countedEntries(entries: GroupSummableEntry[]): GroupSummableEntry[] {
  * Group header totals. Debt / Future Credit + settlement pairs only count
  * settlement rows so the payment is not double-counted with the obligation.
  * Open debt / Future Credit groups with no payment still sum the obligations.
- * A normal credit settled in another currency keeps its unpaid remainder and
- * does not add the covered amount again beside the payment.
+ * A normal credit keeps its unpaid remainder and does not add the covered
+ * amount again beside the settlement payment.
  */
 export function summarizeGroupCurrencies(entries: GroupSummableEntry[]): BigBookCurrencyTotal[] {
   const hasFutureCredit = entries.some((entry) => Boolean(entry.is_future_credit));
@@ -174,14 +181,11 @@ function totalLinesFor(
 export function summarizeSettlementProfitOverview(
   entries: SettlementProfitOverviewEntry[]
 ): SettlementProfitOverviewLine[] | null {
-  // An unpaid cross-currency remainder still belongs in the header net.
+  // An unpaid remainder still belongs in the header net.
   // Falling back lets summarizeGroupCurrencies keep that remainder.
-  const hasOpenCrossCurrencyRemainder = entries.some((entry) => {
-    const covered = crossCurrencyApplied(entry);
-    if (covered <= 0) return false;
-    const amount = Number(entry.amount);
-    return Number.isFinite(amount) && roundBigBookAmount(amount - covered) > 0;
-  });
+  const hasOpenCrossCurrencyRemainder = entries.some(
+    (entry) => settlementApplied(entry) > 0 && amountCountedInLedgerTotals(entry) > 0
+  );
   if (hasOpenCrossCurrencyRemainder) return null;
 
   const profitLines = sumRecordedAmountsByCurrency(entries.filter(isProfitCompanion));

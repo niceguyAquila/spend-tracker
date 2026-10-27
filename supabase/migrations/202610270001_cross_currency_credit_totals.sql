@@ -225,6 +225,7 @@ begin
     select
       f.*,
       case
+        when f.is_credit and coalesce(x.applied, 0) > 0 and f.amount - x.applied <= 0.0001 then 0
         when f.is_credit then greatest(0, f.amount - coalesce(x.applied, 0))
         else f.amount
       end as counted_amount
@@ -238,6 +239,7 @@ begin
     select
       pr.*,
       case
+        when pr.is_credit and coalesce(x.applied, 0) > 0 and pr.amount - x.applied <= 0.0001 then 0
         when pr.is_credit then greatest(0, pr.amount - coalesce(x.applied, 0))
         else pr.amount
       end as counted_amount

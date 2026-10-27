@@ -194,6 +194,20 @@ describe("summarizeGroupCurrencies", () => {
     ]);
   });
 
+  it("drops a one-minor-unit remainder left by cross-currency rounding", () => {
+    const totals = summarizeGroupCurrencies([
+      groupEntry(689_800, "MYR", "profit", {
+        is_credit: true,
+        settlements: [{ currency_code: "USDT", applied_amount: 689_799.9999 }]
+      }),
+      groupEntry(172_264.8153, "USDT", "profit", { settles: [{ id: "credit-1" }] }),
+      groupEntry(310.0767, "USDT", "spending")
+    ]);
+    expect(totals).toEqual([
+      { currency: "USDT", spending: 310.0767, profit: 172_264.8153, net: 171_954.7386 }
+    ]);
+  });
+
   it("omits the credit currency when a cross-currency settlement covers it", () => {
     const totals = summarizeGroupCurrencies([
       groupEntry(1_000, "MYR", "profit", {
@@ -205,15 +219,26 @@ describe("summarizeGroupCurrencies", () => {
     expect(totals).toEqual([{ currency: "USDT", spending: 0, profit: 200, net: 200 }]);
   });
 
-  it("still counts a same-currency credit and its settlement", () => {
+  it("counts a same-currency settlement once", () => {
+    const totals = summarizeGroupCurrencies([
+      groupEntry(214_000, "MYR", "profit", {
+        is_credit: true,
+        settlements: [{ currency_code: "MYR", applied_amount: 214_000 }]
+      }),
+      groupEntry(214_000, "MYR", "profit", { settles: [{ id: "credit-1" }] })
+    ]);
+    expect(totals).toEqual([{ currency: "MYR", spending: 0, profit: 214_000, net: 214_000 }]);
+  });
+
+  it("keeps the unpaid remainder when a same-currency settlement is partial", () => {
     const totals = summarizeGroupCurrencies([
       groupEntry(1_000, "MYR", "profit", {
         is_credit: true,
-        settlements: [{ currency_code: "MYR", applied_amount: 1_000 }]
+        settlements: [{ currency_code: "MYR", applied_amount: 600 }]
       }),
-      groupEntry(1_000, "MYR", "profit", { settles: [{ id: "credit-1" }] })
+      groupEntry(600, "MYR", "profit", { settles: [{ id: "credit-1" }] })
     ]);
-    expect(totals).toEqual([{ currency: "MYR", spending: 0, profit: 2_000, net: 2_000 }]);
+    expect(totals).toEqual([{ currency: "MYR", spending: 0, profit: 1_000, net: 1_000 }]);
   });
 
   it("does not guess a cross-currency amount that was never recorded", () => {
