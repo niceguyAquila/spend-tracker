@@ -24,6 +24,7 @@ function groupEntry(
   flags: {
     is_credit?: boolean;
     is_future_credit?: boolean;
+    was_future_credit?: boolean;
     is_debt?: boolean;
     settles?: readonly { id: string }[];
     settlements?: readonly {
@@ -43,6 +44,7 @@ function overviewEntry(
     type_name?: string | null;
     is_credit?: boolean;
     is_future_credit?: boolean;
+    was_future_credit?: boolean;
     is_debt?: boolean;
     settles?: readonly { id: string }[];
     settlements?: readonly {
@@ -255,6 +257,62 @@ describe("summarizeGroupCurrencies", () => {
     ]);
   });
 
+  it("keeps an actualized future-credit inflow in full until it is settled", () => {
+    const totals = summarizeGroupCurrencies([
+      groupEntry(50_000, "MYR", "profit", { is_credit: true, was_future_credit: true }),
+      groupEntry(10_000, "MYR", "profit", { is_credit: true, was_future_credit: true })
+    ]);
+    expect(totals).toEqual([{ currency: "MYR", spending: 0, profit: 60_000, net: 60_000 }]);
+  });
+
+  it("counts only the settled amount for an actualized future-credit inflow, not the grouped faces", () => {
+    const totals = summarizeGroupCurrencies([
+      groupEntry(50_000, "MYR", "profit", {
+        is_credit: true,
+        was_future_credit: true,
+        settlements: [{ currency_code: "MYR", applied_amount: 30_000 }]
+      }),
+      groupEntry(10_000, "MYR", "profit", {
+        is_credit: true,
+        was_future_credit: true,
+        settlements: [{ currency_code: "MYR", applied_amount: 10_000 }]
+      }),
+      groupEntry(40_000, "MYR", "profit", { settles: [{ id: "future-pay" }] })
+    ]);
+    expect(totals).toEqual([{ currency: "MYR", spending: 0, profit: 40_000, net: 40_000 }]);
+  });
+
+  it("drops the credit currency when an actualized future-credit inflow is settled in another currency", () => {
+    const totals = summarizeGroupCurrencies([
+      groupEntry(50_000, "MYR", "profit", {
+        is_credit: true,
+        was_future_credit: true,
+        settlements: [{ currency_code: "USDT", applied_amount: 20_000 }]
+      }),
+      groupEntry(10_000, "MYR", "profit", {
+        is_credit: true,
+        was_future_credit: true,
+        settlements: [{ currency_code: "USDT", applied_amount: 10_000 }]
+      }),
+      groupEntry(95, "USDT", "profit", { settles: [{ id: "future-pay" }] }),
+      groupEntry(1.1, "USDT", "spending"),
+      groupEntry(8_000, "MYR", "spending")
+    ]);
+    expect(totals).toEqual([{ currency: "USDT", spending: 0, profit: 95, net: 95 }]);
+  });
+
+  it("keeps an actualized future-credit outflow remainder the same way as a normal credit", () => {
+    const totals = summarizeGroupCurrencies([
+      groupEntry(1_000, "MYR", "spending", {
+        is_credit: true,
+        was_future_credit: true,
+        settlements: [{ currency_code: "MYR", applied_amount: 600 }]
+      }),
+      groupEntry(600, "MYR", "spending", { settles: [{ id: "future-out" }] })
+    ]);
+    expect(totals).toEqual([{ currency: "MYR", spending: 1_000, profit: 0, net: -1_000 }]);
+  });
+
   it("uses settlement currency only when debt currency differs", () => {
     const totals = summarizeGroupCurrencies([
       groupEntry(50_000, "MYR", "spending", { is_debt: true }),
@@ -340,6 +398,23 @@ describe("summarizeSettlementProfitOverview", () => {
       { kind: "settle", currency: "USDT", amount: 200 },
       { kind: "total", currency: "MYR", amount: 42 },
       { kind: "total", currency: "USDT", amount: 200 }
+    ]);
+  });
+
+  it("shows only the settlement when an actualized future-credit inflow has a profit companion", () => {
+    const entries = [
+      overviewEntry(1_000, "MYR", "profit", {
+        is_credit: true,
+        was_future_credit: true,
+        type_name: "Sales",
+        settlements: [{ currency_code: "MYR", applied_amount: 400 }]
+      }),
+      overviewEntry(400, "MYR", "profit", { settles: [{ id: "pay" }], type_name: "Sales" }),
+      overviewEntry(50, "MYR", "profit", { type_name: "PROFIT" })
+    ];
+    expect(summarizeSettlementProfitOverview(entries)).toBeNull();
+    expect(summarizeGroupCurrencies(entries)).toEqual([
+      { currency: "MYR", spending: 0, profit: 400, net: 400 }
     ]);
   });
 

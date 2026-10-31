@@ -209,6 +209,8 @@ export type BigBookEntry = {
   is_credit: boolean;
   /** True when credit is not yet actualized (excluded from cash totals). Implies is_credit. */
   is_future_credit: boolean;
+  /** True once the row has been Future Credit, including after Actualize. */
+  was_future_credit?: boolean;
   is_debt: boolean;
   settlement_conversion_rate: number | null;
   settlement_note: string | null;

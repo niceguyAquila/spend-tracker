@@ -18,6 +18,11 @@ type SummableEntry = {
 export type GroupSummableEntry = SummableEntry & {
   is_credit?: boolean;
   is_future_credit?: boolean;
+  /**
+   * Stays true after Actualize. A settled inflow that started as Future Credit
+   * contributes nothing here; the payment row is the settled amount.
+   */
+  was_future_credit?: boolean;
   is_debt?: boolean;
   /** Non-empty when this row is a payment covering one or more obligations. */
   settles?: readonly unknown[] | null;
@@ -100,23 +105,49 @@ const CROSS_CURRENCY_RESIDUE = 0.0001;
  * yet covered by a settlement. The payment row carries the settled amount,
  * whether or not it uses the credit's currency.
  * A remainder of one minor unit or less is treated as fully covered.
+ * An inflow that started as Future Credit drops out entirely once any of it
+ * is settled, so the grouped faces are not added beside the payment.
  */
 export function amountCountedInLedgerTotals(entry: GroupSummableEntry): number {
   const amount = Number(entry.amount);
   if (!Number.isFinite(amount)) return 0;
   const covered = settlementApplied(entry);
+  if (entry.was_future_credit && entry.entry_direction === "profit" && covered > 0) return 0;
   if (covered <= 0) return amount;
   const remainder = roundBigBookAmount(Math.max(0, amount - covered));
   if (remainder <= CROSS_CURRENCY_RESIDUE) return 0;
   return remainder;
 }
 
-function countedEntries(entries: GroupSummableEntry[]): GroupSummableEntry[] {
+function countedEntries(entries: readonly GroupSummableEntry[]): GroupSummableEntry[] {
   return entries.flatMap((entry) => {
     const amount = amountCountedInLedgerTotals(entry);
     if (!Number.isFinite(amount) || amount === 0) return [];
     return [{ ...entry, amount }];
   });
+}
+
+function isSettledFormerFutureInflow(entry: GroupSummableEntry) {
+  return Boolean(
+    entry.was_future_credit &&
+      !entry.is_future_credit &&
+      !entry.is_debt &&
+      entry.entry_direction === "profit" &&
+      settlementApplied(entry) > 0
+  );
+}
+
+/**
+ * Rows that belong in a ledger total.
+ * After an inflow Future Credit is actualized and then settled, only the
+ * settlement payment counts. The other lines of that grouped transaction do not.
+ */
+export function entriesCountedInLedgerTotals<T extends GroupSummableEntry>(entries: readonly T[]): T[] {
+  const settlementRows = entries.filter((entry) => (entry.settles?.length ?? 0) > 0);
+  if (entries.some(isSettledFormerFutureInflow) && settlementRows.length > 0) {
+    return [...settlementRows];
+  }
+  return countedEntries(entries) as T[];
 }
 
 /**
@@ -125,6 +156,8 @@ function countedEntries(entries: GroupSummableEntry[]): GroupSummableEntry[] {
  * Open debt / Future Credit groups with no payment still sum the obligations.
  * A normal credit keeps its unpaid remainder and does not add the covered
  * amount again beside the settlement payment.
+ * An actualized Future Credit inflow does not: once settled, only the
+ * payment counts, not the other lines of that grouped transaction.
  */
 export function summarizeGroupCurrencies(entries: GroupSummableEntry[]): BigBookCurrencyTotal[] {
   const hasFutureCredit = entries.some((entry) => Boolean(entry.is_future_credit));
@@ -133,7 +166,7 @@ export function summarizeGroupCurrencies(entries: GroupSummableEntry[]): BigBook
   if ((hasFutureCredit || hasDebt) && hasSettlement) {
     return summarizeCurrencies(entries.filter((entry) => (entry.settles?.length ?? 0) > 0));
   }
-  return summarizeCurrencies(countedEntries(entries));
+  return summarizeCurrencies(entriesCountedInLedgerTotals(entries));
 }
 
 function isObligationEntry(entry: GroupSummableEntry) {
@@ -181,6 +214,9 @@ function totalLinesFor(
 export function summarizeSettlementProfitOverview(
   entries: SettlementProfitOverviewEntry[]
 ): SettlementProfitOverviewLine[] | null {
+  // A settled former Future Credit inflow shows the payment alone.
+  if (entries.some(isSettledFormerFutureInflow)) return null;
+
   // An unpaid remainder still belongs in the header net.
   // Falling back lets summarizeGroupCurrencies keep that remainder.
   const hasOpenCrossCurrencyRemainder = entries.some(

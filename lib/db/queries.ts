@@ -10,7 +10,7 @@ import {
   type VendorActorOutstandingDebtRpcRow
 } from "@/lib/big-book/debt";
 import {
-  amountCountedInLedgerTotals,
+  entriesCountedInLedgerTotals,
   roundBigBookAmount,
   summarizeCurrencies,
   type BigBookCurrency,
@@ -357,7 +357,7 @@ export type BigBookEntryFilters = {
 };
 
 const BIG_BOOK_ENTRY_SELECT = `
-  id, group_id, entry_date, entry_direction, entry_type_id, vendor_type_id, vendor_id, pocket_id, action_by_id, explanation, amount, currency_code, remark, responsible_actor_id, is_credit, is_future_credit, is_debt, settlement_conversion_rate, settlement_note, credit_settled_at, credit_settled_by, credit_settlement_note, debt_settled_at, debt_settled_by, debt_settlement_note, created_by, updated_by, created_at, updated_at,
+  id, group_id, entry_date, entry_direction, entry_type_id, vendor_type_id, vendor_id, pocket_id, action_by_id, explanation, amount, currency_code, remark, responsible_actor_id, is_credit, is_future_credit, was_future_credit, is_debt, settlement_conversion_rate, settlement_note, credit_settled_at, credit_settled_by, credit_settlement_note, debt_settled_at, debt_settled_by, debt_settlement_note, created_by, updated_by, created_at, updated_at,
   business_ledger_types(id, code, name),
   business_ledger_vendor_types(id, code, name),
   business_ledger_vendors(id, code, name),
@@ -561,6 +561,7 @@ type RawBigBookEntryRow = {
   responsible_actor_id: string;
   is_credit: boolean | null;
   is_future_credit: boolean | null;
+  was_future_credit: boolean | null;
   is_debt: boolean | null;
   settlement_conversion_rate: number | string | null;
   settlement_note: string | null;
@@ -625,6 +626,7 @@ function mapBigBookEntryRow(row: RawBigBookEntryRow, actorMap: Map<string, strin
     responsible_actor_id: row.responsible_actor_id,
     is_credit: Boolean(row.is_credit),
     is_future_credit: Boolean(row.is_future_credit),
+    was_future_credit: Boolean(row.was_future_credit),
     is_debt: Boolean(row.is_debt),
     settlement_conversion_rate:
       row.settlement_conversion_rate == null ? null : Number(row.settlement_conversion_rate),
@@ -952,13 +954,9 @@ const EMPTY_LEDGER_TOTALS: BigBookLedgerTotals = {
 
 function ledgerTotalsFromEntries(entries: BigBookEntry[]): BigBookLedgerTotals {
   const pocketRows = entries.filter((entry) => !entry.pocket_id);
-  const totalRows = pocketRows
-    .filter((entry) => !entry.is_debt && !entry.is_future_credit)
-    .flatMap((entry) => {
-      const amount = amountCountedInLedgerTotals(entry);
-      if (!Number.isFinite(amount) || amount === 0) return [];
-      return [{ ...entry, amount }];
-    });
+  const totalRows = entriesCountedInLedgerTotals(
+    pocketRows.filter((entry) => !entry.is_debt && !entry.is_future_credit)
+  );
   return {
     pageTotals: summarizeCurrencies(totalRows),
     pageEntryCount: entries.length,
