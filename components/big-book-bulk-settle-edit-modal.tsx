@@ -9,6 +9,7 @@ import {
   computeUsdtSettleAmountWithProfit
 } from "@/lib/big-book/credit";
 import { calculateKursAmount } from "@/lib/big-book/kurs-usdt-entry";
+import { parseOptionalGasFeeAmount } from "@/lib/big-book/gas-fee-entry";
 import { formatAmount } from "@/lib/display-format";
 import {
   formatAmountInput,
@@ -52,6 +53,8 @@ export type BulkSettleSubmitPayload = {
   kurs_rate?: number;
   /** Optional KURS amount override (USDT settle only). */
   kurs_amount?: number;
+  /** Optional TRX gas fee (USDT debt payment only). */
+  gas_fee_amount?: number;
 };
 
 type Props = {
@@ -108,6 +111,7 @@ export function BigBookBulkSettleEditModal({
   const [profitAmount, setProfitAmount] = useState("");
   const [kursRate, setKursRate] = useState("");
   const [kursAmount, setKursAmount] = useState("");
+  const [gasFeeAmount, setGasFeeAmount] = useState("");
   const [note, setNote] = useState("");
   const [closeCredits, setCloseCredits] = useState(true);
   const [explanation, setExplanation] = useState("");
@@ -125,6 +129,7 @@ export function BigBookBulkSettleEditModal({
     setProfitAmount("");
     setKursRate("");
     setKursAmount("");
+    setGasFeeAmount("");
     setNote("");
     setCloseCredits(true);
     setIncludeProfit(false);
@@ -147,6 +152,7 @@ export function BigBookBulkSettleEditModal({
   const sameCurrency = currencyCode === creditCurrency && !mixedCreditCurrency;
   const showConversionRate = !sameCurrency && !mixedCreditCurrency;
   const showUsdtKurs = !isDebt && currencyCode === "USDT" && !mixedCreditCurrency;
+  const showGasFee = isDebt && currencyCode === "USDT";
   const rateValue = sameCurrency ? 1 : Number(conversionRate);
   const amountValue = Number(parseAmountInput(amount));
   const profitValue = Number(parseAmountInput(profitAmount));
@@ -343,6 +349,7 @@ export function BigBookBulkSettleEditModal({
               const profitParsed = Number(parseAmountInput(profitAmount));
               const kursRateParsed = Number(parseAmountInput(kursRate));
               const kursAmountParsed = Number(parseAmountInput(kursAmount));
+              const gasFeeParsed = showGasFee ? parseOptionalGasFeeAmount(gasFeeAmount) : null;
               onSubmit({
                 entry_date: entryDate,
                 currency_code: currencyCode,
@@ -367,7 +374,8 @@ export function BigBookBulkSettleEditModal({
                 Number.isFinite(kursAmountParsed) &&
                 kursAmountParsed > 0
                   ? { kurs_amount: kursAmountParsed }
-                  : {})
+                  : {}),
+                ...(gasFeeParsed != null ? { gas_fee_amount: gasFeeParsed } : {})
               });
             }}
           >
@@ -657,6 +665,32 @@ export function BigBookBulkSettleEditModal({
               </span>
             </label>
           </div>
+        ) : null}
+
+        {showGasFee ? (
+          <label className="block text-sm">
+            Gas fee
+            <div className="mt-1 flex overflow-hidden rounded-md border border-[rgb(var(--border))] focus-within:shadow-[0_0_0_3px_rgba(var(--focus),0.25)]">
+              <input
+                className="min-w-0 flex-1 border-0 bg-[rgb(var(--surface))] px-3 py-2 text-right text-base font-medium text-[rgb(var(--text))] focus:outline-none"
+                inputMode="decimal"
+                placeholder="0"
+                value={gasFeeAmount}
+                onChange={(event) => setGasFeeAmount(formatAmountInput(event.target.value))}
+                aria-label="Gas fee TRX amount"
+              />
+              <span
+                className="shrink-0 border-0 border-l border-[rgb(var(--border))] bg-[rgb(var(--surface-muted))] px-2 py-2 text-sm font-medium text-[rgb(var(--text))]"
+                aria-hidden
+              >
+                TRX
+              </span>
+            </div>
+            <span className="mt-1 block text-xs text-muted">
+              Optional. Creates a grouped TRX spending entry for the transfer fee
+              {draft.mode === "per_credit" ? ", recorded once for the batch." : "."}
+            </span>
+          </label>
         ) : null}
 
         <label className="block text-sm">

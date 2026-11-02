@@ -422,9 +422,20 @@ export const bigBookBulkDebtSettleSchema = z
     explanation: z.string().trim().min(2).max(500).optional(),
     currency_code: bigBookCurrencySchema.optional(),
     amount: z.coerce.number().positive("Amount must be greater than 0").optional(),
-    settlement_conversion_rate: z.coerce.number().positive().optional()
+    settlement_conversion_rate: z.coerce.number().positive().optional(),
+    /** Optional TRX gas fee for USDT payments (grouped TRX spending companion). */
+    gas_fee_amount: optionalGasFeeAmountSchema
   })
-  .superRefine(refineSingleAmount)
+  .superRefine((value, ctx) => {
+    refineSingleAmount(value, ctx);
+    if (value.gas_fee_amount != null && value.currency_code !== "USDT") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Gas fee is only allowed when the payment currency is USDT.",
+        path: ["gas_fee_amount"]
+      });
+    }
+  })
   .transform((value) => ({
     client_request_id: value.client_request_id,
     obligation_ids: value.debt_entry_ids,
@@ -435,7 +446,8 @@ export const bigBookBulkDebtSettleSchema = z
     settlement_conversion_rate: value.settlement_conversion_rate,
     close: value.close_debts,
     settlement_note: value.settlement_note,
-    explanation: value.explanation
+    explanation: value.explanation,
+    gas_fee_amount: value.gas_fee_amount
   }));
 
 const bigBookGroupEntryFieldsSchema = bigBookEntryBaseSchema;

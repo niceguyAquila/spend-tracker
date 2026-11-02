@@ -318,6 +318,7 @@ export type BulkSettleInput = {
   profit_amount?: number;
   kurs_rate?: number;
   kurs_amount?: number;
+  gas_fee_amount?: number | null;
 };
 
 export function settlementCommandFromBulk(input: BulkSettleInput): SettlementCommand {
@@ -334,6 +335,9 @@ export function settlementCommandFromBulk(input: BulkSettleInput): SettlementCom
       : null);
   if (kursAmount != null) {
     companions.push({ role: "kurs", amount: kursAmount });
+  }
+  if (input.gas_fee_amount != null) {
+    companions.push({ role: "gas_fee", amount: input.gas_fee_amount });
   }
   return {
     requestId: input.client_request_id,

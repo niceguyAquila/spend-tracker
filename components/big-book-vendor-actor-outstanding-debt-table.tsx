@@ -402,6 +402,7 @@ export function BigBookVendorActorOutstandingDebtTable({
     settlement_note: string;
     close_credits: boolean;
     explanation: string;
+    gas_fee_amount?: number;
   }) {
     if (!editDraft) return;
     setPaySubmitting(true);
@@ -425,6 +426,7 @@ export function BigBookVendorActorOutstandingDebtTable({
       if (payload.settlement_note) body.settlement_note = payload.settlement_note;
       if (payload.explanation) body.explanation = payload.explanation;
       if (editDraft.mode === "single") body.amount = payload.amount;
+      if (payload.gas_fee_amount != null) body.gas_fee_amount = payload.gas_fee_amount;
 
       const response = await secureFetch("/api/big-book/entries/bulk-debt-settle", {
         method: "POST",
@@ -437,10 +439,11 @@ export function BigBookVendorActorOutstandingDebtTable({
         setPayError(extractApiError(data.error, "Failed to record debt payment."));
         return;
       }
+      const gasFeeNote = payload.gas_fee_amount != null ? " with a grouped TRX gas-fee entry" : "";
       setPayMessage(
         editDraft.mode === "single"
-          ? `Created 1 Out payment covering ${editDraft.credits.length} debt(s).`
-          : `Created ${editDraft.credits.length} debt payment record(s).`
+          ? `Created 1 Out payment covering ${editDraft.credits.length} debt(s)${gasFeeNote}.`
+          : `Created ${editDraft.credits.length} debt payment record(s)${gasFeeNote}.`
       );
       setEditDraft(null);
       setSelectedRowKeys(new Set());

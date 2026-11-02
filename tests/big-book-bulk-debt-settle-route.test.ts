@@ -112,4 +112,51 @@ describe("big book bulk debt settle route", () => {
     expect(response.status).toBe(400);
     expect(rpcMock).not.toHaveBeenCalled();
   });
+
+  it("adds a gas fee companion to a USDT debt payment", async () => {
+    const { POST } = await import("@/app/api/big-book/entries/bulk-debt-settle/route");
+    const request = new Request("https://app.localhost/api/big-book/entries/bulk-debt-settle", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        client_request_id: REQUEST_ID,
+        debt_entry_ids: [DEBT_A, DEBT_B],
+        mode: "single",
+        entry_date: "2026-10-01",
+        currency_code: "USDT",
+        amount: 150,
+        gas_fee_amount: 13.5
+      })
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    expect(rpcMock).toHaveBeenCalledWith(
+      "big_book_record_settlement",
+      expect.objectContaining({
+        p_companions: [{ role: "gas_fee", amount: 13.5 }]
+      })
+    );
+  });
+
+  it("rejects a gas fee when the debt payment is not in USDT", async () => {
+    const { POST } = await import("@/app/api/big-book/entries/bulk-debt-settle/route");
+    const request = new Request("https://app.localhost/api/big-book/entries/bulk-debt-settle", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        client_request_id: REQUEST_ID,
+        debt_entry_ids: [DEBT_A],
+        mode: "single",
+        entry_date: "2026-10-01",
+        currency_code: "MYR",
+        amount: 150,
+        gas_fee_amount: 13.5
+      })
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
 });
