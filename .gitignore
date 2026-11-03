@@ -6,3 +6,5 @@ node_modules
 npm-debug.log*
 *.xlsx
 *.csv
+*.tsbuildinfo
+.cursor/skills/verify-aquila-big-book/evidence/
