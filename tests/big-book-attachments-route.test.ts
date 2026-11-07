@@ -7,6 +7,13 @@ const removeMock = vi.fn();
 const createSignedUrlMock = vi.fn();
 const insertMock = vi.fn();
 const maybeSingleMock = vi.fn();
+const deleteEqMock = vi.fn();
+const purgeMock = vi.fn();
+const callOrder: string[] = [];
+
+vi.mock("@/lib/big-book/attachment-purge", () => ({
+  purgeQueuedAttachmentFiles: purgeMock
+}));
 
 vi.mock("@/lib/auth-api", () => ({
   requireAdminApi: requireAdminApiMock
@@ -43,7 +50,8 @@ vi.mock("@/lib/supabase/server", () => ({
         eqChain.eq.mockReturnValue(eqChain);
         return {
           insert: insertMock,
-          select: vi.fn(() => eqChain)
+          select: vi.fn(() => eqChain),
+          delete: vi.fn(() => ({ eq: deleteEqMock }))
         };
       }
       return {};
@@ -110,5 +118,51 @@ describe("big book attachments routes", () => {
 
     expect(response.status).toBe(200);
     expect(data.url).toContain("https://cdn.local/signed");
+  });
+
+  it("deletes the attachment row first, then drains the purge queue for its file", async () => {
+    callOrder.length = 0;
+    maybeSingleMock.mockResolvedValue({
+      data: { id: "att-1", storage_path: "entries/entry-1/file.png", ledger_entry_id: "entry-1" },
+      error: null
+    });
+    deleteEqMock.mockImplementation(async () => {
+      callOrder.push("delete-row");
+      return { error: null };
+    });
+    purgeMock.mockImplementation(async () => {
+      callOrder.push("purge");
+      return { removed: 1, failed: 0, error: null };
+    });
+
+    const { DELETE } = await import("@/app/api/big-book/attachments/route");
+    const response = await DELETE(
+      new Request("https://app.localhost/api/big-book/attachments?id=11111111-1111-4111-8111-111111111111", {
+        method: "DELETE"
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(callOrder).toEqual(["delete-row", "purge"]);
+    expect(removeMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the file when the attachment row delete fails", async () => {
+    maybeSingleMock.mockResolvedValue({
+      data: { id: "att-1", storage_path: "entries/entry-1/file.png", ledger_entry_id: "entry-1" },
+      error: null
+    });
+    deleteEqMock.mockResolvedValue({ error: { message: "permission denied" } });
+
+    const { DELETE } = await import("@/app/api/big-book/attachments/route");
+    const response = await DELETE(
+      new Request("https://app.localhost/api/big-book/attachments?id=11111111-1111-4111-8111-111111111111", {
+        method: "DELETE"
+      })
+    );
+
+    expect(response.status).toBe(400);
+    expect(purgeMock).not.toHaveBeenCalled();
+    expect(removeMock).not.toHaveBeenCalled();
   });
 });

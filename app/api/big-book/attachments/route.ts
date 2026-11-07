@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdminApi } from "@/lib/auth-api";
 import { assertCsrfAndOrigin } from "@/lib/security/origin";
 import { bigBookAttachmentCreateSchema, bigBookAttachmentDeleteSchema } from "@/lib/validation/big-book";
+import { purgeQueuedAttachmentFiles } from "@/lib/big-book/attachment-purge";
 
 const BUCKET = "big-book-attachments";
 
@@ -110,16 +111,15 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Attachment not found." }, { status: 404 });
   }
 
-  const adminClient = createAdminClient();
-  const { error: storageError } = await adminClient.storage.from(BUCKET).remove([row.storage_path]);
-  if (storageError) {
-    return NextResponse.json({ error: storageError.message }, { status: 400 });
-  }
-
+  // Row first: the delete trigger queues the file, and the drain below removes it
+  // (or keeps it queued for a retry). Removing the file first could leave a row
+  // pointing at a missing file if the row delete then failed.
   const { error } = await supabase.from("business_ledger_attachments").delete().eq("id", row.id);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
+
+  await purgeQueuedAttachmentFiles();
 
   return NextResponse.json({ ok: true });
 }

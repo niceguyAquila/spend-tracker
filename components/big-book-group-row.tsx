@@ -40,6 +40,8 @@ type Props = {
   onEdit: () => void;
   onUngroup: () => void;
   onDelete: () => void;
+  /** Present when the group holds settlement payments that can be undone. */
+  onUndoSettlement?: () => void;
   children: ReactNode;
 };
 
@@ -57,6 +59,7 @@ function BigBookGroupHeaderRowInner({
   onEdit,
   onUngroup,
   onDelete,
+  onUndoSettlement,
   children
 }: Props) {
   const { dateLabel, totals, settlementOverview, toneClass, statusBadge } = useMemo(() => {
@@ -233,6 +236,18 @@ function BigBookGroupHeaderRowInner({
                   >
                     Ungroup
                   </button>
+                  {onUndoSettlement ? (
+                    <button
+                      role="menuitem"
+                      className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
+                      onClick={() => {
+                        onCloseActionMenu();
+                        onUndoSettlement();
+                      }}
+                    >
+                      Undo settlement
+                    </button>
+                  ) : null}
                   <button
                     role="menuitem"
                     className="block w-full rounded px-3 py-2 text-left text-sm text-[rgb(var(--danger))] hover:bg-[rgb(var(--danger)/0.12)]"

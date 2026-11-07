@@ -476,13 +476,37 @@ export const bigBookGroupUpdateSchema = z.object({
   id: z.string().uuid(),
   label: z.string().trim().min(2).max(200),
   remark: z.string().max(1000).optional().or(z.literal("")),
-  entries: z.array(bigBookGroupEntryUpdateSchema).min(2).max(50)
+  entries: z.array(bigBookGroupEntryUpdateSchema).min(2).max(50),
+  /** Members the editor loaded; the save is refused if the group changed since. */
+  expected_entry_ids: z.array(z.string().uuid()).max(50).optional()
 });
 
 export const bigBookGroupDeleteSchema = z.object({
   id: z.string().uuid(),
   mode: z.enum(["cascade", "ungroup"]).default("cascade")
 });
+
+/** A settlement is named by its request id or by one of its payment rows. */
+const settlementRefShape = {
+  request_id: z.string().uuid().optional(),
+  payment_id: z.string().uuid().optional()
+};
+
+function hasExactlyOneRef(value: { request_id?: string; payment_id?: string }) {
+  return Boolean(value.request_id) !== Boolean(value.payment_id);
+}
+
+export const bigBookSettlementRevertPreviewSchema = z
+  .object(settlementRefShape)
+  .refine(hasExactlyOneRef, "Pass either request_id or payment_id.");
+
+export const bigBookSettlementRevertSchema = z
+  .object({
+    ...settlementRefShape,
+    expected_entry_ids: z.array(z.string().uuid()).min(1).max(500),
+    reason: z.string().trim().max(500).optional().or(z.literal(""))
+  })
+  .refine(hasExactlyOneRef, "Pass either request_id or payment_id.");
 
 export const bigBookGroupAssignSchema = z.object({
   label: z.string().trim().min(2).max(200),

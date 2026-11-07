@@ -357,7 +357,7 @@ export type BigBookEntryFilters = {
 };
 
 const BIG_BOOK_ENTRY_SELECT = `
-  id, group_id, entry_date, entry_direction, entry_type_id, vendor_type_id, vendor_id, pocket_id, action_by_id, explanation, amount, currency_code, remark, responsible_actor_id, is_credit, is_future_credit, was_future_credit, is_debt, settlement_conversion_rate, settlement_note, credit_settled_at, credit_settled_by, credit_settlement_note, debt_settled_at, debt_settled_by, debt_settlement_note, created_by, updated_by, created_at, updated_at,
+  id, group_id, entry_date, entry_direction, entry_type_id, vendor_type_id, vendor_id, pocket_id, action_by_id, explanation, amount, currency_code, remark, responsible_actor_id, is_credit, is_future_credit, was_future_credit, is_debt, settlement_conversion_rate, settlement_note, settlement_request_id, credit_settled_at, credit_settled_by, credit_settlement_note, debt_settled_at, debt_settled_by, debt_settlement_note, created_by, updated_by, created_at, updated_at,
   business_ledger_types(id, code, name),
   business_ledger_vendor_types(id, code, name),
   business_ledger_vendors(id, code, name),
@@ -565,6 +565,7 @@ type RawBigBookEntryRow = {
   is_debt: boolean | null;
   settlement_conversion_rate: number | string | null;
   settlement_note: string | null;
+  settlement_request_id?: string | null;
   credit_settled_at: string | null;
   credit_settled_by: string | null;
   credit_settlement_note: string | null;
@@ -631,6 +632,7 @@ function mapBigBookEntryRow(row: RawBigBookEntryRow, actorMap: Map<string, strin
     settlement_conversion_rate:
       row.settlement_conversion_rate == null ? null : Number(row.settlement_conversion_rate),
     settlement_note: row.settlement_note ?? null,
+    settlement_request_id: row.settlement_request_id ?? null,
     credit_settled_at: row.credit_settled_at ?? null,
     credit_settled_by: row.credit_settled_by ?? null,
     credit_settlement_note: row.credit_settlement_note ?? null,

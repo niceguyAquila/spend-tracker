@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { purgeQueuedAttachmentFiles } from "@/lib/big-book/attachment-purge";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdminApi } from "@/lib/auth-api";
 import { assertCsrfAndOrigin } from "@/lib/security/origin";
@@ -434,5 +435,6 @@ export async function DELETE(request: Request) {
       ? { cascade: true, expectedMemberIds: parseIdList(searchParams.get("linkedSet")) }
       : { cascade: false }
   });
+  if (result.ok) await purgeQueuedAttachmentFiles();
   return deleteResponse(result);
 }

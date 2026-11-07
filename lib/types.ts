@@ -214,6 +214,8 @@ export type BigBookEntry = {
   is_debt: boolean;
   settlement_conversion_rate: number | null;
   settlement_note: string | null;
+  /** Set on rows written by one settlement (payments and gas fee / profit / kurs companions). */
+  settlement_request_id?: string | null;
   credit_settled_at: string | null;
   credit_settled_by: string | null;
   credit_settlement_note: string | null;

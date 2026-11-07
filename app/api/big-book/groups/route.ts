@@ -7,6 +7,10 @@ import {
   bigBookGroupDeleteSchema,
   bigBookGroupUpdateSchema
 } from "@/lib/validation/big-book";
+import { deleteGroupResponse, deleteLedgerGroup } from "@/lib/big-book/ledger-undo";
+import { normalizeGroupEntry, updateGroupResponse, updateLedgerGroup } from "@/lib/big-book/group-update";
+import { parseIdList } from "@/lib/big-book/settlement";
+import { purgeQueuedAttachmentFiles } from "@/lib/big-book/attachment-purge";
 
 type EntryPayload = {
   entry_date: string;
@@ -27,26 +31,9 @@ type EntryPayload = {
 };
 
 function toEntryInsertRow(payload: EntryPayload, groupId: string, actorId: string) {
-  const isCredit = Boolean(payload.is_credit) && !payload.is_debt;
-  const isFutureCredit = isCredit && Boolean(payload.is_future_credit);
-  const isDebt = Boolean(payload.is_debt) && !payload.is_credit;
   return {
     group_id: groupId,
-    entry_date: payload.entry_date,
-    entry_direction: payload.entry_direction,
-    entry_type_id: payload.entry_type_id,
-    vendor_type_id: payload.vendor_type_id ?? null,
-    vendor_id: payload.vendor_id ?? null,
-    pocket_id: payload.pocket_id ?? null,
-    action_by_id: payload.action_by_id ?? null,
-    explanation: payload.explanation,
-    amount: payload.amount,
-    currency_code: payload.currency_code,
-    remark: payload.remark || null,
-    responsible_actor_id: payload.responsible_actor_id,
-    is_credit: isCredit,
-    is_future_credit: isFutureCredit,
-    is_debt: isDebt,
+    ...normalizeGroupEntry(payload),
     created_by: actorId,
     updated_by: actorId
   };
@@ -116,103 +103,22 @@ export async function PATCH(request: Request) {
   }
 
   const supabase = await createClient();
-  const actorId = authCheck.user.id;
-  const { id: groupId, label, remark, entries } = parsed.data;
+  const { id: groupId, label, remark, entries, expected_entry_ids: expectedEntryIds } = parsed.data;
 
-  const { data: existingGroup, error: existingGroupError } = await supabase
-    .from("business_ledger_entry_groups")
-    .select("id")
-    .eq("id", groupId)
-    .maybeSingle();
-
-  if (existingGroupError) {
-    return NextResponse.json({ error: existingGroupError.message }, { status: 400 });
-  }
-  if (!existingGroup) {
-    return NextResponse.json({ error: "Group not found." }, { status: 404 });
-  }
-
-  const { error: groupUpdateError } = await supabase
-    .from("business_ledger_entry_groups")
-    .update({
-      label,
-      remark: remark || null,
-      updated_by: actorId
-    })
-    .eq("id", groupId);
-
-  if (groupUpdateError) {
-    return NextResponse.json({ error: groupUpdateError.message }, { status: 400 });
-  }
-
-  const { data: existingEntries, error: existingEntriesError } = await supabase
-    .from("business_ledger_entries")
-    .select("id")
-    .eq("group_id", groupId);
-
-  if (existingEntriesError) {
-    return NextResponse.json({ error: existingEntriesError.message }, { status: 400 });
-  }
-
-  const existingIds = new Set((existingEntries ?? []).map((row) => row.id as string));
-  const keepIds = new Set(entries.filter((entry) => entry.id).map((entry) => entry.id as string));
-
-  const removeIds = [...existingIds].filter((id) => !keepIds.has(id));
-  if (removeIds.length) {
-    const { error: deleteError } = await supabase.from("business_ledger_entries").delete().in("id", removeIds);
-    if (deleteError) {
-      return NextResponse.json({ error: deleteError.message }, { status: 400 });
-    }
-  }
-
-  for (const entry of entries) {
-    if (entry.id) {
-      if (!existingIds.has(entry.id)) {
-        return NextResponse.json({ error: `Entry ${entry.id} does not belong to this group.` }, { status: 400 });
-      }
-      const { id: entryId, ...payload } = entry;
-      const isCredit = Boolean(payload.is_credit) && !payload.is_debt;
-      const isFutureCredit = isCredit && Boolean(payload.is_future_credit);
-      const isDebt = Boolean(payload.is_debt) && !payload.is_credit;
-      const { error: updateError } = await supabase
-        .from("business_ledger_entries")
-        .update({
-          entry_date: payload.entry_date,
-          entry_direction: payload.entry_direction,
-          entry_type_id: payload.entry_type_id,
-          vendor_type_id: payload.vendor_type_id ?? null,
-          vendor_id: payload.vendor_id ?? null,
-          pocket_id: payload.pocket_id ?? null,
-          action_by_id: payload.action_by_id ?? null,
-          explanation: payload.explanation,
-          amount: payload.amount,
-          currency_code: payload.currency_code,
-          remark: payload.remark || null,
-          responsible_actor_id: payload.responsible_actor_id,
-          is_credit: isCredit,
-          is_future_credit: isFutureCredit,
-          is_debt: isDebt,
-          updated_by: actorId
-        })
-        .eq("id", entryId)
-        .eq("group_id", groupId);
-
-      if (updateError) {
-        return NextResponse.json({ error: updateError.message }, { status: 400 });
-      }
-      continue;
-    }
-
-    const { error: insertError } = await supabase
-      .from("business_ledger_entries")
-      .insert(toEntryInsertRow(entry, groupId, actorId));
-
-    if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 400 });
-    }
-  }
-
-  return NextResponse.json({ ok: true });
+  // One transaction in SQL: label/remark, removed rows, edited rows and new rows
+  // all commit together or not at all (a failure used to leave the group half-edited).
+  const result = await updateLedgerGroup(supabase, {
+    groupId,
+    label,
+    remark: remark || null,
+    entries: entries.map((entry) => ({
+      ...normalizeGroupEntry(entry),
+      id: entry.id ?? null
+    })),
+    expectedEntryIds: expectedEntryIds ?? null
+  });
+  if (result.ok && result.value.deletedIds.length) await purgeQueuedAttachmentFiles();
+  return updateGroupResponse(result);
 }
 
 export async function DELETE(request: Request) {
@@ -237,6 +143,23 @@ export async function DELETE(request: Request) {
   const supabase = await createClient();
   const { id, mode } = parsed.data;
 
+  if (mode === "cascade") {
+    // One transaction in SQL: allocations are removed before entries (a bare
+    // group delete relied on FK cascades that fail for settled credits/debts),
+    // and settlement rows linked from outside the group need explicit confirmation.
+    const expected = searchParams.get("expected");
+    const cascadeLinked = searchParams.get("cascadeLinked") === "1";
+    const result = await deleteLedgerGroup(supabase, {
+      groupId: id,
+      expectedEntryIds: expected === null ? null : parseIdList(expected),
+      linked: cascadeLinked
+        ? { cascade: true, expectedLinkedIds: parseIdList(searchParams.get("linkedSet")) }
+        : { cascade: false }
+    });
+    if (result.ok) await purgeQueuedAttachmentFiles();
+    return deleteGroupResponse(result);
+  }
+
   const { data: existingGroup, error: existingGroupError } = await supabase
     .from("business_ledger_entry_groups")
     .select("id")
@@ -250,15 +173,15 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Group not found." }, { status: 404 });
   }
 
-  if (mode === "ungroup") {
-    const { error: ungroupError } = await supabase
-      .from("business_ledger_entries")
-      .update({ group_id: null, updated_by: authCheck.user.id })
-      .eq("group_id", id);
+  // Ungroup: detach first. group_id is ON DELETE CASCADE, so deleting the group
+  // while rows still point at it would destroy them.
+  const { error: ungroupError } = await supabase
+    .from("business_ledger_entries")
+    .update({ group_id: null, updated_by: authCheck.user.id })
+    .eq("group_id", id);
 
-    if (ungroupError) {
-      return NextResponse.json({ error: ungroupError.message }, { status: 400 });
-    }
+  if (ungroupError) {
+    return NextResponse.json({ error: ungroupError.message }, { status: 400 });
   }
 
   const { error: deleteError } = await supabase.from("business_ledger_entry_groups").delete().eq("id", id);

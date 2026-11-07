@@ -112,7 +112,7 @@ const SETTLEMENT_ERROR_MESSAGES: Record<
   not_admin: "Admin access required."
 };
 
-function parseHint(error: RpcError): Record<string, unknown> {
+export function parseHint(error: RpcError): Record<string, unknown> {
   if (!error.hint) return {};
   try {
     const parsed = JSON.parse(error.hint) as unknown;
@@ -122,7 +122,7 @@ function parseHint(error: RpcError): Record<string, unknown> {
   }
 }
 
-function idsFrom(value: unknown): string[] {
+export function idsFrom(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
 }
 

@@ -37,6 +37,11 @@ import {
 } from "@/components/big-book-metrics-cards";
 import { BigBookGroupHeaderRow } from "@/components/big-book-group-row";
 import { BigBookEntryRow } from "@/components/big-book-entry-row";
+import { BigBookSettlementUndoDialog } from "@/components/big-book-settlement-undo-dialog";
+import {
+  settlementUndoCandidates,
+  type SettlementUndoCandidate
+} from "@/lib/big-book/settlement-undo-candidates";
 import { LinkifyText } from "@/lib/linkify-text";
 import {
   classifyLedgerGroupTone,
@@ -467,6 +472,8 @@ export function BigBookPanel({
   const [editingGroupMeta, setEditingGroupMeta] = useState<{
     updated_at: string;
     updater_display_name: string;
+    /** Members loaded into the editor; the save is refused if the group changed since. */
+    entry_ids?: string[];
   } | null>(null);
   const [optimisticConflictOpen, setOptimisticConflictOpen] = useState(false);
   const [optimisticConflictMessage, setOptimisticConflictMessage] = useState(
@@ -537,8 +544,12 @@ export function BigBookPanel({
   const [pendingDeleteGroup, setPendingDeleteGroup] = useState<{
     group: BigBookEntryGroup;
     entries: BigBookEntry[];
+    /** Set after the server reports settlement rows outside the group; confirming deletes them too. */
+    linkedIds?: string[];
   } | null>(null);
   const [pendingUngroup, setPendingUngroup] = useState<BigBookEntryGroup | null>(null);
+  // Settlements offered by the open "Undo settlement" dialog (captured when it opens).
+  const [undoCandidates, setUndoCandidates] = useState<SettlementUndoCandidate[] | null>(null);
   // Ids of standalone rows ticked for grouping. Only ungrouped entries are
   // selectable, so grouping never has to move a row out of an existing group.
   const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(() => new Set());
@@ -1650,7 +1661,8 @@ export function BigBookPanel({
     setEditingGroupId(group.id);
     setEditingGroupMeta({
       updated_at: group.updated_at,
-      updater_display_name: group.updater_display_name
+      updater_display_name: group.updater_display_name,
+      entry_ids: entries.map((entry) => entry.id)
     });
     setEditGroupLabel(group.label);
     setEditGroupRemark(group.remark ?? "");
@@ -1687,11 +1699,16 @@ export function BigBookPanel({
           id: editingGroupId,
           label,
           remark: editGroupRemark,
-          entries: payloadEntries
+          entries: payloadEntries,
+          ...(editingGroupMeta?.entry_ids ? { expected_entry_ids: editingGroupMeta.entry_ids } : {})
         })
       });
       if (handleUnauthorizedResponse(response)) return;
       const data = await response.json();
+      if (!response.ok && data.code === "group_changed") {
+        handleOptimisticConflict(typeof data.error === "string" ? data.error : OPTIMISTIC_CONFLICT_MESSAGE);
+        return;
+      }
       if (!response.ok) {
         setError(extractApiError(data.error, "Failed to update grouped transaction."));
         return;
@@ -1717,12 +1734,34 @@ export function BigBookPanel({
     setError(null);
     setMessage(null);
     try {
-      const response = await secureFetch(`/api/big-book/groups?id=${groupId}&mode=${mode}`, {
+      let query = `id=${groupId}&mode=${mode}`;
+      if (mode === "cascade" && pendingDeleteGroup) {
+        query += `&expected=${encodeURIComponent(pendingDeleteGroup.entries.map((entry) => entry.id).join(","))}`;
+        if (pendingDeleteGroup.linkedIds?.length) {
+          query += `&cascadeLinked=1&linkedSet=${encodeURIComponent(pendingDeleteGroup.linkedIds.join(","))}`;
+        }
+      }
+      const response = await secureFetch(`/api/big-book/groups?${query}`, {
         method: "DELETE"
       });
       if (handleUnauthorizedResponse(response)) return;
       const data = await response.json();
+      if (
+        mode === "cascade" &&
+        response.status === 409 &&
+        data.code === "linked_set_requires_confirmation" &&
+        Array.isArray(data.member_ids) &&
+        pendingDeleteGroup
+      ) {
+        // Keep the dialog open and ask again, now naming the outside rows.
+        setPendingDeleteGroup({ ...pendingDeleteGroup, linkedIds: data.member_ids as string[] });
+        return;
+      }
       if (!response.ok) {
+        if (mode === "cascade" && response.status === 409) {
+          setPendingDeleteGroup(null);
+          triggerRefresh();
+        }
         setError(
           extractApiError(
             data.error,
@@ -2825,6 +2864,11 @@ export function BigBookPanel({
                         onEdit={() => startEditGroup(row.group, row.entries)}
                         onUngroup={() => setPendingUngroup(row.group)}
                         onDelete={() => setPendingDeleteGroup({ group: row.group, entries: row.entries })}
+                        onUndoSettlement={
+                          row.entries.some((entry) => entry.settles.length > 0)
+                            ? () => setUndoCandidates(settlementUndoCandidates(row.entries))
+                            : undefined
+                        }
                       >
                         {row.entries.map((entry) =>
                           renderEntryRow(entry, true, groupToneClass)
@@ -2989,6 +3033,18 @@ export function BigBookPanel({
                     }}
                   >
                     {targetRow.is_debt ? "View payments" : "View settlements"}
+                  </button>
+                ) : null}
+                {targetRow.settles.length > 0 ? (
+                  <button
+                    className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[rgb(var(--surface-muted))]"
+                    role="menuitem"
+                    onClick={() => {
+                      setOpenActionMenu(null);
+                      setUndoCandidates(settlementUndoCandidates([targetRow]));
+                    }}
+                  >
+                    {targetRow.settles.some((target) => target.is_debt) ? "Undo payment" : "Undo settlement"}
                   </button>
                 ) : null}
                 <button
@@ -3644,14 +3700,30 @@ export function BigBookPanel({
           if (!open && !groupSubmitting) setPendingDeleteGroup(null);
         }}
         title="Delete grouped transaction?"
-        description={`This will permanently remove "${pendingDeleteGroup?.group.label ?? ""}" along with its ${
-          pendingDeleteGroup?.entries.length ?? 0
-        } transaction(s) and their attachments.`}
-        confirmLabel="Delete group"
+        description={
+          pendingDeleteGroup?.linkedIds?.length
+            ? `"${pendingDeleteGroup.group.label}" is linked to ${pendingDeleteGroup.linkedIds.length} settlement record(s) in other groups or standalone (the other side of a credit/debt payment, or its gas fee / profit / kurs rows). Deleting the group also permanently removes them. To keep the credit/debt and only reverse a payment, cancel and use "Undo settlement" instead.`
+            : `This will permanently remove "${pendingDeleteGroup?.group.label ?? ""}" along with its ${
+                pendingDeleteGroup?.entries.length ?? 0
+              } transaction(s) and their attachments.`
+        }
+        confirmLabel={pendingDeleteGroup?.linkedIds?.length ? "Delete group and linked records" : "Delete group"}
         confirming={groupSubmitting}
         variant="danger"
         closeOnBackdrop={false}
         onConfirm={() => deleteGroup("cascade")}
+      />
+
+      <BigBookSettlementUndoDialog
+        open={Boolean(undoCandidates?.length)}
+        candidates={undoCandidates ?? []}
+        onClose={() => setUndoCandidates(null)}
+        onReverted={(text) => {
+          setUndoCandidates(null);
+          setError(null);
+          setMessage(text);
+          triggerRefresh();
+        }}
       />
 
       <ConfirmDialog
